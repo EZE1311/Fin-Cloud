@@ -499,9 +499,8 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
   const byCountry=useMemo(()=>{
     let usa=0,arg=0;
     enriched.forEach(p=>{if(p.broker==="CS")usa+=p.montoActual;else arg+=p.montoActual;});
-    if(casaNeta>0) arg+=casaNeta;
-    return[{name:"USA (CS)",value:usa,color:"#3b82f6"},{name:"Argentina (BM)",value:arg,color:"#60a5fa"}].filter(d=>d.value>0);
-  },[enriched,casaNeta]);
+    return[{name:"USA (CS)",value:usa,flag:"usa"},{name:"Argentina (BM)",value:arg,flag:"arg"}].filter(d=>d.value>0);
+  },[enriched]);
   const movers=useMemo(()=>[...enriched].sort((a,b)=>Math.abs(b.variacion)-Math.abs(a.variacion)).slice(0,5),[enriched]);
   /* Portfolio sort */
   const [sortBy,setSortBy]=useState("montoActual");
@@ -544,10 +543,10 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
       <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
         <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Caución Tomada</div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:11,color:"#94a3b8"}}>$</span>
-          <input type="text" value={caucion.montoARS?caucion.montoARS.toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setCaucion({montoARS:raw?parseInt(raw,10):0});}} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",color:"#fbbf24",fontSize:18,fontWeight:700,width:150,fontVariantNumeric:"tabular-nums",outline:"none"}} placeholder="0"/>
+          <span style={{fontSize:11,color:"#f87171"}}>$</span>
+          <input type="text" value={caucion.montoARS?caucion.montoARS.toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setCaucion({montoARS:raw?parseInt(raw,10):0});}} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",color:"#f87171",fontSize:18,fontWeight:700,width:150,fontVariantNumeric:"tabular-nums",outline:"none"}} placeholder="0"/>
         </div>
-        <div style={{fontSize:12,color:"#94a3b8",marginTop:4}}>≈ {fU(caucionUSD)} <span style={{color:"#475569"}}>(MEP ${fmt(macro.dolarMEP)})</span></div>
+        <div style={{fontSize:12,color:"#f87171",marginTop:4}}>≈ {fU(caucionUSD)} <span style={{color:"#475569"}}>(MEP ${fmt(macro.dolarMEP)})</span></div>
       </div>
     </div>
 
@@ -589,7 +588,36 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
         <HBarChart data={bySector} height={Math.max(180,bySector.length*34)}/>
         <div style={{borderTop:"1px solid #252d3d",marginTop:14,paddingTop:14}}>
           <div style={{fontSize:11,color:"#64748b",textTransform:"uppercase",letterSpacing:".05em",marginBottom:10,fontWeight:600}}>Capital por País</div>
-          <HBarChart data={byCountry} height={byCountry.length*34}/>
+          {(()=>{
+            const max=Math.max(...byCountry.map(d=>d.value));
+            const total=byCountry.reduce((s,d)=>s+d.value,0);
+            const barH=24;
+            return <svg width="100%" height={byCountry.length*(barH+10)+4} viewBox={`0 0 440 ${byCountry.length*(barH+10)+4}`} preserveAspectRatio="xMidYMid meet">
+              <defs>
+                <pattern id="flag-usa" patternUnits="userSpaceOnUse" width="48" height={barH}>
+                  {[...Array(7)].map((_,i)=><rect key={i} x={0} y={i*(barH/13)*2} width={48} height={barH/13} fill={i%2===0?"#B22234":"#fff"}/>)}
+                  {[...Array(6)].map((_,i)=><rect key={i+7} x={0} y={(i*2+1)*(barH/13)} width={48} height={barH/13} fill={i%2===0?"#fff":"#B22234"}/>)}
+                  <rect x={0} y={0} width={19} height={barH*7/13} fill="#3C3B6E"/>
+                  {[0,1,2,3,4].map(r=>[0,1,2,3,4,5].map((c,ci)=><circle key={`s${r}${ci}`} cx={1.6+c*3} cy={1.2+r*(barH*7/13/5)} r={.6} fill="#fff"/>))}
+                </pattern>
+                <pattern id="flag-arg" patternUnits="userSpaceOnUse" width="48" height={barH}>
+                  <rect x={0} y={0} width={48} height={barH/3} fill="#74ACDF"/>
+                  <rect x={0} y={barH/3} width={48} height={barH/3} fill="#fff"/>
+                  <rect x={0} y={barH*2/3} width={48} height={barH/3} fill="#74ACDF"/>
+                  <circle cx={24} cy={barH/2} r={2.5} fill="#F6B40E" stroke="#85340A" strokeWidth={.3}/>
+                </pattern>
+              </defs>
+              {byCountry.map((d,i)=>{
+                const y=i*(barH+10)+4;const w=max>0?(d.value/max)*220:0;const pct=total>0?(d.value/total*100).toFixed(1):0;
+                return <g key={i}>
+                  <text x={105} y={y+barH/2+4} textAnchor="end" fill="#94a3b8" fontSize="11">{d.name}</text>
+                  <rect x={110} y={y} width={w} height={barH} rx={3} fill={`url(#flag-${d.flag})`}/>
+                  <rect x={110} y={y} width={w} height={barH} rx={3} fill="rgba(0,0,0,0.15)"/>
+                  <text x={115+w} y={y+barH/2+4} fill="#94a3b8" fontSize="10" fontWeight="500">{pct}% · ${(d.value/1000).toFixed(0)}k</text>
+                </g>;
+              })}
+            </svg>;
+          })()}
         </div>
       </Card>
     </div>
