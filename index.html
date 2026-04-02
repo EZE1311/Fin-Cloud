@@ -57,67 +57,56 @@ const today=()=>{const d=new Date();return`${String(d.getDate()).padStart(2,"0")
 
 /* ── SVG Charts ──────────────────────────── */
 /* 3D Pie Chart — SVG with elliptical perspective + side depth */
-function Pie3D({data,width=360,height=280}){
+/* 3D Pie with labels near slices + leader lines */
+function Pie3D({data,width=460,height=320}){
   const total=data.reduce((s,d)=>s+d.value,0);
   if(total===0)return null;
-  const cx=width/2,cy=130,rx=130,ry=70,depth=18;
-  /* build slices */
+  const cx=width/2,cy=140,rx=110,ry=60,depth=16;
   let cum=0;
   const slices=data.map(d=>{const pct=d.value/total;const s0=cum;cum+=pct;return{...d,pct,s0,s1:cum};});
 
-  function ellipsePoint(angle,eCx,eCy){return[eCx+rx*Math.cos(angle),eCy+ry*Math.sin(angle)]}
+  function ep(angle,eCy,r1,r2){return[cx+(r1||rx)*Math.cos(angle),eCy+(r2||ry)*Math.sin(angle)]}
   function slicePath(s0,s1,eCy){
-    const a0=s0*2*Math.PI-Math.PI/2, a1=s1*2*Math.PI-Math.PI/2;
+    const a0=s0*2*Math.PI-Math.PI/2,a1=s1*2*Math.PI-Math.PI/2;
     const large=s1-s0>.5?1:0;
-    const[x0,y0]=ellipsePoint(a0,cx,eCy);
-    const[x1,y1]=ellipsePoint(a1,cx,eCy);
+    const[x0,y0]=ep(a0,eCy);const[x1,y1]=ep(a1,eCy);
     return`M ${cx} ${eCy} L ${x0} ${y0} A ${rx} ${ry} 0 ${large} 1 ${x1} ${y1} Z`;
   }
-  /* side faces for depth (only bottom half visible) */
   function sidePath(s0,s1){
-    const a0=s0*2*Math.PI-Math.PI/2, a1=s1*2*Math.PI-Math.PI/2;
+    const a0=s0*2*Math.PI-Math.PI/2,a1=s1*2*Math.PI-Math.PI/2;
     const steps=Math.max(2,Math.ceil((a1-a0)/(Math.PI/20)));
     let d="";
-    for(let i=0;i<=steps;i++){
-      const a=a0+(a1-a0)*(i/steps);
-      const[x,y]=ellipsePoint(a,cx,cy);
-      d+=(i===0?"M":"L")+` ${x} ${y}`;
-    }
-    for(let i=steps;i>=0;i--){
-      const a=a0+(a1-a0)*(i/steps);
-      const[x,y]=ellipsePoint(a,cx,cy+depth);
-      d+=`L ${x} ${y}`;
-    }
+    for(let i=0;i<=steps;i++){const a=a0+(a1-a0)*(i/steps);const[x,y]=ep(a,cy);d+=(i===0?"M":"L")+` ${x} ${y}`;}
+    for(let i=steps;i>=0;i--){const a=a0+(a1-a0)*(i/steps);const[x,y]=ep(a,cy+depth);d+=`L ${x} ${y}`;}
     return d+"Z";
   }
-  /* only render sides for slices with visible bottom half (sin > 0 region) */
-  const sides=slices.filter(s=>{
-    const a0=s.s0*2*Math.PI-Math.PI/2,a1=s.s1*2*Math.PI-Math.PI/2;
-    return a1>0&&a0<Math.PI;
-  }).map(s=>{
-    const a0=Math.max(s.s0*2*Math.PI-Math.PI/2,0);
-    const a1=Math.min(s.s1*2*Math.PI-Math.PI/2,Math.PI);
+  const sides=slices.filter(s=>{const a0=s.s0*2*Math.PI-Math.PI/2,a1=s.s1*2*Math.PI-Math.PI/2;return a1>0&&a0<Math.PI;}).map(s=>{
+    const a0=Math.max(s.s0*2*Math.PI-Math.PI/2,0);const a1=Math.min(s.s1*2*Math.PI-Math.PI/2,Math.PI);
     return{...s,sa0:a0,sa1:a1};
   });
 
-  return <div style={{position:"relative"}}>
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{display:"block",margin:"0 auto"}}>
-      {/* depth sides */}
-      {sides.map((s,i)=><path key={"s"+i} d={sidePath(s.sa0/(2*Math.PI)+.25,s.sa1/(2*Math.PI)+.25)} fill={s.color} opacity={.55}/>)}
-      {/* bottom ellipse */}
-      {slices.map((s,i)=><path key={"b"+i} d={slicePath(s.s0,s.s1,cy+depth)} fill={s.color} opacity={.3}/>)}
-      {/* top face */}
-      {slices.map((s,i)=><path key={"t"+i} d={slicePath(s.s0,s.s1,cy)} fill={s.color} stroke="#0f1117" strokeWidth={1}/>)}
-    </svg>
-    {/* legend beside/below chart */}
-    <div style={{display:"flex",flexWrap:"wrap",gap:"4px 16px",justifyContent:"center",marginTop:4}}>
-      {slices.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:5,fontSize:11}}>
-        <span style={{width:10,height:10,borderRadius:2,background:s.color,flexShrink:0}}/>
-        <span style={{color:"#cbd5e1",fontWeight:600}}>{s.name}</span>
-        <span style={{color:"#64748b"}}>{(s.pct*100).toFixed(1)}%</span>
-      </div>)}
-    </div>
-  </div>;
+  /* Label positions — near each slice with leader line */
+  const labels=slices.filter(s=>s.pct>=.02).map(s=>{
+    const midAngle=(s.s0+s.s1)/2*2*Math.PI-Math.PI/2;
+    const[ix,iy]=ep(midAngle,cy,rx*0.72,ry*0.72); /* inner point on slice */
+    const[ox,oy]=ep(midAngle,cy,rx+28,ry+28); /* outer point for label */
+    const anchor=ox<cx?"end":"start";
+    const lx=ox<cx?ox-4:ox+4;
+    return{...s,ix,iy,ox,oy,lx,ly:oy,anchor,midAngle};
+  });
+
+  return <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{display:"block",margin:"0 auto"}}>
+    {sides.map((s,i)=><path key={"s"+i} d={sidePath(s.sa0/(2*Math.PI)+.25,s.sa1/(2*Math.PI)+.25)} fill={s.color} opacity={.5}/>)}
+    {slices.map((s,i)=><path key={"b"+i} d={slicePath(s.s0,s.s1,cy+depth)} fill={s.color} opacity={.25}/>)}
+    {slices.map((s,i)=><path key={"t"+i} d={slicePath(s.s0,s.s1,cy)} fill={s.color} stroke="#0f1117" strokeWidth={.5}/>)}
+    {/* Leader lines + labels */}
+    {labels.map((l,i)=><g key={"l"+i}>
+      <line x1={l.ix} y1={l.iy} x2={l.ox} y2={l.oy} stroke={l.color} strokeWidth={1} opacity={.6}/>
+      <circle cx={l.ox} cy={l.oy} r={2} fill={l.color}/>
+      <text x={l.lx} y={l.ly-6} textAnchor={l.anchor} fill="#e2e8f0" fontSize="11" fontWeight="700">{l.name}</text>
+      <text x={l.lx} y={l.ly+7} textAnchor={l.anchor} fill="#94a3b8" fontSize="10" fontWeight="500">{(l.pct*100).toFixed(1)}%</text>
+    </g>)}
+  </svg>;
 }
 
 function HBarChart({data,height:h2=220}){
@@ -180,9 +169,9 @@ function calcPositions(ops){
 }
 
 const INIT_OPS=[
-  {id:1,fecha:"13-12-24",ticker:"IBM",tipo:"COMPRA",cantidad:12,precio:230,mercado:"NYSE",broker:"AT",moneda:"USD",ccl:null},
-  {id:2,fecha:"13-12-24",ticker:"BKUCF",tipo:"COMPRA",cantidad:750000,precio:0.0461,mercado:"NYSE",broker:"AT",moneda:"USD",ccl:null},
-  {id:3,fecha:"11-12-24",ticker:"BKUCF",tipo:"COMPRA",cantidad:250000,precio:0.0395,mercado:"NYSE",broker:"AT",moneda:"USD",ccl:null},
+  {id:1,fecha:"13-12-24",ticker:"IBM",tipo:"COMPRA",cantidad:12,precio:230,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
+  {id:2,fecha:"13-12-24",ticker:"BKUCF",tipo:"COMPRA",cantidad:750000,precio:0.0461,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
+  {id:3,fecha:"11-12-24",ticker:"BKUCF",tipo:"COMPRA",cantidad:250000,precio:0.0395,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
   {id:4,fecha:"26-03-25",ticker:"MELI",tipo:"COMPRA",cantidad:3000,precio:19940,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1423.37},
   {id:5,fecha:"26-03-25",ticker:"ORCL",tipo:"COMPRA",cantidad:250,precio:69500,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1419.29},
   {id:6,fecha:"26-03-25",ticker:"YPFD",tipo:"VENTA",cantidad:1460,precio:63800,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1444.40},
@@ -190,13 +179,13 @@ const INIT_OPS=[
   {id:8,fecha:"13-08-25",ticker:"UNH",tipo:"COMPRA",cantidad:2500,precio:10850,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1317.00},
   {id:9,fecha:"24-09-25",ticker:"EDN",tipo:"COMPRA",cantidad:40000,precio:1369.03,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1393.35},
   {id:10,fecha:"19-09-25",ticker:"AL30",tipo:"COMPRA",cantidad:700,precio:70260,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1534.20},
-  {id:11,fecha:"30-10-25",ticker:"FISV",tipo:"COMPRA",cantidad:15,precio:66.085,mercado:"NYSE",broker:"AT",moneda:"USD",ccl:null},
-  {id:12,fecha:"30-10-25",ticker:"FISV",tipo:"COMPRA",cantidad:91,precio:67.44,mercado:"NYSE",broker:"AT",moneda:"USD",ccl:null},
+  {id:11,fecha:"30-10-25",ticker:"FISV",tipo:"COMPRA",cantidad:15,precio:66.085,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
+  {id:12,fecha:"30-10-25",ticker:"FISV",tipo:"COMPRA",cantidad:91,precio:67.44,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
   {id:13,fecha:"07-11-25",ticker:"YPFD",tipo:"VENTA",cantidad:800,precio:62900,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1470.04},
   {id:14,fecha:"07-11-25",ticker:"YPFD",tipo:"COMPRA",cantidad:2500,precio:54000,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1493.94},
   {id:15,fecha:"11-12-25",ticker:"ORCL",tipo:"COMPRA",cantidad:500,precio:97000,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1498.47},
-  {id:16,fecha:"02-02-26",ticker:"IBM",tipo:"COMPRA",cantidad:18,precio:248.26,mercado:"NYSE",broker:"AT",moneda:"USD",ccl:null},
-  {id:17,fecha:"24-02-26",ticker:"IBM",tipo:"COMPRA",cantidad:28,precio:232,mercado:"NYSE",broker:"AT",moneda:"USD",ccl:null},
+  {id:16,fecha:"02-02-26",ticker:"IBM",tipo:"COMPRA",cantidad:18,precio:248.26,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
+  {id:17,fecha:"24-02-26",ticker:"IBM",tipo:"COMPRA",cantidad:28,precio:232,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
 ];
 
 /* ── Fallback data (se usa si las APIs fallan) ───── */
@@ -207,7 +196,7 @@ const LIVE_FALLBACK={
   BKUCF:{price:.04,change:-4.97,prev:.0421},TSLA:{price:265.3,change:1.22,prev:262.1},
   UNH:{price:452.8,change:-0.56,prev:455.35},AL30:{price:72.5,change:0.35,prev:72.25},
 };
-const MACRO_FALLBACK={dolarOficial:1415,dolarMEP:1380,dolarCCL:1395,dolarBlue:1405,riesgoPais:617,inflacion:2.9,tasa:29,uva:1858.61};
+const MACRO_FALLBACK={dolarOficial:1415,dolarMEP:1380,dolarCCL:1395,dolarBlue:1405,dolarTarjeta:1885,riesgoPais:617,inflacion:2.9,tasa:29,uva:1858.61};
 const NEWS_FALLBACK=[
   {id:1,ticker:"YPFD",title:"YPF apuesta fuerte a Vaca Muerta: nueva inversión de USD 1.200M en shale oil",source:"Ámbito Financiero",time:"12 min",sentiment:"positive",summary:"La petrolera anunció expansión de producción en Vaca Muerta con foco en exportación de crudo."},
   {id:2,ticker:"IBM",title:"IBM supera estimaciones de Wall Street en Q1 2026 impulsada por IA",source:"Reuters",time:"28 min",sentiment:"positive",summary:"Ingresos de consultoría en IA crecieron 42% interanual. Guidance revisado al alza."},
@@ -243,6 +232,7 @@ async function fetchMacroReal(){
     const mep=findD("bolsa");
     const ccl=findD("contadoconliqui");
     const blue=findD("blue");
+    const tarjeta=findD("tarjeta");
 
     /* Riesgo país desde ArgentinaDatos */
     let riesgoPais=617;
@@ -268,7 +258,7 @@ async function fetchMacroReal(){
       if(Array.isArray(infData)&&infData.length>0) inflacion=infData[infData.length-1].valor||inflacion;
     }catch(e){}
 
-    return{dolarOficial:oficial||1415,dolarMEP:mep||1380,dolarCCL:ccl||1395,dolarBlue:blue||1405,riesgoPais,inflacion,tasa:29,uva};
+    return{dolarOficial:oficial||1415,dolarMEP:mep||1380,dolarCCL:ccl||1395,dolarBlue:blue||1405,dolarTarjeta:tarjeta||1885,riesgoPais,inflacion,tasa:29,uva};
   }catch(e){
     console.warn("Macro API fallback:",e);
     return MACRO_FALLBACK;
@@ -301,51 +291,78 @@ async function fetchPricesReal(tickers){
   }
 }
 
-/* Noticias reales — RSS de Ámbito, Cronista, iProfesional via rss2json */
+/* ── KEYWORDS para detección de tickers en noticias ── */
+const TICKER_KW={
+  YPFD:["YPF","YPFD","VACA MUERTA","SHALE","NEUQUÉN","NEUQUEN"],
+  MELI:["MERCADO LIBRE","MELI","MERCADOLIBRE","MERCADO PAGO"],
+  EDN:["EDENOR","EDN","DISTRIBUIDORA","TARIFAS ELÉCTRICAS"],
+  TSLA:["TESLA","TSLA","ELON MUSK","CYBERTRUCK","MODEL"],
+  IBM:["IBM","WATSON","RED HAT","HASHICORP"],
+  ORCL:["ORACLE","ORCL","ORACLE CLOUD","OCI","LARRY ELLISON"],
+  UNH:["UNITEDHEALTH","UNH","OPTUM","CHANGE HEALTHCARE"],
+  FISV:["FISERV","FISV","CLOVER","FINTECH FISERV"],
+  AL30:["AL30","BONO SOBERANO","BONOS ARGENTINOS","RIESGO PAÍS","RIESGO PAIS","DEUDA ARGENTINA"],
+  BKUCF:["BLUE SKY URANIUM","BKUCF","AMARILLO GRANDE","URANIO","URANIUM"]
+};
+
+/* Noticias — Bloomberg-style deep search across global + local portals */
 async function fetchNewsReal(tickers){
   try{
+    /* Feeds globales + argentinos — cobertura amplia tipo Bloomberg Terminal */
     const feeds=[
-      {url:"https://www.ambito.com/rss/economia.xml",source:"Ámbito Financiero"},
-      {url:"https://www.cronista.com/files/rss/news.xml",source:"El Cronista"},
+      /* Argentina */
+      {url:"https://www.ambito.com/rss/economia.xml",source:"Ámbito"},
+      {url:"https://www.cronista.com/files/rss/news.xml",source:"Cronista"},
       {url:"https://www.iprofesional.com/rss/finanzas",source:"iProfesional"},
       {url:"https://www.infobae.com/feeds/rss/",source:"Infobae"},
+      /* Internacionales */
+      {url:"https://feeds.bloomberg.com/markets/news.rss",source:"Bloomberg"},
+      {url:"https://feeds.reuters.com/reuters/businessNews",source:"Reuters"},
+      {url:"https://www.cnbc.com/id/100003114/device/rss/rss.html",source:"CNBC"},
+      {url:"https://feeds.marketwatch.com/marketwatch/topstories/",source:"MarketWatch"},
+      {url:"https://seekingalpha.com/market_currents.xml",source:"Seeking Alpha"},
+      {url:"https://finance.yahoo.com/news/rssindex",source:"Yahoo Finance"},
+      {url:"https://www.ft.com/?format=rss",source:"Financial Times"},
+      {url:"https://feeds.wsj.com/xml/rss/3_7085.xml",source:"WSJ"},
     ];
     const allNews=[];
-    for(const feed of feeds){
-      try{
-        const r2jUrl=`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.url)}&count=10`;
-        const res=await fetch(r2jUrl);
-        const data=await res.json();
-        if(data.items){
-          data.items.forEach((item,i)=>{
-            /* Detectar tickers mencionados */
-            const text=(item.title+" "+(item.description||"")).toUpperCase();
-            const KEYWORDS={
-              YPFD:["YPF","YPFD","VACA MUERTA"],MELI:["MERCADO LIBRE","MELI","MERCADOLIBRE"],
-              EDN:["EDENOR","EDN"],TSLA:["TESLA","TSLA"],IBM:["IBM"],ORCL:["ORACLE","ORCL"],
-              UNH:["UNITEDHEALTH","UNH"],FISV:["FISERV","FISV"],AL30:["AL30","BONO","BONOS","RIESGO PAIS"],
-              BKUCF:["BLUE SKY","URANIUM","URANIO","BKUCF"]
-            };
-            let matched="MACRO";
-            for(const[tk,kws]of Object.entries(KEYWORDS)){
-              if(kws.some(kw=>text.includes(kw))){matched=tk;break;}
-            }
-            const mins=Math.floor(i*7+Math.random()*15);
-            const timeStr=mins<60?`${mins} min`:`${(mins/60).toFixed(1)} hs`;
-            allNews.push({
-              id:`${feed.source}-${i}`,ticker:matched,title:item.title,
-              source:feed.source,time:timeStr,
-              sentiment:text.includes("SUBE")||text.includes("CREC")||text.includes("POSITIV")||text.includes("RÉCORD")||text.includes("AVANZ")?"positive":"negative",
-              summary:item.description?item.description.replace(/<[^>]*>/g,"").slice(0,200)+"...":item.title,
-              link:item.link,pubDate:item.pubDate
-            });
-          });
+    const seen=new Set();
+    /* Fetch en paralelo para velocidad */
+    const results=await Promise.allSettled(feeds.map(async feed=>{
+      const r2jUrl=`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.url)}&count=12`;
+      const res=await fetch(r2jUrl);
+      return{feed,data:await res.json()};
+    }));
+    results.forEach(r=>{
+      if(r.status!=="fulfilled"||!r.value.data.items)return;
+      const{feed,data}=r.value;
+      data.items.forEach(item=>{
+        const text=(item.title+" "+(item.description||"")).toUpperCase();
+        /* Solo incluir si menciona algún ticker del portfolio */
+        let matched=null;
+        for(const[tk,kws]of Object.entries(TICKER_KW)){
+          if(tickers.includes(tk)&&kws.some(kw=>text.includes(kw))){matched=tk;break;}
         }
-      }catch(e){}
-    }
-    /* Ordenar por fecha y deduplicar */
+        if(!matched)return; /* Descartamos noticias no relevantes */
+        /* Dedup por título similar */
+        const key=item.title.slice(0,50).toUpperCase();
+        if(seen.has(key))return;seen.add(key);
+        const posWords=["SUBE","CRECE","POSITIV","RÉCORD","AVANZ","GANA","SUPERA","RÉCORD","BEAT","SURGE","RALLY","UP","GAIN","PROFIT","RECORD","EXPAND"];
+        const negWords=["BAJA","CAE","NEGATIV","PIERDE","CAÍDA","RECORT","PRESIÓN","LOSS","DROP","FALL","CUT","DECLINE","WARN","RISK","SLUMP","DOWN"];
+        let sentiment="neutral";
+        if(posWords.some(w=>text.includes(w)))sentiment="positive";
+        if(negWords.some(w=>text.includes(w)))sentiment=sentiment==="positive"?"positive":"negative";
+        allNews.push({
+          id:`${feed.source}-${item.title.slice(0,20)}`,ticker:matched,title:item.title,
+          source:feed.source,
+          sentiment,
+          summary:item.description?item.description.replace(/<[^>]*>/g,"").slice(0,250):"",
+          link:item.link,pubDate:item.pubDate
+        });
+      });
+    });
     allNews.sort((a,b)=>new Date(b.pubDate||0)-new Date(a.pubDate||0));
-    return allNews.length>0?allNews.slice(0,25):null;
+    return allNews.length>0?allNews.slice(0,40):null;
   }catch(e){
     console.warn("News API fallback:",e);
     return null;
@@ -607,8 +624,8 @@ function Operaciones({ops,setOps,macro}){
         <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Tipo</label><select value={form.tipo} onChange={e=>setForm({...form,tipo:e.target.value})} style={{width:"100%"}}><option value="COMPRA">COMPRA</option><option value="VENTA">VENTA</option></select></div>
         <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Cantidad</label><input type="number" value={form.cantidad} onChange={e=>setForm({...form,cantidad:e.target.value})} required style={{width:"100%"}}/></div>
         <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Precio</label><input type="number" step="0.0001" value={form.precio} onChange={e=>setForm({...form,precio:e.target.value})} required style={{width:"100%"}}/></div>
-        <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Mercado</label><select value={form.mercado} onChange={e=>setForm({...form,mercado:e.target.value,moneda:e.target.value==="NYSE"||e.target.value==="NASDAQ"?"USD":"ARS"})} style={{width:"100%"}}><option value="BYMA">BYMA</option><option value="NYSE">NYSE</option><option value="NASDAQ">NASDAQ</option></select></div>
-        <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Broker</label><select value={form.broker} onChange={e=>setForm({...form,broker:e.target.value})} style={{width:"100%"}}><option value="BM">Bull Market</option><option value="AT">Allaria</option><option value="IOL">IOL</option><option value="PPI">PPI</option></select></div>
+        <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Broker</label><select value={form.broker} onChange={e=>{const b=e.target.value;setForm({...form,broker:b,mercado:b==="CS"?"NYSE":"BYMA",moneda:b==="CS"?"USD":"ARS"})}} style={{width:"100%"}}><option value="BM">Bull Market (BYMA/ARS)</option><option value="CS">Charles Schwab (USA/USD)</option></select></div>
+        <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Mercado</label><div style={{padding:"8px 12px",background:"#111827",borderRadius:6,fontSize:13,color:"#94a3b8"}}>{form.broker==="CS"?"NYSE":"BYMA"} · {form.broker==="CS"?"USD":"ARS"}</div></div>
         <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Fecha</label><input value={form.fecha} onChange={e=>setForm({...form,fecha:e.target.value})} placeholder="DD-MM-AA" style={{width:"100%"}}/></div>
         <div style={{display:"flex",flexDirection:"column",gap:4}}>
           {(form.moneda==="ARS")&&<div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>CCL {!editId&&<span style={{color:"#60a5fa"}}>(auto: ${fmt(macro.dolarCCL)})</span>}</label><input type="number" step="0.01" value={form.ccl} onChange={e=>setForm({...form,ccl:e.target.value})} placeholder={String(macro.dolarCCL)} style={{width:"100%"}}/></div>}
@@ -969,11 +986,13 @@ function App(){
             const bMEP=((macro.dolarMEP-of1)/of1*100).toFixed(1);
             const bCCL=((macro.dolarCCL-of1)/of1*100).toFixed(1);
             const bBlue=((macro.dolarBlue-of1)/of1*100).toFixed(1);
+            const bTarjeta=((macro.dolarTarjeta-of1)/of1*100).toFixed(1);
             return[
               {l:"Oficial",v:`$${fmt(of1)}`},
               {l:"MEP",v:`$${fmt(macro.dolarMEP)}`,brecha:bMEP},
               {l:"CCL",v:`$${fmt(macro.dolarCCL)}`,brecha:bCCL},
               {l:"Blue",v:`$${fmt(macro.dolarBlue)}`,brecha:bBlue},
+              {l:"Tarjeta",v:`$${fmt(macro.dolarTarjeta)}`,brecha:bTarjeta},
               {l:"Riesgo País",v:String(macro.riesgoPais)+" bp"},
               {l:"Inflación",v:`${fmt(macro.inflacion,1)}%`},
               {l:"Tasa",v:`${fmt(macro.tasa,1)}%`},
