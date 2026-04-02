@@ -196,7 +196,7 @@ const LIVE_FALLBACK={
   BKUCF:{price:.04,change:-4.97,prev:.0421},TSLA:{price:265.3,change:1.22,prev:262.1},
   UNH:{price:452.8,change:-0.56,prev:455.35},AL30:{price:72.5,change:0.35,prev:72.25},
 };
-const MACRO_FALLBACK={dolarOficial:1415,dolarMEP:1380,dolarCCL:1395,dolarBlue:1405,dolarTarjeta:1885,riesgoPais:617,inflacion:2.9,tasa:29,uva:1858.61};
+const MACRO_FALLBACK={dolarOficial:1415,dolarMEP:1380,dolarCCL:1395,dolarBlue:1405,dolarTarjeta:1885,riesgoPais:617,inflacion:2.9,inflacionIA:33.1,tasa:29,uva:1858.61,uvaVar30d:0,reservas:28500};
 const NEWS_FALLBACK=[
   {id:1,ticker:"YPFD",title:"YPF apuesta fuerte a Vaca Muerta: nueva inversión de USD 1.200M en shale oil",source:"Ámbito Financiero",time:"12 min",sentiment:"positive",summary:"La petrolera anunció expansión de producción en Vaca Muerta con foco en exportación de crudo."},
   {id:2,ticker:"IBM",title:"IBM supera estimaciones de Wall Street en Q1 2026 impulsada por IA",source:"Reuters",time:"28 min",sentiment:"positive",summary:"Ingresos de consultoría en IA crecieron 42% interanual. Guidance revisado al alza."},
@@ -244,13 +244,21 @@ async function fetchMacroReal(){
 
     /* UVA desde ArgentinaDatos */
     let uva=1858.61;
+    let uvaVar30d=0;
     try{
       const uvaRes=await fetch("https://api.argentinadatos.com/v1/finanzas/indices/uva");
       const uvaData=await uvaRes.json();
-      if(Array.isArray(uvaData)&&uvaData.length>0) uva=uvaData[uvaData.length-1].valor||uva;
+      if(Array.isArray(uvaData)&&uvaData.length>0){
+        uva=uvaData[uvaData.length-1].valor||uva;
+        /* Calcular variación 30 días */
+        if(uvaData.length>=30){
+          const uva30ago=uvaData[uvaData.length-31]?.valor||uvaData[uvaData.length-30]?.valor;
+          if(uva30ago&&uva30ago>0) uvaVar30d=((uva-uva30ago)/uva30ago*100);
+        }
+      }
     }catch(e){}
 
-    /* Inflación desde ArgentinaDatos */
+    /* Inflación mensual desde ArgentinaDatos */
     let inflacion=2.9;
     try{
       const infRes=await fetch("https://api.argentinadatos.com/v1/finanzas/indices/inflacion");
@@ -258,7 +266,37 @@ async function fetchMacroReal(){
       if(Array.isArray(infData)&&infData.length>0) inflacion=infData[infData.length-1].valor||inflacion;
     }catch(e){}
 
-    return{dolarOficial:oficial||1415,dolarMEP:mep||1380,dolarCCL:ccl||1395,dolarBlue:blue||1405,dolarTarjeta:tarjeta||1885,riesgoPais,inflacion,tasa:29,uva};
+    /* ── BCRA API — Tasa Política Monetaria, Inflación Interanual, Reservas ── */
+    const BCRA_BASE="https://api.bcra.gob.ar/estadisticas/v3.0/monetarias";
+    const hoy=new Date();
+    const hace60=new Date(hoy);hace60.setDate(hoy.getDate()-60);
+    const fmtD=(d)=>d.toISOString().split("T")[0];
+    const bcraFetch=async(idVar)=>{
+      try{
+        const url=BCRA_BASE+"/"+idVar+"?desde="+fmtD(hace60)+"&hasta="+fmtD(hoy)+"&limit=100";
+        /* Intentar directo primero, si falla CORS usar proxy */
+        let r;
+        try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+        const j=await r.json();
+        const arr=j.results||j.data||j;
+        if(Array.isArray(arr)&&arr.length>0){const last=arr[arr.length-1];return last.v??last.valor??last.value??null;}
+      }catch(e){}
+      return null;
+    };
+
+    /* Tasa Política Monetaria — BCRA idVariable 6 */
+    let tasa=29;
+    try{const v=await bcraFetch(6);if(v) tasa=v;}catch(e){}
+
+    /* Inflación Interanual — BCRA idVariable 28 */
+    let inflacionIA=33.1;
+    try{const v=await bcraFetch(28);if(v) inflacionIA=v;}catch(e){}
+
+    /* Reservas Internacionales — BCRA idVariable 1 (en millones USD) */
+    let reservas=28500;
+    try{const v=await bcraFetch(1);if(v) reservas=Math.round(v);}catch(e){}
+
+    return{dolarOficial:oficial||1415,dolarMEP:mep||1380,dolarCCL:ccl||1395,dolarBlue:blue||1405,dolarTarjeta:tarjeta||1885,riesgoPais,inflacion,inflacionIA,tasa,uva,uvaVar30d,reservas};
   }catch(e){
     console.warn("Macro API fallback:",e);
     return MACRO_FALLBACK;
@@ -994,13 +1032,16 @@ function App(){
               {l:"Blue",v:`$${fmt(macro.dolarBlue)}`,brecha:bBlue},
               {l:"Tarjeta",v:`$${fmt(macro.dolarTarjeta)}`,brecha:bTarjeta},
               {l:"Riesgo País",v:String(macro.riesgoPais)+" bp"},
-              {l:"Inflación",v:`${fmt(macro.inflacion,1)}%`},
-              {l:"Tasa",v:`${fmt(macro.tasa,1)}%`},
-              {l:"UVA",v:`$${fmt(macro.uva,2)}`}
+              {l:"Reservas",v:`USD ${fmt(macro.reservas,0)}M`},
+              {l:"Inflación",v:`${fmt(macro.inflacion,1)}%`,sub:"mensual"},
+              {l:"Infl. IA",v:`${fmt(macro.inflacionIA,1)}%`,sub:"interanual"},
+              {l:"Tasa PM",v:`${fmt(macro.tasa,1)}%`},
+              {l:"UVA",v:`$${fmt(macro.uva,2)}`,sub:macro.uvaVar30d?`30d: ${macro.uvaVar30d>0?"+":""}${macro.uvaVar30d.toFixed(1)}%`:null}
             ].map(i=><div key={i.l} style={{textAlign:"center",minWidth:48}}>
               <div style={{color:"#475569",marginBottom:1,whiteSpace:"nowrap"}}>{i.l}</div>
               <div style={{fontWeight:600,color:"#94a3b8",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{i.v}</div>
               {i.brecha&&<div style={{fontSize:9,color:+i.brecha>0?"#fbbf24":"#34d399",fontWeight:500}}>+{i.brecha}%</div>}
+              {i.sub&&<div style={{fontSize:8,color:"#64748b",marginTop:1}}>{i.sub}</div>}
             </div>);
           })()}
         </div>
