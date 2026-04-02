@@ -214,10 +214,11 @@ const NEWS_FALLBACK=[
 /* ── API ENGINE — Datos reales ──────────────── */
 
 /* Yahoo Finance symbols — mapeo de nuestros tickers */
-const YF_MAP={
-  EDN:"EDN",YPFD:"YPF",MELI:"MELI",ORCL:"ORCL",IBM:"IBM",
-  FISV:"FISV",BKUCF:"BKUCF",TSLA:"TSLA",UNH:"UNH",AL30:"AL30D.BA"
-};
+/* CS (Charles Schwab) → cotiza en USD directo en NYSE */
+/* BM (Bull Market) → cotiza en ARS en BYMA, convertimos a USD vía CCL */
+const YF_MAP_USD={EDN:"EDN",YPFD:"YPF",MELI:"MELI",ORCL:"ORCL",IBM:"IBM",FISV:"FISV",BKUCF:"BKUCF",TSLA:"TSLA",UNH:"UNH",AL30:"AL30D.BA"};
+const YF_MAP_ARS={EDN:"EDN.BA",YPFD:"YPFD.BA",MELI:"MELI.BA",ORCL:"ORCL.BA",TSLA:"TSLA.BA",UNH:"UNH.BA",AL30:"AL30.BA"};
+const YF_MAP=YF_MAP_USD;
 
 /* Proxy CORS para APIs que no permiten fetch directo del browser */
 const PROXY="https://api.allorigins.win/raw?url=";
@@ -305,20 +306,30 @@ async function fetchMacroReal(){
 
 async function fetchPricesReal(tickers){
   try{
-    const symbols=tickers.map(t=>YF_MAP[t]||t).join(",");
-    const url=PROXY+encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}&fields=regularMarketPrice,regularMarketChangePercent,regularMarketPreviousClose`);
+    /* 1) Precios en USD (NYSE) — para todos los tickers */
+    const symbolsUSD=tickers.map(t=>YF_MAP_USD[t]||t).join(",");
+    /* 2) Precios en ARS (BYMA .BA) — solo para tickers que cotizan en BYMA */
+    const bymaTickers=tickers.filter(t=>YF_MAP_ARS[t]);
+    const symbolsARS=bymaTickers.map(t=>YF_MAP_ARS[t]).join(",");
+    const allSymbols=symbolsARS?symbolsUSD+","+symbolsARS:symbolsUSD;
+
+    const url=PROXY+encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${allSymbols}&fields=regularMarketPrice,regularMarketChangePercent,regularMarketPreviousClose,currency`);
     const res=await fetch(url);
     const data=await res.json();
     const quotes=data.quoteResponse?.result||[];
     const prices={};
     tickers.forEach(t=>{
-      const sym=YF_MAP[t]||t;
-      const q=quotes.find(x=>x.symbol===sym);
-      if(q){
+      const symUSD=YF_MAP_USD[t]||t;
+      const symARS=YF_MAP_ARS[t];
+      const qUSD=quotes.find(x=>x.symbol===symUSD);
+      const qARS=symARS?quotes.find(x=>x.symbol===symARS):null;
+      if(qUSD){
         prices[t]={
-          price:q.regularMarketPrice||0,
-          change:q.regularMarketChangePercent||0,
-          prev:q.regularMarketPreviousClose||q.regularMarketPrice||0
+          price:qUSD.regularMarketPrice||0,
+          change:qUSD.regularMarketChangePercent||0,
+          prev:qUSD.regularMarketPreviousClose||qUSD.regularMarketPrice||0,
+          priceARS:qARS?qARS.regularMarketPrice:null,
+          changeARS:qARS?qARS.regularMarketChangePercent:null
         };
       }
     });
@@ -458,7 +469,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
   const toggle=c=>{if(sortBy===c)setSortDir(d=>d==="desc"?"asc":"desc");else{setSortBy(c);setSortDir("desc")}};
 
   const inputSt={background:"#1e293b",border:"1px solid #334155",borderRadius:6,padding:"6px 10px",color:"#e2e8f0",fontSize:13,width:110,fontVariantNumeric:"tabular-nums"};
-  const deudaARS=hipoteca.uvas*hipoteca.cotizacionUVA;
+  const deudaARS=hipoteca.uvas*macro.uva;
 
   /* News state — Bloomberg-style feed */
   const [expandedNews,setExpandedNews]=useState(null);
@@ -513,8 +524,8 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
             <td style={{padding:"8px 6px"}}><div style={{fontWeight:700,fontSize:13}}>{p.ticker}</div><div style={{fontSize:10,color:"#64748b"}}>{p.mercado}·{p.broker}</div></td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12}}>{fmt(p.cantidad)}</td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12}}>{fU(p.ppc)}</td>
-            <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600}}>{fU(p.precioActual)}</td>
-            <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600,color:p.variacion>=0?"#34d399":"#f87171"}}>{fP(p.variacion)}</td>
+            <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600}}>{fU(p.precioActual)}{p.priceARS&&p.broker==="BM"&&<div style={{fontSize:9,color:"#64748b",fontWeight:400}}>BYMA: ${fmt(p.priceARS)}</div>}</td>
+            <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600,color:p.variacion>=0?"#34d399":"#f87171"}}>{fP(p.variacion)}{p.changeARS!=null&&p.broker==="BM"&&<div style={{fontSize:9,color:p.changeARS>=0?"#34d399":"#f87171",fontWeight:400}}>BYMA: {fP(p.changeARS)}</div>}</td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12}}>{fU(p.montoInvertido)}</td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600}}>{fU(p.montoActual)}</td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600,color:p.pl>=0?"#34d399":"#f87171"}}>{fU(p.pl)}</td>
@@ -548,17 +559,15 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
       <Card title="Noticias Relevantes" right={<span style={{fontSize:10,color:"#475569",fontWeight:400}}>LIVE FEED</span>}>
         <div style={{display:"flex",flexDirection:"column",gap:0}}>
           {relevantNews.map((n,i)=><div key={n.id}>
-            <div onClick={()=>setExpandedNews(expandedNews===n.id?null:n.id)} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 0",borderBottom:i<relevantNews.length-1?"1px solid #1e293b":"none",cursor:"pointer",transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background="#252d3d33"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 0",borderBottom:i<relevantNews.length-1?"1px solid #1e293b":"none",transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background="#252d3d33"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
               <span style={{fontSize:10,color:"#475569",whiteSpace:"nowrap",marginTop:2,minWidth:42,fontVariantNumeric:"tabular-nums"}}>{n.pubDate?timeAgo(n.pubDate):n.time}</span>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
                   <span style={{fontSize:10,fontWeight:700,color:n.sentiment==="positive"?"#34d399":"#f87171",letterSpacing:".03em"}}>{n.ticker}</span>
                   <span style={{fontSize:10,color:"#475569"}}>· {n.source}</span>
                 </div>
-                <div style={{fontSize:12,fontWeight:500,color:"#cbd5e1",lineHeight:1.4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:expandedNews===n.id?"normal":"nowrap"}}>{n.title}</div>
-                {expandedNews===n.id&&<div style={{fontSize:11,color:"#94a3b8",marginTop:6,lineHeight:1.5,paddingBottom:4}}>{n.summary}<div style={{marginTop:6}}>{n.link&&<a href={n.link} target="_blank" rel="noopener" style={{color:"#60a5fa",textDecoration:"none",fontSize:12,fontWeight:500}} onClick={e=>e.stopPropagation()}>Abrir publicación ↗</a>}</div></div>}
+                <a href={n.link||`https://www.google.com/search?q=${encodeURIComponent(n.title)}&tbm=nws`} target="_blank" rel="noopener" style={{fontSize:12,fontWeight:500,color:"#cbd5e1",lineHeight:1.4,display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textDecoration:"none",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.color="#60a5fa"} onMouseLeave={e=>e.currentTarget.style.color="#cbd5e1"}>{n.title}</a>
               </div>
-              <span style={{fontSize:10,color:"#475569",marginTop:3,flexShrink:0}}>{expandedNews===n.id?"▲":"▼"}</span>
             </div>
           </div>)}
         </div>
@@ -594,7 +603,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
             <label style={{fontSize:12,color:"#94a3b8"}}>Cant. UVAs <input type="number" value={hipoteca.uvas} onChange={e=>setHipoteca(h=>({...h,uvas:+e.target.value}))} style={{...inputSt,width:120}}/></label>
-            <label style={{fontSize:12,color:"#94a3b8"}}>Cotiz. UVA $ <input type="number" value={hipoteca.cotizacionUVA} step={0.01} onChange={e=>setHipoteca(h=>({...h,cotizacionUVA:+e.target.value}))} style={{...inputSt,width:110}}/></label>
+            <label style={{fontSize:12,color:"#94a3b8"}}>Cotiz. UVA $ <span style={{display:"inline-block",background:"#111827",border:"1px solid #1e293b",borderRadius:6,padding:"4px 8px",color:"#34d399",fontSize:14,fontWeight:600,minWidth:90,fontVariantNumeric:"tabular-nums"}}>${fmt(macro.uva,2)}</span></label>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
             <div style={{background:"#111827",borderRadius:8,padding:"10px 12px",border:"1px solid #1e293b"}}>
@@ -772,7 +781,7 @@ function Noticias({pos,news}){
           <div style={{display:"flex",alignItems:"center",gap:8}}><Badge text={n.ticker} color="#60a5fa"/><Badge text={sl2[n.sentiment]} color={sc2[n.sentiment]} bg={sb2[n.sentiment]}/></div>
           <span style={{fontSize:11,color:"#475569"}}>Hace {n.time}</span>
         </div>
-        <h4 style={{margin:"0 0 6px",fontSize:15,fontWeight:600,color:"#f1f5f9",lineHeight:1.4}}>{n.link?<a href={n.link} target="_blank" rel="noopener" style={{color:"inherit",textDecoration:"none"}} onMouseEnter={e=>e.currentTarget.style.color="#60a5fa"} onMouseLeave={e=>e.currentTarget.style.color="#f1f5f9"}>{n.title}</a>:n.title}</h4>
+        <h4 style={{margin:"0 0 6px",fontSize:15,fontWeight:600,color:"#f1f5f9",lineHeight:1.4}}><a href={n.link||`https://www.google.com/search?q=${encodeURIComponent(n.title)}&tbm=nws`} target="_blank" rel="noopener" style={{color:"inherit",textDecoration:"none"}} onMouseEnter={e=>e.currentTarget.style.color="#60a5fa"} onMouseLeave={e=>e.currentTarget.style.color="#f1f5f9"}>{n.title}</a></h4>
         <p style={{margin:"0 0 8px",fontSize:13,color:"#94a3b8",lineHeight:1.5}}>{n.summary}</p>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:11,color:"#475569"}}>{n.source}</span>{n.link&&<a href={n.link} target="_blank" rel="noopener" style={{fontSize:11,color:"#60a5fa",textDecoration:"none",fontWeight:500}}>Abrir publicación ↗</a>}</div>
       </div>)}
@@ -961,7 +970,7 @@ function App(){
     return{valor:val,pl,rend};
   },[casa]);
   const deudaUSD=useMemo(()=>{
-    const deudaARS=hipoteca.uvas*hipoteca.cotizacionUVA;
+    const deudaARS=hipoteca.uvas*macro.uva;
     return deudaARS/macro.dolarMEP;
   },[hipoteca,macro]);
 
@@ -990,7 +999,7 @@ function App(){
 
   const enriched=useMemo(()=>pos.map(p=>{
     const l=prices[p.ticker]||{price:p.ppc,change:0};const mi=p.cantidad*p.ppc;const ma=p.cantidad*l.price;const pl=ma-mi;const r=mi>0?(pl/mi)*100:0;
-    return{...p,precioActual:l.price,variacion:l.change,montoInvertido:mi,montoActual:ma,pl,rendimiento:r};
+    return{...p,precioActual:l.price,variacion:l.change,montoInvertido:mi,montoActual:ma,pl,rendimiento:r,priceARS:l.priceARS||null,changeARS:l.changeARS||null};
   }),[pos,prices]);
 
   const portfolioTotal=useMemo(()=>enriched.reduce((s,p)=>s+p.montoActual,0),[enriched]);
