@@ -474,16 +474,23 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
     {/* ── KPIs principales ── */}
     <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:14}}>
       <Stat label="Patrimonio Neto" value={fU(patrimonioNeto)} sub="Port + Casa - Hipoteca - Caución" color="#a78bfa"/>
-      <Stat label="Portfolio Total" value={fU(portfolioTotal)} sub={fP(rend)} color="#f1f5f9"/>
-      <Stat label="Portfolio Líquido" value={fU(portfolioLiquido)} sub={caucionUSD>0?`Caución: ${fU(caucionUSD)}`:"Sin caución"} color="#60a5fa"/>
       <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
-        <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>P&L Total</div>
-        <div className="stat-val" style={{fontSize:22,fontWeight:700,color:pl>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fU(pl)}</div>
+        <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Portfolio Total</div>
+        <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#f1f5f9",fontVariantNumeric:"tabular-nums"}}>{fU(portfolioTotal)}</div>
         <div style={{display:"flex",gap:8,marginTop:4,fontSize:12,fontWeight:500}}>
+          <span style={{color:pl>=0?"#34d399":"#f87171"}}>P&L: {pl>=0?"+":""}{fU(pl)} ({rend>=0?"+":""}{fmt(rend,2)}%)</span>
+        </div>
+        <div style={{display:"flex",gap:8,marginTop:2,fontSize:11,fontWeight:500}}>
           <span style={{color:dailyPL.monto>=0?"#34d399":"#f87171"}}>Hoy: {dailyPL.monto>=0?"+":""}${fmt(Math.abs(dailyPL.monto))}</span>
           <span style={{color:dailyPL.pct>=0?"#34d399":"#f87171"}}>({dailyPL.pct>=0?"+":""}{fmt(dailyPL.pct,2)}%)</span>
         </div>
       </div>
+      <Stat label="Portfolio Líquido" value={fU(portfolioLiquido)} sub={caucionUSD>0?`Caución: ${fU(caucionUSD)}`:"Sin caución"} color="#60a5fa"/>
+      {(()=>{const bCCL=macro.dolarOficial>0?(macro.dolarCCL-macro.dolarOficial)/macro.dolarOficial:0;const portAR=portfolioLiquido*(1+bCCL);return <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
+        <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Portfolio Líq. Argentina</div>
+        <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fU(portAR)}</div>
+        <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>Líquido × (1+brecha CCL {fmt(bCCL*100,1)}%)</div>
+      </div>;})()}
       <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
         <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Caución Tomada</div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
