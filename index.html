@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>EI Financial Dashboard</title>
+<meta name="description" content="Dashboard financiero personal - Portfolio, Alertas, Noticias">
+<meta name="theme-color" content="#0f1117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { font-size: 16px; -webkit-text-size-adjust: 100%; }
+body { background: #0f1117; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; overflow-x: hidden; }
+input, select, button { font-family: inherit; }
+input, select { background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 6px; padding: 8px 12px; font-size: 14px; outline: none; -webkit-appearance: none; }
+input:focus, select:focus { border-color: #2563eb; }
+input::placeholder { color: #475569; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0f1117; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+@keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+@keyframes slideIn { from{opacity:0;transform:translateX(-10px)} to{opacity:1;transform:translateX(0)} }
+@media(max-width:768px) {
+  .desktop-only { display: none !important; }
+  .grid-2 { grid-template-columns: 1fr !important; }
+  .grid-4 { grid-template-columns: 1fr 1fr !important; }
+  .macro-strip { display: none !important; }
+  .nav-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .nav-bar::-webkit-scrollbar { display: none; }
+  .main-content { padding: 12px !important; }
+  .stat-card-value { font-size: 18px !important; }
+  .table-wrap { font-size: 12px; }
+  .form-grid { grid-template-columns: 1fr 1fr !important; }
+}
+@media(max-width:480px) {
+  .grid-4 { grid-template-columns: 1fr !important; }
+  .header-title { font-size: 15px !important; }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
+const { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, AreaChart, Area } = Recharts;
+
+// ─── HELPERS ───────────────────────────────────────────────
+const fmt = (n, d = 0) => {
+  if (n == null || isNaN(n)) return "—";
+  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: d, maximumFractionDigits: d }).format(n);
+};
+const fmtUSD = (n) => n == null || isNaN(n) ? "—" : `USD ${fmt(n, 2)}`;
+const fmtPct = (n) => n == null || isNaN(n) ? "—" : `${n >= 0 ? "+" : ""}${fmt(n, 2)}%`;
+const today = () => { const d = new Date(); return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getFullYear()).slice(2)}`; };
+
+// ─── DATA ──────────────────────────────────────────────────
+const INIT_POS = [
+  { ticker:"EDN", cantidad:40000, ppc:0.98, mercado:"BYMA", tipo:"CEDEAR", moneda:"ARS", broker:"BM", sector:"Energía", pais:"Argentina" },
+  { ticker:"YPFD", cantidad:240, ppc:36.00, mercado:"BYMA", tipo:"CEDEAR", moneda:"ARS", broker:"BM", sector:"Petróleo", pais:"Argentina" },
+  { ticker:"MELI", cantidad:3000, ppc:13.95, mercado:"BYMA", tipo:"CEDEAR", moneda:"ARS", broker:"BM", sector:"Tecnología", pais:"Argentina" },
+  { ticker:"ORCL", cantidad:750, ppc:59.24, mercado:"BYMA", tipo:"CEDEAR", moneda:"ARS", broker:"BM", sector:"Tecnología", pais:"USA" },
+  { ticker:"IBM", cantidad:58, ppc:235.69, mercado:"NYSE", tipo:"Acción", moneda:"USD", broker:"AT", sector:"Tecnología", pais:"USA" },
+  { ticker:"FISV", cantidad:106, ppc:67.25, mercado:"NYSE", tipo:"Acción", moneda:"USD", broker:"AT", sector:"Fintech", pais:"USA" },
+  { ticker:"BKUCF", cantidad:1000000, ppc:0.0443, mercado:"NYSE", tipo:"Acción", moneda:"USD", broker:"AT", sector:"Cannabis", pais:"Canadá" },
+  { ticker:"TSLA", cantidad:1000, ppc:30.10, mercado:"BYMA", tipo:"CEDEAR", moneda:"ARS", broker:"BM", sector:"Automotriz", pais:"USA" },
+  { ticker:"UNH", cantidad:2500, ppc:10.85, mercado:"BYMA", tipo:"CEDEAR", moneda:"ARS", broker:"BM", sector:"Salud", pais:"USA" },
+  { ticker:"AL30", cantidad:700, ppc:70.26, mercado:"BYMA", tipo:"Bono", moneda:"ARS", broker:"BM", sector:"Renta Fija", pais:"Argentina" },
+];
+
+const INIT_OPS = [
+  {id:1,fecha:"13-12-24",ticker:"IBM",tipo:"COMPRA",cantidad:12,precio:230,mercado:"NYSE",broker:"AT",moneda:"USD"},
+  {id:2,fecha:"13-12-24",ticker:"BKUCF",tipo:"COMPRA",cantidad:750000,precio:0.0461,mercado:"NYSE",broker:"AT",moneda:"USD"},
+  {id:3,fecha:"11-12-24",ticker:"BKUCF",tipo:"COMPRA",cantidad:250000,precio:0.0395,mercado:"NYSE",broker:"AT",moneda:"USD"},
+  {id:4,fecha:"26-03-25",ticker:"MELI",tipo:"COMPRA",cantidad:3000,precio:19940,mercado:"BYMA",broker:"BM",moneda:"ARS"},
+  {id:5,fecha:"26-03-25",ticker:"ORCL",tipo:"COMPRA",cantidad:250,precio:69500,mercado:"BYMA",broker:"BM",moneda:"ARS"},
+  {id:6,fecha:"26-03-25",ticker:"YPFD",tipo:"VENTA",cantidad:1460,precio:63800,mercado:"BYMA",broker:"BM",moneda:"ARS"},
+  {id:7,fecha:"13-08-25",ticker:"TSLA",tipo:"COMPRA",cantidad:1000,precio:30100,mercado:"BYMA",broker:"BM",moneda:"ARS"},
+  {id:8,fecha:"13-08-25",ticker:"UNH",tipo:"COMPRA",cantidad:2500,precio:10850,mercado:"BYMA",broker:"BM",moneda:"ARS"},
+  {id:9,fecha:"24-09-25",ticker:"EDN",tipo:"COMPRA",cantidad:40000,precio:1369.03,mercado:"BYMA",broker:"BM",moneda:"ARS"},
+  {id:10,fecha:"19-09-25",ticker:"AL30",tipo:"COMPRA",cantidad:700,precio:70260,mercado:"BYMA",broker:"BM",moneda:"ARS"},
+  {id:11,fecha:"30-10-25",ticker:"FISV",tipo:"COMPRA",cantidad:15,precio:66.085,mercado:"NYSE",broker:"AT",moneda:"USD"},
+  {id:12,fecha:"30-10-25",ticker:"FISV",tipo:"COMPRA",cantidad:91,precio:67.44,mercado:"NYSE",broker:"AT",moneda:"USD"},
+  {id:13,fecha:"07-11-25",ticker:"YPFD",tipo:"VENTA",cantidad:800,precio:62900,mercado:"BYMA",broker:"BM",moneda:"ARS"},
+  {id:14,fecha:"07-11-25",ticker:"YPFD",tipo:"COMPRA",cantidad:2500,precio:54000,mercado:"BYMA",broker:"BM",moneda:"ARS"},
+  {id:15,fecha:"11-12-25",ticker:"ORCL",tipo:"COMPRA",cantidad:500,precio:97000,mercado:"BYMA",broker:"BM",moneda:"ARS"},
+  {id:16,fecha:"02-02-26",ticker:"IBM",tipo:"COMPRA",cantidad:18,precio:248.26,mercado:"NYSE",broker:"AT",moneda:"USD"},
+  {id:17,fecha:"24-02-26",ticker:"IBM",tipo:"COMPRA",cantidad:28,precio:232,mercado:"NYSE",broker:"AT",moneda:"USD"},
+];
+
+const LIVE = {
+  EDN:{price:1.12,change:2.48,prev:1.09},
+  YPFD:{price:38.50,change:-3.03,prev:39.70},
+  MELI:{price:14.10,change:0.42,prev:14.04},
+  ORCL:{price:58.90,change:-0.13,prev:58.98},
+  IBM:{price:246.68,change:1.46,prev:243.13},
+  FISV:{price:71.20,change:0.85,prev:70.60},
+  BKUCF:{price:0.04,change:-4.97,prev:0.0421},
+  TSLA:{price:265.30,change:1.22,prev:262.10},
+  UNH:{price:452.80,change:-0.56,prev:455.35},
+  AL30:{price:72.50,change:0.35,prev:72.25},
+};
+
+const MACRO = { dolarOficial:1415, dolarMEP:1380, dolarCCL:1395, dolarBlue:1405, riesgoPais:617, inflacion:2.9, tasa:29, uva:1858.61 };
+
+const COLORS = ["#2563eb","#059669","#d97706","#dc2626","#7c3aed","#0891b2","#be185d","#65a30d","#ea580c","#4f46e5"];
+const SEC_COL = { "Energía":"#f59e0b","Petróleo":"#78716c","Tecnología":"#3b82f6","Fintech":"#8b5cf6","Automotriz":"#ef4444","Salud":"#10b981","Renta Fija":"#6366f1","Cannabis":"#22c55e" };
+
+const NEWS = [
+  {id:1,ticker:"YPFD",title:"YPF apuesta fuerte a Vaca Muerta: nueva inversión de USD 1.200M en shale oil",source:"Ámbito Financiero",time:"12 min",sentiment:"positive",summary:"La petrolera estatal anunció un nuevo plan de inversión para expandir la producción en la formación Vaca Muerta."},
+  {id:2,ticker:"IBM",title:"IBM supera estimaciones de Wall Street en Q1 2026 impulsada por IA",source:"Reuters",time:"28 min",sentiment:"positive",summary:"Los ingresos de consultoría en IA crecieron 42% interanual. Guidance revisado al alza."},
+  {id:3,ticker:"MELI",title:"Mercado Libre expande Mercado Pago a 3 nuevos países de Asia",source:"Bloomberg",time:"45 min",sentiment:"positive",summary:"La compañía entra en Vietnam, Filipinas e Indonesia con su fintech."},
+  {id:4,ticker:"EDN",title:"Edenor: ENRE aprueba nuevo cuadro tarifario con ajuste del 18%",source:"Infobae",time:"1 hora",sentiment:"positive",summary:"El ente regulador autorizó la actualización de tarifas eléctricas para el Q2."},
+  {id:5,ticker:"TSLA",title:"Tesla recorta precios del Model 3 en Europa ante competencia china",source:"CNBC",time:"1.5 horas",sentiment:"negative",summary:"Reduce precios entre 5% y 8% en los principales mercados europeos."},
+  {id:6,ticker:"ORCL",title:"Oracle Cloud Infrastructure gana contrato millonario con el Pentágono",source:"The Verge",time:"2 horas",sentiment:"positive",summary:"OCI seleccionada para contrato de USD 3.4B en infraestructura cloud del DoD."},
+  {id:7,ticker:"UNH",title:"UnitedHealth bajo presión regulatoria por prácticas de cobertura",source:"WSJ",time:"2.5 horas",sentiment:"negative",summary:"El Departamento de Justicia investiga posibles prácticas anticompetitivas."},
+  {id:8,ticker:"FISV",title:"Fiserv reporta crecimiento récord en procesamiento de pagos digitales",source:"Finextra",time:"3 horas",sentiment:"positive",summary:"Volumen de transacciones procesadas creció 35% en el trimestre."},
+  {id:9,ticker:"AL30",title:"Argentina: bono AL30 rinde 12.5% anual tras baja del riesgo país",source:"El Cronista",time:"3 horas",sentiment:"positive",summary:"Los bonos soberanos extienden el rally con riesgo país en mínimos desde 2018."},
+  {id:10,ticker:"BKUCF",title:"Buckeye Cannabis: volúmenes de venta caen 8% en Ontario",source:"MJ Biz Daily",time:"4 horas",sentiment:"negative",summary:"Mayor competencia de precios en el mercado recreativo canadiense."},
+  {id:11,ticker:"YPFD",title:"Vaca Muerta: exportaciones de gas se duplicarán en 2027 según el gobierno",source:"La Nación",time:"5 horas",sentiment:"positive",summary:"El plan de gasoductos permitirá exportar a Chile, Brasil y al mercado asiático."},
+  {id:12,ticker:"MELI",title:"Mercado Libre lanza programa de créditos hipotecarios en Argentina",source:"iProfesional",time:"5 horas",sentiment:"positive",summary:"A través de Mercado Pago, créditos hipotecarios UVA a tasas competitivas."},
+];
+
+// ─── ICONS ─────────────────────────────────────────────────
+function Ic({name,size=18,cls=""}){
+  const d={
+    home:"M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z",
+    portfolio:"M3 3h18v18H3V3zm2 2v14h14V5H5zm2 2h10v2H7V7zm0 4h10v2H7v-2zm0 4h6v2H7v-2z",
+    ops:"M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z",
+    bell:"M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z",
+    news:"M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8l8 5 8-5v10zm-8-7L4 6h16l-8 5z",
+    up:"M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z",
+    down:"M16 18l2.29-2.29-4.88-4.88-4 4L2 7.41 3.41 6l6 6 4-4 6.3 6.29L22 12v6z",
+    del:"M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
+    add:"M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
+    dollar:"M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z",
+    chart:"M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z",
+  };
+  return React.createElement('svg',{width:size,height:size,viewBox:"0 0 24 24",fill:"currentColor",className:cls},
+    React.createElement('path',{d:d[name]||d.chart})
+  );
+}
+
+// ─── COMPONENTS ────────────────────────────────────────────
+function Card({title,children,style:s={},right=null}){
+  return (
+    <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,overflow:"hidden",animation:"fadeIn .3s ease",...s}}>
+      {title && <div style={{padding:"14px 18px",borderBottom:"1px solid #252d3d",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <h3 style={{margin:0,fontSize:14,fontWeight:600,color:"#cbd5e1"}}>{title}</h3>{right}
+      </div>}
+      <div style={{padding:18}}>{children}</div>
+    </div>
+  );
+}
+
+function Stat({label,value,sub,color="#60a5fa",icon}){
+  return (
+    <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+        <div>
+          <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>{label}</div>
+          <div className="stat-card-value" style={{fontSize:22,fontWeight:700,color,fontVariantNumeric:"tabular-nums"}}>{value}</div>
+          {sub && <div style={{fontSize:12,color:sub.startsWith("+")?'#34d399':sub.startsWith("-")?'#f87171':'#94a3b8',marginTop:4,fontWeight:500}}>{sub}</div>}
+        </div>
+        {icon && <div style={{opacity:.3}}><Ic name={icon} size={28}/></div>}
+      </div>
+    </div>
+  );
+}
+
+function Btn({children,onClick,variant="primary",style:s={}}){
+  const bg = variant==="primary" ? "#2563eb" : variant==="success" ? "#059669" : "#334155";
+  const cl = variant==="ghost" ? "#94a3b8" : "#fff";
+  return <button onClick={onClick} style={{background:bg,border:"none",color:cl,borderRadius:6,padding:"8px 16px",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6,...s}}>{children}</button>;
+}
+
+function Badge({text,color="#60a5fa",bg="#252d3d"}){
+  return <span style={{background:bg,borderRadius:4,padding:"2px 8px",fontSize:11,fontWeight:600,color}}>{text}</span>;
+}
+
+// ─── RESUMEN ───────────────────────────────────────────────
+function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices}){
+  const byType = useMemo(()=>{
+    const m={};enriched.forEach(p=>{m[p.tipo]=(m[p.tipo]||0)+p.montoActual});
+    return Object.entries(m).map(([name,value])=>({name,value}));
+  },[enriched]);
+  const bySector = useMemo(()=>{
+    const m={};enriched.forEach(p=>{m[p.sector]=(m[p.sector]||0)+p.montoActual});
+    return Object.entries(m).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
+  },[enriched]);
+  const movers = useMemo(()=>[...enriched].sort((a,b)=>Math.abs(b.variacion)-Math.abs(a.variacion)).slice(0,5),[enriched]);
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20}}>
+      {trigAlerts.length>0 && <div style={{background:"#dc262612",border:"1px solid #dc262633",borderRadius:10,padding:"14px 18px"}}>
+        <div style={{fontSize:13,fontWeight:600,color:"#fca5a5",marginBottom:8}}>⚠ Alertas Activadas</div>
+        {trigAlerts.map(a=><div key={a.id} style={{fontSize:12,color:"#fca5a5",padding:"3px 0"}}>{a.ticker} {a.condition==="above"?"superó":"cayó debajo de"} USD {fmt(a.price,2)} → Actual: USD {fmt(prices[a.ticker]?.price,4)}</div>)}
+      </div>}
+      <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
+        <Stat label="Valor del Portfolio" value={fmtUSD(total)} sub={fmtPct(rend)} color="#f1f5f9" icon="dollar"/>
+        <Stat label="Total Invertido" value={fmtUSD(invertido)} color="#94a3b8" icon="chart"/>
+        <Stat label="P&L Total" value={fmtUSD(pl)} sub={pl>=0?"Ganancia":"Pérdida"} color={pl>=0?"#34d399":"#f87171"} icon={pl>=0?"up":"down"}/>
+        <Stat label="Posiciones" value={String(enriched.length)} sub={`${enriched.filter(p=>p.variacion>0).length} en verde`} color="#60a5fa" icon="portfolio"/>
+      </div>
+      <div className="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        <Card title="Distribución por Tipo">
+          <ResponsiveContainer width="100%" height={220}>
+            <PieChart><Pie data={byType} cx="50%" cy="50%" outerRadius={80} innerRadius={45} dataKey="value" label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`} labelLine={false} style={{fontSize:11}}>
+              {byType.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+            </Pie><Tooltip formatter={v=>fmtUSD(v)} contentStyle={{background:"#1e293b",border:"1px solid #334155",borderRadius:6,fontSize:12}}/></PieChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card title="Distribución por Sector">
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={bySector} layout="vertical" margin={{left:70,right:10,top:5,bottom:5}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
+              <XAxis type="number" tickFormatter={v=>`$${(v/1000).toFixed(0)}k`} style={{fontSize:10}} stroke="#475569"/>
+              <YAxis type="category" dataKey="name" style={{fontSize:11}} stroke="#475569" width={65}/>
+              <Tooltip formatter={v=>fmtUSD(v)} contentStyle={{background:"#1e293b",border:"1px solid #334155",borderRadius:6,fontSize:12}}/>
+              <Bar dataKey="value" radius={[0,4,4,0]}>
+                {bySector.map((e,i)=><Cell key={i} fill={SEC_COL[e.name]||COLORS[i%COLORS.length]}/>)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      </div>
+      <div className="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        <Card title="Mayores Movimientos Hoy">
+          {movers.map((p,i)=><div key={p.ticker} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<movers.length-1?"1px solid #252d3d":"none"}}>
+            <div><div style={{fontWeight:600,fontSize:14}}>{p.ticker}</div><div style={{fontSize:11,color:"#64748b"}}>{p.sector} · {p.mercado}</div></div>
+            <div style={{textAlign:"right"}}><div style={{fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fmtUSD(p.precioActual)}</div><div style={{fontSize:12,fontWeight:500,color:p.variacion>=0?"#34d399":"#f87171"}}>{fmtPct(p.variacion)}</div></div>
+          </div>)}
+        </Card>
+        <Card title="Últimas Operaciones">
+          {[...ops].reverse().slice(0,6).map((op,i)=><div key={op.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<5?"1px solid #252d3d":"none"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:28,height:28,borderRadius:6,background:op.tipo==="COMPRA"?"#065f4622":"#7f1d1d22",border:`1px solid ${op.tipo==="COMPRA"?"#065f4644":"#7f1d1d44"}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <span style={{fontSize:11,fontWeight:700,color:op.tipo==="COMPRA"?"#34d399":"#f87171"}}>{op.tipo==="COMPRA"?"C":"V"}</span>
+              </div>
+              <div><div style={{fontWeight:600,fontSize:13}}>{op.ticker}</div><div style={{fontSize:11,color:"#64748b"}}>{op.fecha} · {op.broker}</div></div>
+            </div>
+            <div style={{textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums"}}><div style={{fontWeight:500}}>{fmt(op.cantidad)} × {op.moneda==="USD"?fmtUSD(op.precio):`$${fmt(op.precio)}`}</div></div>
+          </div>)}
+        </Card>
+      </div>
+      <Card title="Indicadores Macro Argentina">
+        <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
+          {[{l:"Dólar Oficial",v:`$${fmt(macro.dolarOficial)}`},{l:"Dólar MEP",v:`$${fmt(macro.dolarMEP)}`},{l:"Dólar CCL",v:`$${fmt(macro.dolarCCL)}`},{l:"Dólar Blue",v:`$${fmt(macro.dolarBlue)}`},{l:"Riesgo País",v:fmt(macro.riesgoPais)},{l:"Inflación Mensual",v:`${fmt(macro.inflacion,1)}%`},{l:"Tasa PM",v:`${fmt(macro.tasa,1)}%`},{l:"UVA",v:`$${fmt(macro.uva,2)}`}].map(i=>
+            <div key={i.l} style={{background:"#111827",borderRadius:8,padding:"12px 14px",border:"1px solid #1e293b"}}>
+              <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{i.l}</div>
+              <div style={{fontSize:16,fontWeight:700,color:"#e2e8f0",fontVariantNumeric:"tabular-nums"}}>{i.v}</div>
+            </div>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ─── PORTFOLIO ─────────────────────────────────────────────
+function Portfolio({enriched,total}){
+  const [sortBy,setSortBy]=useState("montoActual");
+  const [sortDir,setSortDir]=useState("desc");
+  const [filterType,setFilterType]=useState("Todos");
+  const types=["Todos",...new Set(enriched.map(p=>p.tipo))];
+  const sorted=useMemo(()=>{
+    let d=filterType==="Todos"?enriched:enriched.filter(p=>p.tipo===filterType);
+    return [...d].sort((a,b)=>sortDir==="desc"?b[sortBy]-a[sortBy]:a[sortBy]-b[sortBy]);
+  },[enriched,sortBy,sortDir,filterType]);
+  const toggle=(c)=>{if(sortBy===c)setSortDir(d=>d==="desc"?"asc":"desc");else{setSortBy(c);setSortDir("desc")}};
+
+  const byCountry=useMemo(()=>{
+    const m={};enriched.forEach(p=>{m[p.pais]=(m[p.pais]||0)+p.montoActual});
+    return Object.entries(m).map(([name,value])=>({name,value}));
+  },[enriched]);
+
+  const TH=({col,label,align="right"})=>(
+    <th onClick={()=>toggle(col)} style={{padding:"10px 8px",textAlign:align,fontSize:11,fontWeight:600,color:"#64748b",textTransform:"uppercase",letterSpacing:".04em",cursor:"pointer",userSelect:"none",whiteSpace:"nowrap",borderBottom:"1px solid #252d3d",background:"#151a27"}}>
+      {label} {sortBy===col?(sortDir==="desc"?"↓":"↑"):""}
+    </th>
+  );
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:18}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        {types.map(t=><button key={t} onClick={()=>setFilterType(t)} style={{background:filterType===t?"#2563eb":"#1e293b",border:`1px solid ${filterType===t?"#2563eb":"#334155"}`,color:filterType===t?"#fff":"#94a3b8",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:500}}>{t}</button>)}
+      </div>
+      <Card>
+        <div className="table-wrap" style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:900}}>
+            <thead><tr>
+              <TH col="ticker" label="Ticker" align="left"/><th style={{padding:"10px 8px",textAlign:"left",fontSize:11,fontWeight:600,color:"#64748b",borderBottom:"1px solid #252d3d",background:"#151a27"}}>Tipo</th>
+              <TH col="cantidad" label="Cant"/><TH col="ppc" label="PPC"/><TH col="precioActual" label="Precio"/><TH col="variacion" label="Var%"/>
+              <TH col="montoInvertido" label="Invertido"/><TH col="montoActual" label="Actual"/><TH col="pl" label="P&L"/><TH col="rendimiento" label="Rend%"/>
+              <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,fontWeight:600,color:"#64748b",borderBottom:"1px solid #252d3d",background:"#151a27"}}>%Port</th>
+            </tr></thead>
+            <tbody>{sorted.map(p=>(
+              <tr key={p.ticker} style={{borderBottom:"1px solid #1e293b"}} onMouseEnter={e=>e.currentTarget.style.background="#252d3d33"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                <td style={{padding:"10px 8px"}}><div style={{fontWeight:700,fontSize:14}}>{p.ticker}</div><div style={{fontSize:10,color:"#64748b"}}>{p.mercado}·{p.broker}</div></td>
+                <td style={{padding:"10px 8px"}}><Badge text={p.tipo}/></td>
+                <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13}}>{fmt(p.cantidad)}</td>
+                <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13}}>{fmtUSD(p.ppc)}</td>
+                <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13,fontWeight:600}}>{fmtUSD(p.precioActual)}</td>
+                <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13,fontWeight:600,color:p.variacion>=0?"#34d399":"#f87171"}}>{fmtPct(p.variacion)}</td>
+                <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13}}>{fmtUSD(p.montoInvertido)}</td>
+                <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13,fontWeight:600}}>{fmtUSD(p.montoActual)}</td>
+                <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13,fontWeight:600,color:p.pl>=0?"#34d399":"#f87171"}}>{fmtUSD(p.pl)}</td>
+                <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13,fontWeight:600,color:p.rendimiento>=0?"#34d399":"#f87171"}}>{fmtPct(p.rendimiento)}</td>
+                <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13}}>{fmt((p.montoActual/total)*100,1)}%</td>
+              </tr>
+            ))}</tbody>
+            <tfoot><tr style={{borderTop:"2px solid #2563eb"}}>
+              <td colSpan={6} style={{padding:12,fontWeight:700,fontSize:14}}>TOTAL</td>
+              <td style={{padding:12,textAlign:"right",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmtUSD(sorted.reduce((s,p)=>s+p.montoInvertido,0))}</td>
+              <td style={{padding:12,textAlign:"right",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmtUSD(sorted.reduce((s,p)=>s+p.montoActual,0))}</td>
+              <td style={{padding:12,textAlign:"right",fontWeight:700,fontVariantNumeric:"tabular-nums",color:sorted.reduce((s,p)=>s+p.pl,0)>=0?"#34d399":"#f87171"}}>{fmtUSD(sorted.reduce((s,p)=>s+p.pl,0))}</td>
+              <td colSpan={2}></td>
+            </tr></tfoot>
+          </table>
+        </div>
+      </Card>
+      <Card title="Exposición por País">
+        <ResponsiveContainer width="100%" height={200}>
+          <PieChart><Pie data={byCountry} cx="50%" cy="50%" outerRadius={75} innerRadius={40} dataKey="value" label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`} labelLine={false} style={{fontSize:11}}>
+            {byCountry.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+          </Pie><Tooltip formatter={v=>fmtUSD(v)} contentStyle={{background:"#1e293b",border:"1px solid #334155",borderRadius:6,fontSize:12}}/></PieChart>
+        </ResponsiveContainer>
+      </Card>
+    </div>
+  );
+}
+
+// ─── OPERACIONES ───────────────────────────────────────────
+function Operaciones({ops,setOps,pos,setPos}){
+  const [showForm,setShowForm]=useState(false);
+  const [form,setForm]=useState({ticker:"",tipo:"COMPRA",cantidad:"",precio:"",mercado:"BYMA",broker:"BM",moneda:"ARS",fecha:""});
+  const [filter,setFilter]=useState("");
+
+  const submit=(e)=>{
+    e.preventDefault();
+    if(!form.ticker||!form.cantidad||!form.precio) return;
+    const op={id:Date.now(),...form,cantidad:parseFloat(form.cantidad),precio:parseFloat(form.precio),fecha:form.fecha||today()};
+    setOps([...ops,op]);
+    const ex=pos.find(p=>p.ticker===form.ticker.toUpperCase());
+    if(ex){
+      if(form.tipo==="COMPRA"){
+        const nc=ex.cantidad+op.cantidad;
+        const np=((ex.cantidad*ex.ppc)+(op.cantidad*op.precio))/nc;
+        setPos(pos.map(p=>p.ticker===form.ticker.toUpperCase()?{...p,cantidad:nc,ppc:np}:p));
+      } else {
+        const nc=ex.cantidad-op.cantidad;
+        if(nc<=0) setPos(pos.filter(p=>p.ticker!==form.ticker.toUpperCase()));
+        else setPos(pos.map(p=>p.ticker===form.ticker.toUpperCase()?{...p,cantidad:nc}:p));
+      }
+    } else if(form.tipo==="COMPRA"){
+      setPos([...pos,{ticker:form.ticker.toUpperCase(),cantidad:op.cantidad,ppc:op.precio,mercado:form.mercado,tipo:form.mercado==="NYSE"?"Acción":"CEDEAR",moneda:form.moneda,broker:form.broker,sector:"Sin clasificar",pais:form.mercado==="NYSE"?"USA":"Argentina"}]);
+    }
+    setForm({ticker:"",tipo:"COMPRA",cantidad:"",precio:"",mercado:"BYMA",broker:"BM",moneda:"ARS",fecha:""});
+    setShowForm(false);
+  };
+
+  const fl=filter?ops.filter(o=>o.ticker.toLowerCase().includes(filter.toLowerCase())):ops;
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:18}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <input placeholder="Filtrar por ticker..." value={filter} onChange={e=>setFilter(e.target.value)} style={{width:200}}/>
+          <span style={{fontSize:12,color:"#64748b"}}>{fl.length} ops</span>
+        </div>
+        <Btn onClick={()=>setShowForm(!showForm)}><Ic name="add" size={16}/> Nueva Operación</Btn>
+      </div>
+      {showForm && <Card title="Registrar Operación">
+        <form onSubmit={submit} className="form-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+          <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Ticker</label><input value={form.ticker} onChange={e=>setForm({...form,ticker:e.target.value.toUpperCase()})} placeholder="AAPL" required style={{width:"100%"}}/></div>
+          <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Tipo</label><select value={form.tipo} onChange={e=>setForm({...form,tipo:e.target.value})} style={{width:"100%"}}><option value="COMPRA">COMPRA</option><option value="VENTA">VENTA</option></select></div>
+          <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Cantidad</label><input type="number" value={form.cantidad} onChange={e=>setForm({...form,cantidad:e.target.value})} required style={{width:"100%"}}/></div>
+          <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Precio</label><input type="number" step="0.0001" value={form.precio} onChange={e=>setForm({...form,precio:e.target.value})} required style={{width:"100%"}}/></div>
+          <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Mercado</label><select value={form.mercado} onChange={e=>setForm({...form,mercado:e.target.value,moneda:e.target.value==="NYSE"?"USD":"ARS"})} style={{width:"100%"}}><option value="BYMA">BYMA</option><option value="NYSE">NYSE</option><option value="NASDAQ">NASDAQ</option></select></div>
+          <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Broker</label><select value={form.broker} onChange={e=>setForm({...form,broker:e.target.value})} style={{width:"100%"}}><option value="BM">Bull Market</option><option value="AT">Allaria</option><option value="IOL">IOL</option><option value="PPI">PPI</option></select></div>
+          <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Fecha</label><input value={form.fecha} onChange={e=>setForm({...form,fecha:e.target.value})} placeholder="DD-MM-AA" style={{width:"100%"}}/></div>
+          <div style={{display:"flex",alignItems:"flex-end",gap:8}}><Btn variant="success" onClick={submit} style={{flex:1}}>Guardar</Btn><Btn variant="ghost" onClick={()=>setShowForm(false)}>X</Btn></div>
+        </form>
+      </Card>}
+      <Card>
+        <div className="table-wrap" style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
+            <thead><tr>{["Fecha","Ticker","Tipo","Cantidad","Precio","Monto","Mercado","Broker"].map(h=><th key={h} style={{padding:"10px 8px",textAlign:["Fecha","Ticker","Tipo"].includes(h)?"left":"right",fontSize:11,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d",background:"#151a27"}}>{h}</th>)}</tr></thead>
+            <tbody>{[...fl].reverse().map(op=>(
+              <tr key={op.id} style={{borderBottom:"1px solid #1e293b"}} onMouseEnter={e=>e.currentTarget.style.background="#252d3d33"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                <td style={{padding:"10px 8px",fontSize:13}}>{op.fecha}</td>
+                <td style={{padding:"10px 8px",fontWeight:700,fontSize:14}}>{op.ticker}</td>
+                <td style={{padding:"10px 8px"}}><Badge text={op.tipo} color={op.tipo==="COMPRA"?"#34d399":"#f87171"} bg={op.tipo==="COMPRA"?"#065f4622":"#7f1d1d22"}/></td>
+                <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{fmt(op.cantidad)}</td>
+                <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{op.moneda==="USD"?fmtUSD(op.precio):`$${fmt(op.precio)}`}</td>
+                <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontWeight:600}}>{op.moneda==="USD"?fmtUSD(op.cantidad*op.precio):`$${fmt(op.cantidad*op.precio)}`}</td>
+                <td style={{padding:"10px 8px",textAlign:"right",fontSize:12,color:"#94a3b8"}}>{op.mercado}</td>
+                <td style={{padding:"10px 8px",textAlign:"right",fontSize:12,color:"#94a3b8"}}>{op.broker}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ─── ALERTAS ───────────────────────────────────────────────
+function Alertas({alerts,setAlerts,prices,pos}){
+  const [showForm,setShowForm]=useState(false);
+  const [form,setForm]=useState({ticker:"",condition:"above",price:""});
+  const add=(e)=>{e.preventDefault();if(!form.ticker||!form.price)return;setAlerts([...alerts,{id:Date.now(),ticker:form.ticker.toUpperCase(),condition:form.condition,price:parseFloat(form.price),active:true}]);setForm({ticker:"",condition:"above",price:""});setShowForm(false);};
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:18}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+        <div><h2 style={{margin:0,fontSize:18,fontWeight:700}}>Alertas de Precio</h2><p style={{margin:"4px 0 0",fontSize:13,color:"#64748b"}}>Configurá alertas para monitorear precios de tus activos.</p></div>
+        <Btn onClick={()=>setShowForm(!showForm)}><Ic name="add" size={16}/> Nueva Alerta</Btn>
+      </div>
+      {showForm && <Card title="Crear Alerta">
+        <form onSubmit={add} style={{display:"flex",gap:12,alignItems:"flex-end",flexWrap:"wrap"}}>
+          <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Ticker</label><select value={form.ticker} onChange={e=>setForm({...form,ticker:e.target.value})} style={{minWidth:120}} required><option value="">Seleccionar...</option>{pos.map(p=><option key={p.ticker} value={p.ticker}>{p.ticker}</option>)}</select></div>
+          <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Condición</label><select value={form.condition} onChange={e=>setForm({...form,condition:e.target.value})} style={{minWidth:160}}><option value="above">Sube por encima de</option><option value="below">Baja por debajo de</option></select></div>
+          <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Precio USD</label><input type="number" step="0.0001" value={form.price} onChange={e=>setForm({...form,price:e.target.value})} required style={{width:130}}/></div>
+          <Btn variant="success" onClick={add}>Crear</Btn>
+        </form>
+      </Card>}
+      <div style={{display:"grid",gap:10}}>
+        {alerts.map(a=>{
+          const p=prices[a.ticker];const trig=p&&(a.condition==="above"?p.price>=a.price:p.price<=a.price);
+          return <div key={a.id} style={{background:trig?"#dc262612":"#1a1f2e",border:`1px solid ${trig?"#dc262644":"#252d3d"}`,borderRadius:10,padding:"16px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10,animation:trig?"pulse 2s infinite":"none"}}>
+            <div style={{display:"flex",alignItems:"center",gap:14}}>
+              <div style={{width:40,height:40,borderRadius:8,background:trig?"#dc262622":"#252d3d",display:"flex",alignItems:"center",justifyContent:"center"}}><Ic name={a.condition==="above"?"up":"down"} size={20}/></div>
+              <div>
+                <div style={{fontWeight:700,fontSize:16}}>{a.ticker}</div>
+                <div style={{fontSize:12,color:"#64748b"}}>{a.condition==="above"?"Sube por encima de":"Baja por debajo de"} <strong style={{color:"#e2e8f0"}}>{fmtUSD(a.price)}</strong></div>
+                <div style={{fontSize:11,color:"#64748b",marginTop:2}}>Actual: <span style={{color:p?.change>=0?"#34d399":"#f87171",fontWeight:600}}>{fmtUSD(p?.price)}</span></div>
+              </div>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              {trig && <Badge text="ACTIVADA" color="#fca5a5" bg="#dc262633"/>}
+              <button onClick={()=>setAlerts(alerts.map(x=>x.id===a.id?{...x,active:!x.active}:x))} style={{background:a.active?"#065f4622":"#334155",border:`1px solid ${a.active?"#065f4644":"#475569"}`,color:a.active?"#34d399":"#64748b",borderRadius:6,padding:"6px 12px",fontSize:11,cursor:"pointer",fontWeight:500}}>{a.active?"Activa":"Pausada"}</button>
+              <button onClick={()=>setAlerts(alerts.filter(x=>x.id!==a.id))} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",padding:4}}><Ic name="del" size={16}/></button>
+            </div>
+          </div>;
+        })}
+      </div>
+      {alerts.length===0 && <div style={{textAlign:"center",padding:60,color:"#475569"}}><Ic name="bell" size={48}/><p style={{marginTop:12,fontSize:14}}>No tenés alertas configuradas.</p></div>}
+    </div>
+  );
+}
+
+// ─── NOTICIAS ──────────────────────────────────────────────
+function Noticias({pos}){
+  const [sel,setSel]=useState("Todos");
+  const tickers=pos.map(p=>p.ticker);
+  const fl=sel==="Todos"?NEWS:NEWS.filter(n=>n.ticker===sel);
+  const sc={positive:"#34d399",negative:"#f87171",neutral:"#94a3b8"};
+  const sb={positive:"#065f4622",negative:"#7f1d1d22",neutral:"#33415522"};
+  const sl={positive:"Positivo",negative:"Negativo",neutral:"Neutral"};
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:18}}>
+      <div><h2 style={{margin:0,fontSize:18,fontWeight:700}}>Noticias del Portfolio</h2><p style={{margin:"4px 0 0",fontSize:13,color:"#64748b"}}>Feed de noticias relevantes para tus activos.</p></div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        <button onClick={()=>setSel("Todos")} style={{background:sel==="Todos"?"#2563eb":"#1e293b",border:`1px solid ${sel==="Todos"?"#2563eb":"#334155"}`,color:sel==="Todos"?"#fff":"#94a3b8",borderRadius:6,padding:"5px 12px",fontSize:12,cursor:"pointer",fontWeight:500}}>Todos</button>
+        {tickers.map(t=><button key={t} onClick={()=>setSel(t)} style={{background:sel===t?"#2563eb":"#1e293b",border:`1px solid ${sel===t?"#2563eb":"#334155"}`,color:sel===t?"#fff":"#94a3b8",borderRadius:6,padding:"5px 12px",fontSize:12,cursor:"pointer",fontWeight:500}}>{t}</button>)}
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {fl.map((n,i)=><div key={n.id} style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"18px 20px",animation:`slideIn .3s ease ${i*.05}s both`,transition:"border-color .15s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="#334155"} onMouseLeave={e=>e.currentTarget.style.borderColor="#252d3d"}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}><Badge text={n.ticker} color="#60a5fa"/><Badge text={sl[n.sentiment]} color={sc[n.sentiment]} bg={sb[n.sentiment]}/></div>
+            <span style={{fontSize:11,color:"#475569"}}>Hace {n.time}</span>
+          </div>
+          <h4 style={{margin:"0 0 6px",fontSize:15,fontWeight:600,color:"#f1f5f9",lineHeight:1.4}}>{n.title}</h4>
+          <p style={{margin:"0 0 8px",fontSize:13,color:"#94a3b8",lineHeight:1.5}}>{n.summary}</p>
+          <div style={{fontSize:11,color:"#475569"}}>{n.source}</div>
+        </div>)}
+      </div>
+    </div>
+  );
+}
+
+// ─── APP ───────────────────────────────────────────────────
+function App(){
+  const [tab,setTab]=useState("resumen");
+  const [pos,setPos]=useState(INIT_POS);
+  const [ops,setOps]=useState(INIT_OPS);
+  const [alerts,setAlerts]=useState([
+    {id:1,ticker:"YPFD",condition:"above",price:42,active:true},
+    {id:2,ticker:"IBM",condition:"below",price:230,active:true},
+    {id:3,ticker:"MELI",condition:"above",price:15,active:true},
+  ]);
+  const [prices,setPrices]=useState(LIVE);
+  const [macro]=useState(MACRO);
+  const [lastUp,setLastUp]=useState(new Date());
+
+  useEffect(()=>{
+    const iv=setInterval(()=>{
+      setPrices(prev=>{
+        const u={...prev};const ts=Object.keys(u);const t=ts[Math.floor(Math.random()*ts.length)];
+        const v=(Math.random()-.48)*.02;const np=u[t].price*(1+v);const nc=((np-u[t].prev)/u[t].prev)*100;
+        u[t]={...u[t],price:np,change:nc};return u;
+      });
+      setLastUp(new Date());
+    },4000);
+    return ()=>clearInterval(iv);
+  },[]);
+
+  const enriched=useMemo(()=>pos.map(p=>{
+    const l=prices[p.ticker]||{price:p.ppc,change:0};
+    const mi=p.cantidad*p.ppc;const ma=p.cantidad*l.price;const pl=ma-mi;const r=mi>0?(pl/mi)*100:0;
+    return {...p,precioActual:l.price,variacion:l.change,montoInvertido:mi,montoActual:ma,pl,rendimiento:r};
+  }),[pos,prices]);
+
+  const total=useMemo(()=>enriched.reduce((s,p)=>s+p.montoActual,0),[enriched]);
+  const invertido=useMemo(()=>enriched.reduce((s,p)=>s+p.montoInvertido,0),[enriched]);
+  const pl=total-invertido;const rend=invertido>0?(pl/invertido)*100:0;
+  const trigAlerts=useMemo(()=>alerts.filter(a=>{if(!a.active)return false;const p=prices[a.ticker];if(!p)return false;return a.condition==="above"?p.price>=a.price:p.price<=a.price;}),[alerts,prices]);
+
+  const tabs=[{id:"resumen",label:"Resumen",icon:"home"},{id:"portfolio",label:"Portfolio",icon:"portfolio"},{id:"operaciones",label:"Operaciones",icon:"ops"},{id:"alertas",label:"Alertas",icon:"bell"},{id:"noticias",label:"Noticias",icon:"news"}];
+
+  return (
+    <div style={{minHeight:"100vh"}}>
+      <header style={{background:"linear-gradient(90deg,#111827,#1e293b)",borderBottom:"1px solid #1e293b",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
+        <div style={{display:"flex",alignItems:"center",gap:14}}>
+          <div style={{width:36,height:36,borderRadius:8,background:"linear-gradient(135deg,#2563eb,#7c3aed)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:16,color:"#fff",flexShrink:0}}>EI</div>
+          <div>
+            <h1 className="header-title" style={{margin:0,fontSize:18,fontWeight:700,color:"#f1f5f9",letterSpacing:"-.02em"}}>Financial Dashboard</h1>
+            <span style={{fontSize:11,color:"#64748b"}}>Actualizado: {lastUp.toLocaleTimeString("es-AR")}</span>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          {trigAlerts.length>0 && <div style={{background:"#dc262622",border:"1px solid #dc262655",borderRadius:6,padding:"4px 10px",fontSize:12,color:"#fca5a5",display:"flex",alignItems:"center",gap:6,animation:"pulse 2s infinite"}}><Ic name="bell" size={14}/> {trigAlerts.length} alerta{trigAlerts.length>1?"s":""}</div>}
+          <div className="macro-strip" style={{display:"flex",gap:16,fontSize:11}}>
+            {[{l:"Oficial",v:`$${fmt(macro.dolarOficial)}`},{l:"MEP",v:`$${fmt(macro.dolarMEP)}`},{l:"CCL",v:`$${fmt(macro.dolarCCL)}`},{l:"Blue",v:`$${fmt(macro.dolarBlue)}`},{l:"Riesgo",v:String(macro.riesgoPais)}].map(i=><div key={i.l} style={{textAlign:"center"}}><div style={{color:"#64748b",marginBottom:1}}>{i.l}</div><div style={{fontWeight:600,color:"#94a3b8",fontVariantNumeric:"tabular-nums"}}>{i.v}</div></div>)}
+          </div>
+        </div>
+      </header>
+      <nav className="nav-bar" style={{background:"#111827",borderBottom:"1px solid #1e293b",display:"flex",gap:0,padding:"0 20px"}}>
+        {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{background:"none",border:"none",color:tab===t.id?"#60a5fa":"#64748b",padding:"12px 16px",cursor:"pointer",fontSize:13,fontWeight:tab===t.id?600:400,borderBottom:tab===t.id?"2px solid #2563eb":"2px solid transparent",display:"flex",alignItems:"center",gap:6,transition:"all .15s",whiteSpace:"nowrap"}}><Ic name={t.icon} size={16}/> {t.label}</button>)}
+      </nav>
+      <main className="main-content" style={{padding:24,maxWidth:1400,margin:"0 auto"}}>
+        {tab==="resumen" && <Resumen enriched={enriched} total={total} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices}/>}
+        {tab==="portfolio" && <Portfolio enriched={enriched} total={total}/>}
+        {tab==="operaciones" && <Operaciones ops={ops} setOps={setOps} pos={pos} setPos={setPos}/>}
+        {tab==="alertas" && <Alertas alerts={alerts} setAlerts={setAlerts} prices={prices} pos={pos}/>}
+        {tab==="noticias" && <Noticias pos={pos}/>}
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
