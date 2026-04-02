@@ -210,11 +210,19 @@ const NEWS_FALLBACK=[
 
 /* ── API ENGINE — Datos reales ──────────────── */
 
-/* Yahoo Finance symbols — mapeo de nuestros tickers */
-/* CS (Charles Schwab) → cotiza en USD directo en NYSE */
-/* BM (Bull Market) → cotiza en ARS en BYMA, convertimos a USD vía CCL */
-const YF_MAP_USD={EDN:"EDN",YPFD:"YPF",MELI:"MELI",ORCL:"ORCL",IBM:"IBM",FISV:"FISV",BKUCF:"BKUCF",TSLA:"TSLA",UNH:"UNH",AL30:"AL30D.BA"};
-const YF_MAP_ARS={EDN:"EDN.BA",YPFD:"YPFD.BA",MELI:"MELI.BA",ORCL:"ORCL.BA",TSLA:"TSLA.BA",UNH:"UNH.BA",AL30:"AL30.BA"};
+/* data912.com — API gratuita de cotizaciones del mercado argentino (misma fuente que google-sheets-argento) */
+/* Endpoints: /live/arg_stocks (acciones AR), /live/arg_cedears (CEDEARs), /live/usa_stocks (acciones USA) */
+/* Campos: symbol, c (precio), pct_change (var%), v (volumen), px_bid, px_ask, q_bid, q_ask, q_op */
+const DATA912_BASE="https://data912.com/live";
+
+/* Mapeo ticker interno → symbol en data912 */
+/* BM (Bull Market) → cotiza en ARS en BYMA — usamos arg_cedears / arg_stocks de data912 */
+/* CS (Charles Schwab) → cotiza en USD en NYSE — usamos usa_stocks de data912 */
+const D912_CEDEARS={EDN:"EDN",YPFD:"YPFD",MELI:"MELI",ORCL:"ORCL",TSLA:"TSLA",UNH:"UNH",IBM:"IBM",FISV:"FISV"};
+const D912_ARG_STOCKS={YPFD:"YPFD",EDN:"EDN"};
+const D912_ARG_BONDS={AL30:"AL30"};
+const D912_USA={EDN:"EDN",YPFD:"YPF",MELI:"MELI",ORCL:"ORCL",IBM:"IBM",FISV:"FISV",TSLA:"TSLA",UNH:"UNH"};
+
 /* Proxy CORS para APIs que no permiten fetch directo del browser */
 const PROXY="https://api.allorigins.win/raw?url=";
 
@@ -298,36 +306,71 @@ async function fetchMacroReal(){
 
 async function fetchPricesReal(tickers){
   try{
-    /* 1) Precios en USD (NYSE) — para todos los tickers */
-    const symbolsUSD=tickers.map(t=>YF_MAP_USD[t]||t).join(",");
-    /* 2) Precios en ARS (BYMA .BA) — solo para tickers que cotizan en BYMA */
-    const bymaTickers=tickers.filter(t=>YF_MAP_ARS[t]);
-    const symbolsARS=bymaTickers.map(t=>YF_MAP_ARS[t]).join(",");
-    const allSymbols=symbolsARS?symbolsUSD+","+symbolsARS:symbolsUSD;
+    /* Fetch data912 endpoints en paralelo: CEDEARs ARS + acciones ARG + acciones USA */
+    const fetchD912=async(endpoint)=>{
+      try{
+        let r;
+        try{r=await fetch(DATA912_BASE+"/"+endpoint);}catch(e){r=await fetch(PROXY+encodeURIComponent(DATA912_BASE+"/"+endpoint));}
+        return await r.json();
+      }catch(e){return[];}
+    };
+    const [cedears,argStocks,argBonds,usaStocks]=await Promise.all([
+      fetchD912("arg_cedears"),
+      fetchD912("arg_stocks"),
+      fetchD912("arg_bonds"),
+      fetchD912("usa_stocks")
+    ]);
 
-    const url=PROXY+encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${allSymbols}&fields=regularMarketPrice,regularMarketChangePercent,regularMarketPreviousClose,currency`);
-    const res=await fetch(url);
-    const data=await res.json();
-    const quotes=data.quoteResponse?.result||[];
+    /* Indexar por symbol para búsqueda rápida */
+    const idxCedears={};cedears.forEach(x=>{if(x.symbol)idxCedears[x.symbol.toUpperCase()]=x;});
+    const idxArg={};argStocks.forEach(x=>{if(x.symbol)idxArg[x.symbol.toUpperCase()]=x;});
+    const idxBonds={};argBonds.forEach(x=>{if(x.symbol)idxBonds[x.symbol.toUpperCase()]=x;});
+    const idxUsa={};usaStocks.forEach(x=>{if(x.symbol)idxUsa[x.symbol.toUpperCase()]=x;});
+
     const prices={};
     tickers.forEach(t=>{
-      const symUSD=YF_MAP_USD[t]||t;
-      const symARS=YF_MAP_ARS[t];
-      const qUSD=quotes.find(x=>x.symbol===symUSD);
-      const qARS=symARS?quotes.find(x=>x.symbol===symARS):null;
-      if(qUSD){
+      const tu=t.toUpperCase();
+      /* Precio ARS: buscar en CEDEARs → acciones arg → bonos arg */
+      const cedearSym=D912_CEDEARS[tu];
+      const argSym=D912_ARG_STOCKS[tu];
+      const bondSym=D912_ARG_BONDS[tu];
+      const arsData=cedearSym&&idxCedears[cedearSym]?idxCedears[cedearSym]
+        :(argSym&&idxArg[argSym]?idxArg[argSym]
+        :(bondSym&&idxBonds[bondSym]?idxBonds[bondSym]:null));
+
+      /* Precio USD: buscar en usa_stocks */
+      const usaSym=D912_USA[tu];
+      const usdData=usaSym&&idxUsa[usaSym]?idxUsa[usaSym]:null;
+
+      /* Construir objeto de precios */
+      const priceARS=arsData?arsData.c:null;
+      const changeARS=arsData?arsData.pct_change:null;
+      const priceUSD=usdData?usdData.c:null;
+      const changeUSD=usdData?usdData.pct_change:null;
+
+      if(priceARS||priceUSD){
         prices[t]={
-          price:qUSD.regularMarketPrice||0,
-          change:qUSD.regularMarketChangePercent||0,
-          prev:qUSD.regularMarketPreviousClose||qUSD.regularMarketPrice||0,
-          priceARS:qARS?qARS.regularMarketPrice:null,
-          changeARS:qARS?qARS.regularMarketChangePercent:null
+          price:priceUSD||0,
+          change:changeUSD||0,
+          prev:priceUSD?(priceUSD/(1+(changeUSD||0)/100)):0,
+          priceARS:priceARS||null,
+          changeARS:changeARS??null
         };
       }
     });
+
+    /* BKUCF: micro-cap canadiense no está en data912, usar Yahoo Finance como fallback */
+    if(!prices["BKUCF"]&&tickers.includes("BKUCF")){
+      try{
+        const yfUrl=PROXY+encodeURIComponent("https://query1.finance.yahoo.com/v7/finance/quote?symbols=BKUCF&fields=regularMarketPrice,regularMarketChangePercent,regularMarketPreviousClose");
+        const yfRes=await fetch(yfUrl);const yfData=await yfRes.json();
+        const q=yfData.quoteResponse?.result?.[0];
+        if(q)prices["BKUCF"]={price:q.regularMarketPrice||0,change:q.regularMarketChangePercent||0,prev:q.regularMarketPreviousClose||0,priceARS:null,changeARS:null};
+      }catch(e){}
+    }
     return prices;
   }catch(e){
-    console.warn("Yahoo Finance API fallback:",e);
+    console.warn("data912 API fallback:",e);
     return null;
   }
 }
