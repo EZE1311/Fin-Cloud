@@ -56,40 +56,82 @@ const fP=n=>n==null||isNaN(n)?"—":`${n>=0?"+":""}${fmt(n,2)}%`;
 const today=()=>{const d=new Date();return`${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getFullYear()).slice(2)}`};
 
 /* ── SVG Charts ──────────────────────────── */
-function DonutChart({data,size=200,thickness=32}){
+/* 3D Pie Chart — SVG with elliptical perspective + side depth */
+function Pie3D({data,width=360,height=280}){
   const total=data.reduce((s,d)=>s+d.value,0);
-  const cx=size/2,cy=size/2,r=(size-thickness)/2;
+  if(total===0)return null;
+  const cx=width/2,cy=130,rx=130,ry=70,depth=18;
+  /* build slices */
   let cum=0;
-  const arcs=data.map((d,i)=>{
-    const pct=d.value/total;const startAngle=cum*2*Math.PI-Math.PI/2;cum+=pct;const endAngle=cum*2*Math.PI-Math.PI/2;
-    const large=pct>.5?1:0;
-    const x1=cx+r*Math.cos(startAngle),y1=cy+r*Math.sin(startAngle);
-    const x2=cx+r*Math.cos(endAngle),y2=cy+r*Math.sin(endAngle);
-    const mid=(startAngle+endAngle)/2;
-    const lx=cx+(r+20)*Math.cos(mid),ly=cy+(r+20)*Math.sin(mid);
-    return{path:`M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`,color:d.color,name:d.name,pct,lx,ly};
+  const slices=data.map(d=>{const pct=d.value/total;const s0=cum;cum+=pct;return{...d,pct,s0,s1:cum};});
+
+  function ellipsePoint(angle,eCx,eCy){return[eCx+rx*Math.cos(angle),eCy+ry*Math.sin(angle)]}
+  function slicePath(s0,s1,eCy){
+    const a0=s0*2*Math.PI-Math.PI/2, a1=s1*2*Math.PI-Math.PI/2;
+    const large=s1-s0>.5?1:0;
+    const[x0,y0]=ellipsePoint(a0,cx,eCy);
+    const[x1,y1]=ellipsePoint(a1,cx,eCy);
+    return`M ${cx} ${eCy} L ${x0} ${y0} A ${rx} ${ry} 0 ${large} 1 ${x1} ${y1} Z`;
+  }
+  /* side faces for depth (only bottom half visible) */
+  function sidePath(s0,s1){
+    const a0=s0*2*Math.PI-Math.PI/2, a1=s1*2*Math.PI-Math.PI/2;
+    const steps=Math.max(2,Math.ceil((a1-a0)/(Math.PI/20)));
+    let d="";
+    for(let i=0;i<=steps;i++){
+      const a=a0+(a1-a0)*(i/steps);
+      const[x,y]=ellipsePoint(a,cx,cy);
+      d+=(i===0?"M":"L")+` ${x} ${y}`;
+    }
+    for(let i=steps;i>=0;i--){
+      const a=a0+(a1-a0)*(i/steps);
+      const[x,y]=ellipsePoint(a,cx,cy+depth);
+      d+=`L ${x} ${y}`;
+    }
+    return d+"Z";
+  }
+  /* only render sides for slices with visible bottom half (sin > 0 region) */
+  const sides=slices.filter(s=>{
+    const a0=s.s0*2*Math.PI-Math.PI/2,a1=s.s1*2*Math.PI-Math.PI/2;
+    return a1>0&&a0<Math.PI;
+  }).map(s=>{
+    const a0=Math.max(s.s0*2*Math.PI-Math.PI/2,0);
+    const a1=Math.min(s.s1*2*Math.PI-Math.PI/2,Math.PI);
+    return{...s,sa0:a0,sa1:a1};
   });
-  return(
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:"block",margin:"0 auto"}}>
-      {arcs.map((a,i)=><path key={i} d={a.path} fill="none" stroke={a.color} strokeWidth={thickness} strokeLinecap="butt"/>)}
-      {arcs.filter(a=>a.pct>.05).map((a,i)=><text key={i} x={a.lx} y={a.ly} textAnchor="middle" dominantBaseline="middle" fill="#94a3b8" fontSize="10" fontWeight="500">{a.name} {(a.pct*100).toFixed(0)}%</text>)}
-      <text x={cx} y={cy-6} textAnchor="middle" fill="#f1f5f9" fontSize="14" fontWeight="700">{fU(total).replace("USD ","$")}</text>
-      <text x={cx} y={cy+12} textAnchor="middle" fill="#64748b" fontSize="10">Total</text>
+
+  return <div style={{position:"relative"}}>
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{display:"block",margin:"0 auto"}}>
+      {/* depth sides */}
+      {sides.map((s,i)=><path key={"s"+i} d={sidePath(s.sa0/(2*Math.PI)+.25,s.sa1/(2*Math.PI)+.25)} fill={s.color} opacity={.55}/>)}
+      {/* bottom ellipse */}
+      {slices.map((s,i)=><path key={"b"+i} d={slicePath(s.s0,s.s1,cy+depth)} fill={s.color} opacity={.3}/>)}
+      {/* top face */}
+      {slices.map((s,i)=><path key={"t"+i} d={slicePath(s.s0,s.s1,cy)} fill={s.color} stroke="#0f1117" strokeWidth={1}/>)}
     </svg>
-  );
+    {/* legend beside/below chart */}
+    <div style={{display:"flex",flexWrap:"wrap",gap:"4px 16px",justifyContent:"center",marginTop:4}}>
+      {slices.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:5,fontSize:11}}>
+        <span style={{width:10,height:10,borderRadius:2,background:s.color,flexShrink:0}}/>
+        <span style={{color:"#cbd5e1",fontWeight:600}}>{s.name}</span>
+        <span style={{color:"#64748b"}}>{(s.pct*100).toFixed(1)}%</span>
+      </div>)}
+    </div>
+  </div>;
 }
 
 function HBarChart({data,height:h2=220}){
   const max=Math.max(...data.map(d=>d.value));
+  const total=data.reduce((s,d)=>s+d.value,0);
   const barH=Math.min(28,h2/data.length-6);
   return(
-    <svg width="100%" height={h2} viewBox={`0 0 400 ${h2}`} preserveAspectRatio="xMidYMid meet">
+    <svg width="100%" height={h2} viewBox={`0 0 440 ${h2}`} preserveAspectRatio="xMidYMid meet">
       {data.map((d,i)=>{
-        const y=i*(barH+6)+4;const w=max>0?(d.value/max)*260:0;
+        const y=i*(barH+6)+4;const w=max>0?(d.value/max)*230:0;const pct=total>0?(d.value/total*100).toFixed(1):0;
         return <g key={i}>
-          <text x={125} y={y+barH/2+4} textAnchor="end" fill="#94a3b8" fontSize="11">{d.name}</text>
-          <rect x={130} y={y} width={w} height={barH} rx={3} fill={d.color} opacity={.85}/>
-          <text x={135+w} y={y+barH/2+4} fill="#64748b" fontSize="10">${(d.value/1000).toFixed(0)}k</text>
+          <text x={105} y={y+barH/2+4} textAnchor="end" fill="#94a3b8" fontSize="11">{d.name}</text>
+          <rect x={110} y={y} width={w} height={barH} rx={3} fill={d.color} opacity={.85}/>
+          <text x={115+w} y={y+barH/2+4} fill="#64748b" fontSize="10">{pct}% · ${(d.value/1000).toFixed(0)}k</text>
         </g>;
       })}
     </svg>
@@ -98,7 +140,7 @@ function HBarChart({data,height:h2=220}){
 
 /* ── data ─────────────────────────────────── */
 const COLORS=["#2563eb","#059669","#d97706","#dc2626","#7c3aed","#0891b2","#be185d","#65a30d","#ea580c","#4f46e5"];
-const SC={"Energía":"#f59e0b","Petróleo":"#78716c","Tecnología":"#3b82f6","Fintech":"#8b5cf6","Automotriz":"#ef4444","Salud":"#10b981","Renta Fija":"#6366f1","Uranio":"#22c55e","Inmobiliario":"#f97316"};
+const SC={"Energía":"#f59e0b","Petróleo":"#78716c","Tecnología":"#3b82f6","Fintech":"#8b5cf6","Automotriz":"#ef4444","Salud":"#10b981","Renta Fija":"#6366f1","Uranio":"#22c55e","Inmobiliario":"#f97316","Real Estate":"#a78bfa"};
 
 /* Metadata por ticker — sector, país, tipo de instrumento */
 const TICKER_META={
@@ -203,14 +245,18 @@ function Badge({text,color="#60a5fa",bg="#252d3d"}){
 }
 
 /* ── RESUMEN ─────────────────────────────── */
-function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,casa,setCasa,casaActual,hipoteca,setHipoteca,deudaUSD,patrimonioNeto}){
+function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,casa,setCasa,casaActual,hipoteca,setHipoteca,deudaUSD,patrimonioNeto,caucion,setCaucion,caucionUSD,portfolioLiquido,portfolioTotal,dailyPL}){
   const casaNeta=casaActual.valor-deudaUSD;
   const byAsset=useMemo(()=>{
     const items=enriched.map((p,i)=>({name:p.ticker,value:p.montoActual,color:COLORS[i%COLORS.length]}));
     if(casaNeta>0) items.push({name:"Casa (neto)",value:casaNeta,color:"#a78bfa"});
     return items.sort((a,b)=>b.value-a.value);
   },[enriched,casaNeta]);
-  const bySector=useMemo(()=>{const m={};enriched.forEach(p=>{m[p.sector]=(m[p.sector]||0)+p.montoActual});return Object.entries(m).map(([name,value])=>({name,value,color:SC[name]||"#64748b"})).sort((a,b)=>b.value-a.value);},[enriched]);
+  const bySector=useMemo(()=>{
+    const m={};enriched.forEach(p=>{m[p.sector]=(m[p.sector]||0)+p.montoActual});
+    if(casaNeta>0) m["Real Estate"]=(m["Real Estate"]||0)+casaNeta;
+    return Object.entries(m).map(([name,value])=>({name,value,color:SC[name]||"#64748b"})).sort((a,b)=>b.value-a.value);
+  },[enriched,casaNeta]);
   const movers=useMemo(()=>[...enriched].sort((a,b)=>Math.abs(b.variacion)-Math.abs(a.variacion)).slice(0,5),[enriched]);
   /* Portfolio sort */
   const [sortBy,setSortBy]=useState("montoActual");
@@ -233,11 +279,26 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
     </div>}
 
     {/* ── KPIs principales ── */}
-    <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
-      <Stat label="Patrimonio Neto" value={fU(patrimonioNeto)} sub="Portfolio + Casa - Hipoteca" color="#a78bfa"/>
-      <Stat label="Valor del Portfolio" value={fU(total)} sub={fP(rend)} color="#f1f5f9"/>
-      <Stat label="P&L Total" value={fU(pl)} sub={pl>=0?"Ganancia":"Pérdida"} color={pl>=0?"#34d399":"#f87171"}/>
-      <Stat label="Posiciones" value={String(enriched.length)} sub={`${enriched.filter(p=>p.variacion>0).length} en verde`} color="#60a5fa"/>
+    <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:14}}>
+      <Stat label="Patrimonio Neto" value={fU(patrimonioNeto)} sub="Port + Casa - Hipoteca - Caución" color="#a78bfa"/>
+      <Stat label="Portfolio Total" value={fU(portfolioTotal)} sub={fP(rend)} color="#f1f5f9"/>
+      <Stat label="Portfolio Líquido" value={fU(portfolioLiquido)} sub={caucionUSD>0?`Caución: ${fU(caucionUSD)}`:"Sin caución"} color="#60a5fa"/>
+      <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
+        <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>P&L Total</div>
+        <div className="stat-val" style={{fontSize:22,fontWeight:700,color:pl>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fU(pl)}</div>
+        <div style={{display:"flex",gap:8,marginTop:4,fontSize:12,fontWeight:500}}>
+          <span style={{color:dailyPL.monto>=0?"#34d399":"#f87171"}}>Hoy: {dailyPL.monto>=0?"+":""}${fmt(Math.abs(dailyPL.monto))}</span>
+          <span style={{color:dailyPL.pct>=0?"#34d399":"#f87171"}}>({dailyPL.pct>=0?"+":""}{fmt(dailyPL.pct,2)}%)</span>
+        </div>
+      </div>
+      <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
+        <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Caución Tomada</div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:11,color:"#94a3b8"}}>$</span>
+          <input type="number" value={caucion.montoARS} onChange={e=>setCaucion({montoARS:+e.target.value})} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",color:"#fbbf24",fontSize:18,fontWeight:700,width:130,fontVariantNumeric:"tabular-nums",outline:"none"}} placeholder="0"/>
+        </div>
+        <div style={{fontSize:12,color:"#94a3b8",marginTop:4}}>≈ {fU(caucionUSD)} <span style={{color:"#475569"}}>(MEP ${fmt(macro.dolarMEP)})</span></div>
+      </div>
     </div>
 
     {/* ── Tabla Portfolio ── */}
@@ -273,7 +334,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
 
     {/* ── Gráficos distribución ── */}
     <div className="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-      <Card title="Composición por Activo"><DonutChart data={byAsset} size={210} thickness={30}/></Card>
+      <Card title="Composición por Activo"><Pie3D data={byAsset} width={360} height={240}/></Card>
       <Card title="Distribución por Sector"><HBarChart data={bySector} height={Math.max(180,bySector.length*34)}/></Card>
     </div>
 
@@ -527,6 +588,7 @@ function saveLS(key,val){try{localStorage.setItem("eid_"+key,JSON.stringify(val)
 const INIT_ALERTS=[{id:1,ticker:"YPFD",condition:"above",price:42,active:true},{id:2,ticker:"IBM",condition:"below",price:230,active:true},{id:3,ticker:"MELI",condition:"above",price:15,active:true}];
 const INIT_CASA={precioCompra:398000,anios:1,tasaAnual:4};
 const INIT_HIPOTECA={uvas:200696,cotizacionUVA:1858.61};
+const INIT_CAUCION={montoARS:0};
 
 /* ── GIST SYNC ENGINE ───────────────────── */
 const GIST_FILENAME="fin-cloud-data.json";
@@ -619,15 +681,17 @@ function App(){
   const syncTimer=React.useRef(null);
   const isFirstLoad=React.useRef(true);
 
-  /* Inmobiliario */
+  /* Inmobiliario + Caución */
   const [casa,setCasa]=useState(()=>loadLS("casa",INIT_CASA));
   const [hipoteca,setHipoteca]=useState(()=>loadLS("hipoteca",INIT_HIPOTECA));
+  const [caucion,setCaucion]=useState(()=>loadLS("caucion",INIT_CAUCION));
 
   /* Persistir en localStorage siempre */
   useEffect(()=>{saveLS("ops",ops)},[ops]);
   useEffect(()=>{saveLS("alerts",alerts)},[alerts]);
   useEffect(()=>{saveLS("casa",casa)},[casa]);
   useEffect(()=>{saveLS("hipoteca",hipoteca)},[hipoteca]);
+  useEffect(()=>{saveLS("caucion",caucion)},[caucion]);
 
   /* ── Auto-load desde Gist al abrir ──── */
   useEffect(()=>{
@@ -641,6 +705,7 @@ function App(){
         if(d.alerts)setAlerts(d.alerts);
         if(d.casa)setCasa(d.casa);
         if(d.hipoteca)setHipoteca(d.hipoteca);
+        if(d.caucion)setCaucion(d.caucion);
       }
       setSyncStatus("ok");setLastSync(new Date());
       setTimeout(()=>{isFirstLoad.current=false},500);
@@ -652,13 +717,13 @@ function App(){
     const token=loadLS("gh_token","");
     if(!token)return;
     const gistId=loadLS("gist_id","");
-    const data={ops,alerts,casa,hipoteca,lastSaved:new Date().toISOString()};
+    const data={ops,alerts,casa,hipoteca,caucion,lastSaved:new Date().toISOString()};
     setSyncStatus("syncing");
     gistSave(token,gistId,data).then(g=>{
       if(!gistId&&g.id){saveLS("gist_id",g.id)}
       setSyncStatus("ok");setLastSync(new Date());
     }).catch(()=>setSyncStatus("error"));
-  },[ops,alerts,casa,hipoteca]);
+  },[ops,alerts,casa,hipoteca,caucion]);
 
   useEffect(()=>{
     if(isFirstLoad.current)return;
@@ -667,21 +732,21 @@ function App(){
     if(syncTimer.current)clearTimeout(syncTimer.current);
     syncTimer.current=setTimeout(doGistSave,3000);
     return()=>{if(syncTimer.current)clearTimeout(syncTimer.current)};
-  },[ops,alerts,casa,hipoteca,doGistSave]);
+  },[ops,alerts,casa,hipoteca,caucion,doGistSave]);
 
   /* Exportar datos como JSON (backup local) */
   const exportData=useCallback(()=>{
-    const data={ops,alerts,casa,hipoteca,exportDate:new Date().toISOString()};
+    const data={ops,alerts,casa,hipoteca,caucion,exportDate:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");a.href=url;a.download="fin-cloud-backup-"+new Date().toISOString().slice(0,10)+".json";
     a.click();URL.revokeObjectURL(url);
-  },[ops,alerts,casa,hipoteca]);
+  },[ops,alerts,casa,hipoteca,caucion]);
 
   /* Resetear a datos originales */
   const resetData=useCallback(()=>{
     if(!confirm("¿Estás seguro? Esto borra todos tus cambios y vuelve a los datos iniciales."))return;
-    setOps(INIT_OPS);setAlerts(INIT_ALERTS);setCasa(INIT_CASA);setHipoteca(INIT_HIPOTECA);
+    setOps(INIT_OPS);setAlerts(INIT_ALERTS);setCasa(INIT_CASA);setHipoteca(INIT_HIPOTECA);setCaucion(INIT_CAUCION);
   },[]);
 
   /* Posiciones derivadas 100% de operaciones */
@@ -712,22 +777,32 @@ function App(){
     return{...p,precioActual:l.price,variacion:l.change,montoInvertido:mi,montoActual:ma,pl,rendimiento:r};
   }),[pos,prices]);
 
-  const total=useMemo(()=>enriched.reduce((s,p)=>s+p.montoActual,0),[enriched]);
+  const portfolioTotal=useMemo(()=>enriched.reduce((s,p)=>s+p.montoActual,0),[enriched]);
   const invertido=useMemo(()=>enriched.reduce((s,p)=>s+p.montoInvertido,0),[enriched]);
+  const caucionUSD=caucion.montoARS>0?caucion.montoARS/macro.dolarMEP:0;
+  const portfolioLiquido=portfolioTotal-caucionUSD;
+  const total=portfolioTotal; /* alias para compatibilidad */
   const pl=total-invertido;const rend=invertido>0?(pl/invertido)*100:0;
   const trigAlerts=useMemo(()=>alerts.filter(a=>a.active&&prices[a.ticker]&&(a.condition==="above"?prices[a.ticker].price>=a.price:prices[a.ticker].price<=a.price)),[alerts,prices]);
 
-  /* Patrimonio total incluyendo inmueble neto */
-  const patrimonioNeto=total+casaActual.valor-deudaUSD;
+  /* Variación diaria del P&L */
+  const dailyPL=useMemo(()=>{
+    const monto=enriched.reduce((s,p)=>s+p.montoActual*(p.variacion/100),0);
+    const pct=total>0?(monto/total)*100:0;
+    return{monto,pct};
+  },[enriched,total]);
+
+  /* Patrimonio total incluyendo inmueble neto - caución */
+  const patrimonioNeto=portfolioTotal+casaActual.valor-deudaUSD-caucionUSD;
 
   const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"alertas",label:"Alertas",emoji:"🔔"},{id:"noticias",label:"Noticias",emoji:"📰"}];
 
   return <div style={{minHeight:"100vh"}}>
     <header style={{background:"linear-gradient(90deg,#111827,#1e293b)",borderBottom:"1px solid #1e293b",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
       <div style={{display:"flex",alignItems:"center",gap:14}}>
-        <div style={{width:36,height:36,borderRadius:8,background:"linear-gradient(135deg,#2563eb,#7c3aed)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:16,color:"#fff",flexShrink:0}}>EI</div>
+        <div style={{fontSize:28,lineHeight:1,flexShrink:0}}>🐻⚔️🐂</div>
         <div>
-          <h1 className="hdr-title" style={{margin:0,fontSize:18,fontWeight:700,color:"#f1f5f9",letterSpacing:"-.02em"}}>Financial Dashboard</h1>
+          <h1 className="hdr-title" style={{margin:0,fontSize:18,fontWeight:700,color:"#f1f5f9",letterSpacing:"-.02em"}}>Dashboard de Eze 🇦🇷</h1>
           <span style={{fontSize:11,color:"#64748b"}}>Actualizado: {lastUp.toLocaleTimeString("es-AR")}</span>
         </div>
       </div>
@@ -773,7 +848,7 @@ function App(){
     </nav>
     {showConfig&&<SyncConfigPanel onClose={()=>setShowConfig(false)}/>}
     <main className="main-content" style={{padding:24,maxWidth:1400,margin:"0 auto"}}>
-      {tab==="resumen"&&<Resumen enriched={enriched} total={total} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto}/>}
+      {tab==="resumen"&&<Resumen enriched={enriched} total={total} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL}/>}
       {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro}/>}
       {tab==="alertas"&&<Alertas alerts={alerts} setAlerts={setAlerts} prices={prices} pos={pos}/>}
       {tab==="noticias"&&<Noticias pos={pos}/>}
