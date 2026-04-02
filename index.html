@@ -47,8 +47,6 @@ input::placeholder{color:#475569}
 <div id="root"></div>
 <script type="text/babel">
 const {useState,useEffect,useMemo,useCallback}=React;
-const h=React.createElement;
-
 /* ── helpers ─────────────────────────────── */
 const fmt=(n,d=0)=>{if(n==null||isNaN(n))return"—";return new Intl.NumberFormat("es-AR",{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)};
 const fU=n=>n==null||isNaN(n)?"—":`USD ${fmt(n,2)}`;
@@ -56,7 +54,6 @@ const fP=n=>n==null||isNaN(n)?"—":`${n>=0?"+":""}${fmt(n,2)}%`;
 const today=()=>{const d=new Date();return`${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getFullYear()).slice(2)}`};
 
 /* ── SVG Charts ──────────────────────────── */
-/* 3D Pie Chart — SVG with elliptical perspective + side depth */
 /* 3D Pie with labels near slices + leader lines */
 function Pie3D({data,width=460,height=320}){
   const total=data.reduce((s,d)=>s+d.value,0);
@@ -218,8 +215,6 @@ const NEWS_FALLBACK=[
 /* BM (Bull Market) → cotiza en ARS en BYMA, convertimos a USD vía CCL */
 const YF_MAP_USD={EDN:"EDN",YPFD:"YPF",MELI:"MELI",ORCL:"ORCL",IBM:"IBM",FISV:"FISV",BKUCF:"BKUCF",TSLA:"TSLA",UNH:"UNH",AL30:"AL30D.BA"};
 const YF_MAP_ARS={EDN:"EDN.BA",YPFD:"YPFD.BA",MELI:"MELI.BA",ORCL:"ORCL.BA",TSLA:"TSLA.BA",UNH:"UNH.BA",AL30:"AL30.BA"};
-const YF_MAP=YF_MAP_USD;
-
 /* Proxy CORS para APIs que no permiten fetch directo del browser */
 const PROXY="https://api.allorigins.win/raw?url=";
 
@@ -285,17 +280,14 @@ async function fetchMacroReal(){
       return null;
     };
 
-    /* Tasa Política Monetaria — BCRA idVariable 6 */
-    let tasa=29;
-    try{const v=await bcraFetch(6);if(v) tasa=v;}catch(e){}
-
-    /* Inflación Interanual — BCRA idVariable 28 */
-    let inflacionIA=33.1;
-    try{const v=await bcraFetch(28);if(v) inflacionIA=v;}catch(e){}
-
-    /* Reservas Internacionales — BCRA idVariable 1 (en millones USD) */
-    let reservas=28500;
-    try{const v=await bcraFetch(1);if(v) reservas=Math.round(v);}catch(e){}
+    /* BCRA: Tasa PM (6), Inflación IA (28), Reservas (1) — en paralelo */
+    let tasa=29,inflacionIA=33.1,reservas=28500;
+    try{
+      const [vTasa,vIA,vRes]=await Promise.allSettled([bcraFetch(6),bcraFetch(28),bcraFetch(1)]);
+      if(vTasa.status==="fulfilled"&&vTasa.value) tasa=vTasa.value;
+      if(vIA.status==="fulfilled"&&vIA.value) inflacionIA=vIA.value;
+      if(vRes.status==="fulfilled"&&vRes.value) reservas=Math.round(vRes.value);
+    }catch(e){}
 
     return{dolarOficial:oficial||1415,dolarMEP:mep||1380,dolarCCL:ccl||1395,dolarBlue:blue||1405,dolarTarjeta:tarjeta||1885,riesgoPais,inflacion,inflacionIA,tasa,uva,uvaVar30d,reservas};
   }catch(e){
@@ -478,7 +470,6 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
   const deudaARS=hipoteca.uvas*macro.uva;
 
   /* News state — Bloomberg-style feed */
-  const [expandedNews,setExpandedNews]=useState(null);
   const tickers=enriched.map(p=>p.ticker);
   const relevantNews=news.filter(n=>tickers.includes(n.ticker)||n.ticker==="MACRO").slice(0,15);
 
@@ -791,7 +782,7 @@ function Noticias({pos,news}){
       {fl.map((n,i)=><div key={n.id} style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"18px 20px",animation:`slideIn .3s ease ${i*.05}s both`}} onMouseEnter={e=>e.currentTarget.style.borderColor="#334155"} onMouseLeave={e=>e.currentTarget.style.borderColor="#252d3d"}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}><Badge text={n.ticker} color="#60a5fa"/><Badge text={sl2[n.sentiment]} color={sc2[n.sentiment]} bg={sb2[n.sentiment]}/></div>
-          <span style={{fontSize:11,color:"#475569"}}>Hace {n.time}</span>
+          <span style={{fontSize:11,color:"#475569"}}>{n.pubDate?timeAgo(n.pubDate):`Hace ${n.time}`}</span>
         </div>
         <h4 style={{margin:"0 0 6px",fontSize:15,fontWeight:600,color:"#f1f5f9",lineHeight:1.4}}><a href={n.link||`https://www.google.com/search?q=${encodeURIComponent(n.title)}&tbm=nws`} target="_blank" rel="noopener" style={{color:"inherit",textDecoration:"none"}} onMouseEnter={e=>e.currentTarget.style.color="#60a5fa"} onMouseLeave={e=>e.currentTarget.style.color="#f1f5f9"}>{n.title}</a></h4>
         <p style={{margin:"0 0 8px",fontSize:13,color:"#94a3b8",lineHeight:1.5}}>{n.summary}</p>
@@ -807,7 +798,7 @@ function saveLS(key,val){try{localStorage.setItem("eid_"+key,JSON.stringify(val)
 
 const INIT_ALERTS=[{id:1,ticker:"YPFD",condition:"above",price:42,active:true},{id:2,ticker:"IBM",condition:"below",price:230,active:true},{id:3,ticker:"MELI",condition:"above",price:15,active:true}];
 const INIT_CASA={precioCompra:398000,anios:1,tasaAnual:4};
-const INIT_HIPOTECA={uvas:200696,cotizacionUVA:1858.61};
+const INIT_HIPOTECA={uvas:200696};
 const INIT_CAUCION={montoARS:0};
 
 /* ── GIST SYNC ENGINE ───────────────────── */
@@ -1023,16 +1014,15 @@ function App(){
   const invertido=useMemo(()=>enriched.reduce((s,p)=>s+p.montoInvertido,0),[enriched]);
   const caucionUSD=caucion.montoARS>0?caucion.montoARS/macro.dolarMEP:0;
   const portfolioLiquido=portfolioTotal-caucionUSD;
-  const total=portfolioTotal; /* alias para compatibilidad */
-  const pl=total-invertido;const rend=invertido>0?(pl/invertido)*100:0;
+  const pl=portfolioTotal-invertido;const rend=invertido>0?(pl/invertido)*100:0;
   const trigAlerts=useMemo(()=>alerts.filter(a=>a.active&&prices[a.ticker]&&(a.condition==="above"?prices[a.ticker].price>=a.price:prices[a.ticker].price<=a.price)),[alerts,prices]);
 
   /* Variación diaria del P&L */
   const dailyPL=useMemo(()=>{
     const monto=enriched.reduce((s,p)=>s+p.montoActual*(p.variacion/100),0);
-    const pct=total>0?(monto/total)*100:0;
+    const pct=portfolioTotal>0?(monto/portfolioTotal)*100:0;
     return{monto,pct};
-  },[enriched,total]);
+  },[enriched,portfolioTotal]);
 
   /* Patrimonio total incluyendo inmueble neto - caución */
   const patrimonioNeto=portfolioTotal+casaActual.valor-deudaUSD-caucionUSD;
@@ -1095,7 +1085,7 @@ function App(){
     </nav>
     {showConfig&&<SyncConfigPanel onClose={()=>setShowConfig(false)}/>}
     <main className="main-content" style={{padding:24,maxWidth:1400,margin:"0 auto"}}>
-      {tab==="resumen"&&<Resumen enriched={enriched} total={total} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news}/>}
+      {tab==="resumen"&&<Resumen enriched={enriched} total={portfolioTotal} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news}/>}
       {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro}/>}
       {tab==="alertas"&&<Alertas alerts={alerts} setAlerts={setAlerts} prices={prices} pos={pos}/>}
       {tab==="noticias"&&<Noticias pos={pos} news={news}/>}
