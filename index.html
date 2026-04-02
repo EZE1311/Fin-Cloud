@@ -82,15 +82,25 @@ function Pie3D({data,width=460,height=320}){
     return{...s,sa0:a0,sa1:a1};
   });
 
-  /* Label positions — near each slice with leader line */
-  const labels=slices.filter(s=>s.pct>=.02).map(s=>{
+  /* Label positions — near each slice with leader line + collision avoidance */
+  const rawLabels=slices.filter(s=>s.pct>=.02).map(s=>{
     const midAngle=(s.s0+s.s1)/2*2*Math.PI-Math.PI/2;
-    const[ix,iy]=ep(midAngle,cy,rx*0.72,ry*0.72); /* inner point on slice */
-    const[ox,oy]=ep(midAngle,cy,rx+28,ry+28); /* outer point for label */
+    const[ix,iy]=ep(midAngle,cy,rx*0.72,ry*0.72);
+    const[ox,oy]=ep(midAngle,cy,rx+28,ry+28);
     const anchor=ox<cx?"end":"start";
     const lx=ox<cx?ox-4:ox+4;
     return{...s,ix,iy,ox,oy,lx,ly:oy,anchor,midAngle};
   });
+  /* Push apart labels that overlap vertically (min 18px gap) */
+  const labels=[...rawLabels].sort((a,b)=>a.ly-b.ly);
+  for(let i=1;i<labels.length;i++){
+    const prev=labels[i-1],cur=labels[i];
+    if(Math.abs(cur.ly-prev.ly)<18&&Math.abs(cur.lx-prev.lx)<60){
+      const mid=(prev.ly+cur.ly)/2;
+      prev.ly=mid-9;prev.oy=mid-9;
+      cur.ly=mid+9;cur.oy=mid+9;
+    }
+  }
 
   return <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{display:"block",margin:"0 auto"}}>
     {sides.map((s,i)=><path key={"s"+i} d={sidePath(s.sa0/(2*Math.PI)+.25,s.sa1/(2*Math.PI)+.25)} fill={s.color} opacity={.5}/>)}
@@ -115,9 +125,9 @@ function HBarChart({data,height:h2=220}){
       {data.map((d,i)=>{
         const y=i*(barH+6)+4;const w=max>0?(d.value/max)*230:0;const pct=total>0?(d.value/total*100).toFixed(1):0;
         return <g key={i}>
-          <text x={105} y={y+barH/2+4} textAnchor="end" fill="#94a3b8" fontSize="11">{d.name}</text>
+          <text x={105} y={y+barH/2+4} textAnchor="end" fill="#e2e8f0" fontSize="12" fontWeight="600">{d.name}</text>
           <rect x={110} y={y} width={w} height={barH} rx={3} fill={d.color} opacity={.85}/>
-          <text x={115+w} y={y+barH/2+4} fill="#64748b" fontSize="10">{pct}% · ${(d.value/1000).toFixed(0)}k</text>
+          <text x={115+w} y={y+barH/2+4} fill="#94a3b8" fontSize="11" fontWeight="600">{pct}% · ${(d.value/1000).toFixed(0)}k</text>
         </g>;
       })}
     </svg>
@@ -488,7 +498,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
   const casaNeta=casaActual.valor-deudaUSD;
   const byAsset=useMemo(()=>{
     const items=enriched.map((p,i)=>({name:p.ticker,value:p.montoActual,color:COLORS[i%COLORS.length]}));
-    if(casaNeta>0) items.push({name:"Casa (neto)",value:casaNeta,color:"#a78bfa"});
+    if(casaNeta>0) items.push({name:"Casa",value:casaNeta,color:"#a78bfa"});
     return items.sort((a,b)=>b.value-a.value);
   },[enriched,casaNeta]);
   const bySector=useMemo(()=>{
@@ -610,10 +620,10 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
               {byCountry.map((d,i)=>{
                 const y=i*(barH+10)+4;const w=max>0?(d.value/max)*220:0;const pct=total>0?(d.value/total*100).toFixed(1):0;
                 return <g key={i}>
-                  <text x={105} y={y+barH/2+4} textAnchor="end" fill="#94a3b8" fontSize="11">{d.name}</text>
+                  <text x={105} y={y+barH/2+4} textAnchor="end" fill="#e2e8f0" fontSize="12" fontWeight="600">{d.name}</text>
                   <rect x={110} y={y} width={w} height={barH} rx={3} fill={`url(#flag-${d.flag})`}/>
                   <rect x={110} y={y} width={w} height={barH} rx={3} fill="rgba(0,0,0,0.15)"/>
-                  <text x={115+w} y={y+barH/2+4} fill="#94a3b8" fontSize="10" fontWeight="500">{pct}% · ${(d.value/1000).toFixed(0)}k</text>
+                  <text x={115+w} y={y+barH/2+4} fill="#e2e8f0" fontSize="11" fontWeight="600">{pct}% · ${(d.value/1000).toFixed(0)}k</text>
                 </g>;
               })}
             </svg>;
@@ -679,7 +689,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
             <label style={{fontSize:12,color:"#94a3b8"}}>Cant. UVAs <input type="number" value={hipoteca.uvas} onChange={e=>setHipoteca(h=>({...h,uvas:+e.target.value}))} style={{...inputSt,width:120}}/></label>
             <label style={{fontSize:12,color:"#94a3b8"}}>Cotiz. UVA $ <span style={{display:"inline-block",background:"#111827",border:"1px solid #1e293b",borderRadius:6,padding:"4px 8px",color:"#34d399",fontSize:14,fontWeight:600,minWidth:90,fontVariantNumeric:"tabular-nums"}}>${fmt(macro.uva,2)}</span></label>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
             <div style={{background:"#111827",borderRadius:8,padding:"10px 12px",border:"1px solid #1e293b"}}>
               <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:3}}>Deuda ARS</div>
               <div style={{fontSize:16,fontWeight:700,color:"#fbbf24"}}>${fmt(deudaARS)}</div>
@@ -689,8 +699,12 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
               <div style={{fontSize:16,fontWeight:700,color:"#f87171"}}>{fU(deudaUSD)}</div>
             </div>
             <div style={{background:"#111827",borderRadius:8,padding:"10px 12px",border:"1px solid #1e293b"}}>
-              <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:3}}>MEP usado</div>
-              <div style={{fontSize:16,fontWeight:700,color:"#e2e8f0"}}>${fmt(macro.dolarMEP)}</div>
+              <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:3}}>Préstamo Inicial</div>
+              <div style={{fontSize:16,fontWeight:700,color:"#34d399"}}>USD 200.695,76</div>
+            </div>
+            <div style={{background:"#111827",borderRadius:8,padding:"10px 12px",border:"1px solid #1e293b"}}>
+              <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:3}}>Saldo vs Inicial</div>
+              <div style={{fontSize:16,fontWeight:700,color:deudaUSD>200695.76?"#f87171":"#34d399"}}>{deudaUSD>200695.76?"+":" "}{fU(deudaUSD-200695.76)}</div>
             </div>
           </div>
         </div>
