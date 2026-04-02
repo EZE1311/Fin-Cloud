@@ -461,6 +461,12 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
     if(casaNeta>0) m["Real Estate"]=(m["Real Estate"]||0)+casaNeta;
     return Object.entries(m).map(([name,value])=>({name,value,color:SC[name]||"#64748b"})).sort((a,b)=>b.value-a.value);
   },[enriched,casaNeta]);
+  const byCountry=useMemo(()=>{
+    let usa=0,arg=0;
+    enriched.forEach(p=>{if(p.broker==="CS")usa+=p.montoActual;else arg+=p.montoActual;});
+    if(casaNeta>0) arg+=casaNeta;
+    return[{name:"USA (CS)",value:usa,color:"#3b82f6"},{name:"Argentina (BM)",value:arg,color:"#60a5fa"}].filter(d=>d.value>0);
+  },[enriched,casaNeta]);
   const movers=useMemo(()=>[...enriched].sort((a,b)=>Math.abs(b.variacion)-Math.abs(a.variacion)).slice(0,5),[enriched]);
   /* Portfolio sort */
   const [sortBy,setSortBy]=useState("montoActual");
@@ -545,7 +551,13 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
     {/* ── Gráficos distribución ── */}
     <div className="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
       <Card title="Composición por Activo"><Pie3D data={byAsset} width={360} height={240}/></Card>
-      <Card title="Distribución por Sector"><HBarChart data={bySector} height={Math.max(180,bySector.length*34)}/></Card>
+      <Card title="Distribución por Sector">
+        <HBarChart data={bySector} height={Math.max(180,bySector.length*34)}/>
+        <div style={{borderTop:"1px solid #252d3d",marginTop:14,paddingTop:14}}>
+          <div style={{fontSize:11,color:"#64748b",textTransform:"uppercase",letterSpacing:".05em",marginBottom:10,fontWeight:600}}>Capital por País</div>
+          <HBarChart data={byCountry} height={byCountry.length*34}/>
+        </div>
+      </Card>
     </div>
 
     {/* ── Movers + News Feed (Bloomberg-style) ── */}
