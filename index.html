@@ -1010,9 +1010,14 @@ function App(){
   },[fetchAllData]);
 
   const enriched=useMemo(()=>pos.map(p=>{
-    const l=prices[p.ticker]||{price:p.ppc,change:0};const mi=p.cantidad*p.ppc;const ma=p.cantidad*l.price;const pl=ma-mi;const r=mi>0?(pl/mi)*100:0;
-    return{...p,precioActual:l.price,variacion:l.change,montoInvertido:mi,montoActual:ma,pl,rendimiento:r,priceARS:l.priceARS||null,changeARS:l.changeARS||null};
-  }),[pos,prices]);
+    const l=prices[p.ticker]||{price:p.ppc,change:0};
+    /* BM: precio = CEDEAR ARS / CCL → refleja valor real en tu broker */
+    const ccl=macro.dolarCCL||1;
+    const precioUSD=(p.broker==="BM"&&l.priceARS)?l.priceARS/ccl:l.price;
+    const varPct=(p.broker==="BM"&&l.changeARS!=null)?l.changeARS:l.change;
+    const mi=p.cantidad*p.ppc;const ma=p.cantidad*precioUSD;const pl=ma-mi;const r=mi>0?(pl/mi)*100:0;
+    return{...p,precioActual:precioUSD,variacion:varPct,montoInvertido:mi,montoActual:ma,pl,rendimiento:r,priceARS:l.priceARS||null,changeARS:l.changeARS||null};
+  }),[pos,prices,macro]);
 
   const portfolioTotal=useMemo(()=>enriched.reduce((s,p)=>s+p.montoActual,0),[enriched]);
   const invertido=useMemo(()=>enriched.reduce((s,p)=>s+p.montoInvertido,0),[enriched]);
