@@ -98,20 +98,44 @@ function HBarChart({data,height:h2=220}){
 
 /* ── data ─────────────────────────────────── */
 const COLORS=["#2563eb","#059669","#d97706","#dc2626","#7c3aed","#0891b2","#be185d","#65a30d","#ea580c","#4f46e5"];
-const SC={"Energía":"#f59e0b","Petróleo":"#78716c","Tecnología":"#3b82f6","Fintech":"#8b5cf6","Automotriz":"#ef4444","Salud":"#10b981","Renta Fija":"#6366f1","Cannabis":"#22c55e"};
+const SC={"Energía":"#f59e0b","Petróleo":"#78716c","Tecnología":"#3b82f6","Fintech":"#8b5cf6","Automotriz":"#ef4444","Salud":"#10b981","Renta Fija":"#6366f1","Uranio":"#22c55e","Inmobiliario":"#f97316"};
 
-const INIT_POS=[
-  {ticker:"EDN",cantidad:40000,ppc:0.98,mercado:"BYMA",tipo:"CEDEAR",moneda:"ARS",broker:"BM",sector:"Energía",pais:"Argentina"},
-  {ticker:"YPFD",cantidad:240,ppc:36,mercado:"BYMA",tipo:"CEDEAR",moneda:"ARS",broker:"BM",sector:"Petróleo",pais:"Argentina"},
-  {ticker:"MELI",cantidad:3000,ppc:13.95,mercado:"BYMA",tipo:"CEDEAR",moneda:"ARS",broker:"BM",sector:"Tecnología",pais:"Argentina"},
-  {ticker:"ORCL",cantidad:750,ppc:59.24,mercado:"BYMA",tipo:"CEDEAR",moneda:"ARS",broker:"BM",sector:"Tecnología",pais:"USA"},
-  {ticker:"IBM",cantidad:58,ppc:235.69,mercado:"NYSE",tipo:"Acción",moneda:"USD",broker:"AT",sector:"Tecnología",pais:"USA"},
-  {ticker:"FISV",cantidad:106,ppc:67.25,mercado:"NYSE",tipo:"Acción",moneda:"USD",broker:"AT",sector:"Fintech",pais:"USA"},
-  {ticker:"BKUCF",cantidad:1000000,ppc:0.0443,mercado:"NYSE",tipo:"Acción",moneda:"USD",broker:"AT",sector:"Cannabis",pais:"Canadá"},
-  {ticker:"TSLA",cantidad:1000,ppc:30.10,mercado:"BYMA",tipo:"CEDEAR",moneda:"ARS",broker:"BM",sector:"Automotriz",pais:"USA"},
-  {ticker:"UNH",cantidad:2500,ppc:10.85,mercado:"BYMA",tipo:"CEDEAR",moneda:"ARS",broker:"BM",sector:"Salud",pais:"USA"},
-  {ticker:"AL30",cantidad:700,ppc:70.26,mercado:"BYMA",tipo:"Bono",moneda:"ARS",broker:"BM",sector:"Renta Fija",pais:"Argentina"},
-];
+/* Metadata por ticker — sector, país, tipo de instrumento */
+const TICKER_META={
+  EDN:{sector:"Energía",pais:"Argentina",tipo:"CEDEAR"},
+  YPFD:{sector:"Petróleo",pais:"Argentina",tipo:"CEDEAR"},
+  MELI:{sector:"Tecnología",pais:"Argentina",tipo:"CEDEAR"},
+  ORCL:{sector:"Tecnología",pais:"USA",tipo:"CEDEAR"},
+  IBM:{sector:"Tecnología",pais:"USA",tipo:"Acción"},
+  FISV:{sector:"Fintech",pais:"USA",tipo:"Acción"},
+  BKUCF:{sector:"Uranio",pais:"Canadá",tipo:"Acción"},
+  TSLA:{sector:"Automotriz",pais:"USA",tipo:"CEDEAR"},
+  UNH:{sector:"Salud",pais:"USA",tipo:"CEDEAR"},
+  AL30:{sector:"Renta Fija",pais:"Argentina",tipo:"Bono"},
+};
+
+/* Calcula posiciones abiertas a partir de operaciones */
+function calcPositions(ops){
+  const map={};
+  ops.forEach(op=>{
+    const t=op.ticker;
+    if(!map[t]) map[t]={ticker:t,cantCompra:0,costoTotal:0,cantVenta:0,mercado:op.mercado,broker:op.broker,moneda:op.moneda};
+    /* Normalizar precio a USD para operaciones ARS */
+    const precioUSD=op.moneda==="ARS"&&op.ccl>0?op.precio/op.ccl:op.precio;
+    if(op.tipo==="COMPRA"){
+      map[t].cantCompra+=op.cantidad;
+      map[t].costoTotal+=op.cantidad*precioUSD;
+    }else{
+      map[t].cantVenta+=op.cantidad;
+    }
+  });
+  return Object.values(map).filter(p=>(p.cantCompra-p.cantVenta)>0).map(p=>{
+    const cantidad=p.cantCompra-p.cantVenta;
+    const ppc=p.cantCompra>0?p.costoTotal/p.cantCompra:0;
+    const meta=TICKER_META[p.ticker]||{sector:"Sin clasificar",pais:p.mercado==="NYSE"?"USA":"Argentina",tipo:p.mercado==="NYSE"?"Acción":"CEDEAR"};
+    return{ticker:p.ticker,cantidad,ppc,mercado:p.mercado,broker:p.broker,moneda:p.moneda,...meta};
+  });
+}
 
 const INIT_OPS=[
   {id:1,fecha:"13-12-24",ticker:"IBM",tipo:"COMPRA",cantidad:12,precio:230,mercado:"NYSE",broker:"AT",moneda:"USD",ccl:null},
@@ -179,26 +203,120 @@ function Badge({text,color="#60a5fa",bg="#252d3d"}){
 }
 
 /* ── RESUMEN ─────────────────────────────── */
-function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices}){
+function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,casa,setCasa,casaActual,hipoteca,setHipoteca,deudaUSD,patrimonioNeto}){
   const byType=useMemo(()=>{const m={};enriched.forEach((p,i)=>{m[p.tipo]=(m[p.tipo]||0)+p.montoActual});return Object.entries(m).map(([name,value],i)=>({name,value,color:COLORS[i%COLORS.length]}));},[enriched]);
   const bySector=useMemo(()=>{const m={};enriched.forEach(p=>{m[p.sector]=(m[p.sector]||0)+p.montoActual});return Object.entries(m).map(([name,value])=>({name,value,color:SC[name]||"#64748b"})).sort((a,b)=>b.value-a.value);},[enriched]);
   const movers=useMemo(()=>[...enriched].sort((a,b)=>Math.abs(b.variacion)-Math.abs(a.variacion)).slice(0,5),[enriched]);
+  /* Portfolio sort */
+  const [sortBy,setSortBy]=useState("montoActual");
+  const [sortDir,setSortDir]=useState("desc");
+  const sorted=useMemo(()=>[...enriched].sort((a,b)=>sortDir==="desc"?b[sortBy]-a[sortBy]:a[sortBy]-b[sortBy]),[enriched,sortBy,sortDir]);
+  const toggle=c=>{if(sortBy===c)setSortDir(d=>d==="desc"?"asc":"desc");else{setSortBy(c);setSortDir("desc")}};
+
+  const inputSt={background:"#1e293b",border:"1px solid #334155",borderRadius:6,padding:"6px 10px",color:"#e2e8f0",fontSize:13,width:110,fontVariantNumeric:"tabular-nums"};
+  const deudaARS=hipoteca.uvas*hipoteca.cotizacionUVA;
 
   return <div style={{display:"flex",flexDirection:"column",gap:20}}>
     {trigAlerts.length>0&&<div style={{background:"#dc262612",border:"1px solid #dc262633",borderRadius:10,padding:"14px 18px"}}>
       <div style={{fontSize:13,fontWeight:600,color:"#fca5a5",marginBottom:8}}>⚠ Alertas Activadas</div>
       {trigAlerts.map(a=><div key={a.id} style={{fontSize:12,color:"#fca5a5",padding:"3px 0"}}>{a.ticker} {a.condition==="above"?"superó":"cayó debajo de"} USD {fmt(a.price,2)} → Actual: USD {fmt(prices[a.ticker]?.price,4)}</div>)}
     </div>}
+
+    {/* ── KPIs principales ── */}
     <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
+      <Stat label="Patrimonio Neto" value={fU(patrimonioNeto)} sub="Portfolio + Casa - Hipoteca" color="#a78bfa"/>
       <Stat label="Valor del Portfolio" value={fU(total)} sub={fP(rend)} color="#f1f5f9"/>
-      <Stat label="Total Invertido" value={fU(invertido)} color="#94a3b8"/>
       <Stat label="P&L Total" value={fU(pl)} sub={pl>=0?"Ganancia":"Pérdida"} color={pl>=0?"#34d399":"#f87171"}/>
       <Stat label="Posiciones" value={String(enriched.length)} sub={`${enriched.filter(p=>p.variacion>0).length} en verde`} color="#60a5fa"/>
     </div>
+
+    {/* ── Inmobiliario ── */}
+    <div className="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+      <Card title="🏠 Valuación Casa">
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
+            <label style={{fontSize:12,color:"#94a3b8"}}>Precio compra USD <input type="number" value={casa.precioCompra} onChange={e=>setCasa(c=>({...c,precioCompra:+e.target.value}))} style={inputSt}/></label>
+            <label style={{fontSize:12,color:"#94a3b8"}}>Años <input type="number" value={casa.anios} min={0} onChange={e=>setCasa(c=>({...c,anios:+e.target.value}))} style={{...inputSt,width:60}}/></label>
+            <label style={{fontSize:12,color:"#94a3b8"}}>Tasa anual % <input type="number" value={casa.tasaAnual} step={0.5} onChange={e=>setCasa(c=>({...c,tasaAnual:+e.target.value}))} style={{...inputSt,width:70}}/></label>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+            <div style={{background:"#111827",borderRadius:8,padding:"10px 12px",border:"1px solid #1e293b"}}>
+              <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:3}}>Valor Actual</div>
+              <div style={{fontSize:16,fontWeight:700,color:"#e2e8f0"}}>{fU(casaActual.valor)}</div>
+            </div>
+            <div style={{background:"#111827",borderRadius:8,padding:"10px 12px",border:"1px solid #1e293b"}}>
+              <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:3}}>P&L</div>
+              <div style={{fontSize:16,fontWeight:700,color:casaActual.pl>=0?"#34d399":"#f87171"}}>{fU(casaActual.pl)}</div>
+            </div>
+            <div style={{background:"#111827",borderRadius:8,padding:"10px 12px",border:"1px solid #1e293b"}}>
+              <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:3}}>Rend</div>
+              <div style={{fontSize:16,fontWeight:700,color:casaActual.rend>=0?"#34d399":"#f87171"}}>{fP(casaActual.rend)}</div>
+            </div>
+          </div>
+        </div>
+      </Card>
+      <Card title="🏦 Hipoteca BBVA (UVAs)">
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
+            <label style={{fontSize:12,color:"#94a3b8"}}>Cant. UVAs <input type="number" value={hipoteca.uvas} onChange={e=>setHipoteca(h=>({...h,uvas:+e.target.value}))} style={{...inputSt,width:120}}/></label>
+            <label style={{fontSize:12,color:"#94a3b8"}}>Cotiz. UVA $ <input type="number" value={hipoteca.cotizacionUVA} step={0.01} onChange={e=>setHipoteca(h=>({...h,cotizacionUVA:+e.target.value}))} style={{...inputSt,width:110}}/></label>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+            <div style={{background:"#111827",borderRadius:8,padding:"10px 12px",border:"1px solid #1e293b"}}>
+              <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:3}}>Deuda ARS</div>
+              <div style={{fontSize:16,fontWeight:700,color:"#fbbf24"}}>${fmt(deudaARS)}</div>
+            </div>
+            <div style={{background:"#111827",borderRadius:8,padding:"10px 12px",border:"1px solid #1e293b"}}>
+              <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:3}}>Deuda USD (MEP)</div>
+              <div style={{fontSize:16,fontWeight:700,color:"#f87171"}}>{fU(deudaUSD)}</div>
+            </div>
+            <div style={{background:"#111827",borderRadius:8,padding:"10px 12px",border:"1px solid #1e293b"}}>
+              <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:3}}>MEP usado</div>
+              <div style={{fontSize:16,fontWeight:700,color:"#e2e8f0"}}>${fmt(macro.dolarMEP)}</div>
+            </div>
+          </div>
+        </div>
+      </Card>
+    </div>
+
+    {/* ── Gráficos distribución ── */}
     <div className="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
       <Card title="Distribución por Tipo"><DonutChart data={byType} size={210} thickness={30}/></Card>
       <Card title="Distribución por Sector"><HBarChart data={bySector} height={Math.max(180,bySector.length*34)}/></Card>
     </div>
+
+    {/* ── Tabla Portfolio (antes tab separado) ── */}
+    <Card title="Posiciones del Portfolio">
+      <div className="table-wrap" style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:800}}>
+          <thead><tr>
+            {[{c:"ticker",l:"Ticker",a:"left"},{c:"cantidad",l:"Cant"},{c:"ppc",l:"PPC"},{c:"precioActual",l:"Precio"},{c:"variacion",l:"Var%"},{c:"montoInvertido",l:"Invertido"},{c:"montoActual",l:"Actual"},{c:"pl",l:"P&L"},{c:"rendimiento",l:"Rend%"}].map(h=>
+              <th key={h.c} onClick={()=>toggle(h.c)} style={{padding:"8px 6px",textAlign:h.a||"right",fontSize:11,fontWeight:600,color:"#64748b",textTransform:"uppercase",letterSpacing:".04em",cursor:"pointer",userSelect:"none",whiteSpace:"nowrap",borderBottom:"1px solid #252d3d",background:"#151a27"}}>{h.l}{sortBy===h.c?(sortDir==="desc"?" ↓":" ↑"):""}</th>
+            )}
+          </tr></thead>
+          <tbody>{sorted.map(p=><tr key={p.ticker} style={{borderBottom:"1px solid #1e293b"}}>
+            <td style={{padding:"8px 6px"}}><div style={{fontWeight:700,fontSize:13}}>{p.ticker}</div><div style={{fontSize:10,color:"#64748b"}}>{p.mercado}·{p.broker}</div></td>
+            <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12}}>{fmt(p.cantidad)}</td>
+            <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12}}>{fU(p.ppc)}</td>
+            <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600}}>{fU(p.precioActual)}</td>
+            <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600,color:p.variacion>=0?"#34d399":"#f87171"}}>{fP(p.variacion)}</td>
+            <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12}}>{fU(p.montoInvertido)}</td>
+            <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600}}>{fU(p.montoActual)}</td>
+            <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600,color:p.pl>=0?"#34d399":"#f87171"}}>{fU(p.pl)}</td>
+            <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600,color:p.rendimiento>=0?"#34d399":"#f87171"}}>{fP(p.rendimiento)}</td>
+          </tr>)}</tbody>
+          <tfoot><tr style={{borderTop:"2px solid #2563eb"}}>
+            <td colSpan={5} style={{padding:10,fontWeight:700,fontSize:13}}>TOTAL</td>
+            <td style={{padding:10,textAlign:"right",fontWeight:700,fontVariantNumeric:"tabular-nums",fontSize:12}}>{fU(invertido)}</td>
+            <td style={{padding:10,textAlign:"right",fontWeight:700,fontVariantNumeric:"tabular-nums",fontSize:12}}>{fU(total)}</td>
+            <td style={{padding:10,textAlign:"right",fontWeight:700,fontVariantNumeric:"tabular-nums",fontSize:12,color:pl>=0?"#34d399":"#f87171"}}>{fU(pl)}</td>
+            <td style={{padding:10,textAlign:"right",fontWeight:700,fontVariantNumeric:"tabular-nums",fontSize:12,color:rend>=0?"#34d399":"#f87171"}}>{fP(rend)}</td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </Card>
+
+    {/* ── Movers y Últimas Operaciones ── */}
     <div className="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
       <Card title="Mayores Movimientos Hoy">
         {movers.map((p,i)=><div key={p.ticker} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<movers.length-1?"1px solid #252d3d":"none"}}>
@@ -218,6 +336,8 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices})
         </div>)}
       </Card>
     </div>
+
+    {/* ── Indicadores Macro ── */}
     <Card title="Indicadores Macro Argentina">
       <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
         {[{l:"Dólar Oficial",v:`$${fmt(macro.dolarOficial)}`},{l:"Dólar MEP",v:`$${fmt(macro.dolarMEP)}`},{l:"Dólar CCL",v:`$${fmt(macro.dolarCCL)}`},{l:"Dólar Blue",v:`$${fmt(macro.dolarBlue)}`},{l:"Riesgo País",v:fmt(macro.riesgoPais)},{l:"Inflación",v:`${fmt(macro.inflacion,1)}%`},{l:"Tasa PM",v:`${fmt(macro.tasa,1)}%`},{l:"UVA",v:`$${fmt(macro.uva,2)}`}].map(i=>
@@ -231,65 +351,8 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices})
   </div>;
 }
 
-/* ── PORTFOLIO ───────────────────────────── */
-function Portfolio({enriched,total}){
-  const [sortBy,setSortBy]=useState("montoActual");
-  const [sortDir,setSortDir]=useState("desc");
-  const [filterType,setFilterType]=useState("Todos");
-  const types=["Todos",...new Set(enriched.map(p=>p.tipo))];
-  const sorted=useMemo(()=>{
-    let d=filterType==="Todos"?enriched:enriched.filter(p=>p.tipo===filterType);
-    return[...d].sort((a,b)=>sortDir==="desc"?b[sortBy]-a[sortBy]:a[sortBy]-b[sortBy]);
-  },[enriched,sortBy,sortDir,filterType]);
-  const toggle=c=>{if(sortBy===c)setSortDir(d=>d==="desc"?"asc":"desc");else{setSortBy(c);setSortDir("desc")}};
-  const byCountry=useMemo(()=>{const m={};enriched.forEach((p,i)=>{m[p.pais]=(m[p.pais]||0)+p.montoActual});return Object.entries(m).map(([name,value],i)=>({name,value,color:COLORS[i%COLORS.length]}));},[enriched]);
-
-  const TH=({col,label,align="right"})=><th onClick={()=>toggle(col)} style={{padding:"10px 8px",textAlign:align,fontSize:11,fontWeight:600,color:"#64748b",textTransform:"uppercase",letterSpacing:".04em",cursor:"pointer",userSelect:"none",whiteSpace:"nowrap",borderBottom:"1px solid #252d3d",background:"#151a27"}}>{label}{sortBy===col?(sortDir==="desc"?" ↓":" ↑"):""}</th>;
-
-  return <div style={{display:"flex",flexDirection:"column",gap:18}}>
-    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-      {types.map(t=><button key={t} onClick={()=>setFilterType(t)} style={{background:filterType===t?"#2563eb":"#1e293b",border:`1px solid ${filterType===t?"#2563eb":"#334155"}`,color:filterType===t?"#fff":"#94a3b8",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:500}}>{t}</button>)}
-    </div>
-    <Card>
-      <div className="table-wrap" style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",minWidth:900}}>
-          <thead><tr>
-            <TH col="ticker" label="Ticker" align="left"/>
-            <th style={{padding:"10px 8px",textAlign:"left",fontSize:11,fontWeight:600,color:"#64748b",borderBottom:"1px solid #252d3d",background:"#151a27"}}>Tipo</th>
-            <TH col="cantidad" label="Cant"/><TH col="ppc" label="PPC"/><TH col="precioActual" label="Precio"/>
-            <TH col="variacion" label="Var%"/><TH col="montoInvertido" label="Invertido"/><TH col="montoActual" label="Actual"/>
-            <TH col="pl" label="P&L"/><TH col="rendimiento" label="Rend%"/>
-            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,fontWeight:600,color:"#64748b",borderBottom:"1px solid #252d3d",background:"#151a27"}}>%Port</th>
-          </tr></thead>
-          <tbody>{sorted.map(p=><tr key={p.ticker} style={{borderBottom:"1px solid #1e293b"}} onMouseEnter={e=>e.currentTarget.style.background="#252d3d33"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-            <td style={{padding:"10px 8px"}}><div style={{fontWeight:700,fontSize:14}}>{p.ticker}</div><div style={{fontSize:10,color:"#64748b"}}>{p.mercado}·{p.broker}</div></td>
-            <td style={{padding:"10px 8px"}}><Badge text={p.tipo}/></td>
-            <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13}}>{fmt(p.cantidad)}</td>
-            <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13}}>{fU(p.ppc)}</td>
-            <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13,fontWeight:600}}>{fU(p.precioActual)}</td>
-            <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13,fontWeight:600,color:p.variacion>=0?"#34d399":"#f87171"}}>{fP(p.variacion)}</td>
-            <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13}}>{fU(p.montoInvertido)}</td>
-            <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13,fontWeight:600}}>{fU(p.montoActual)}</td>
-            <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13,fontWeight:600,color:p.pl>=0?"#34d399":"#f87171"}}>{fU(p.pl)}</td>
-            <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13,fontWeight:600,color:p.rendimiento>=0?"#34d399":"#f87171"}}>{fP(p.rendimiento)}</td>
-            <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:13}}>{fmt((p.montoActual/total)*100,1)}%</td>
-          </tr>)}</tbody>
-          <tfoot><tr style={{borderTop:"2px solid #2563eb"}}>
-            <td colSpan={6} style={{padding:12,fontWeight:700,fontSize:14}}>TOTAL</td>
-            <td style={{padding:12,textAlign:"right",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fU(sorted.reduce((s,p)=>s+p.montoInvertido,0))}</td>
-            <td style={{padding:12,textAlign:"right",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fU(sorted.reduce((s,p)=>s+p.montoActual,0))}</td>
-            <td style={{padding:12,textAlign:"right",fontWeight:700,fontVariantNumeric:"tabular-nums",color:sorted.reduce((s,p)=>s+p.pl,0)>=0?"#34d399":"#f87171"}}>{fU(sorted.reduce((s,p)=>s+p.pl,0))}</td>
-            <td colSpan={2}></td>
-          </tr></tfoot>
-        </table>
-      </div>
-    </Card>
-    <Card title="Exposición por País"><DonutChart data={byCountry} size={200} thickness={28}/></Card>
-  </div>;
-}
-
 /* ── OPERACIONES ─────────────────────────── */
-function Operaciones({ops,setOps,pos,setPos,macro}){
+function Operaciones({ops,setOps,macro}){
   const [showForm,setShowForm]=useState(false);
   const [editId,setEditId]=useState(null);
   const [form,setForm]=useState({ticker:"",tipo:"COMPRA",cantidad:"",precio:"",mercado:"BYMA",broker:"BM",moneda:"ARS",fecha:"",ccl:""});
@@ -319,13 +382,7 @@ function Operaciones({ops,setOps,pos,setPos,macro}){
       setOps(ops.map(o=>o.id===editId?{...o,...opData}:o));
       setEditId(null);
     }else{
-      const op={id:Date.now(),...opData};
-      setOps([...ops,op]);
-      const ex=pos.find(p=>p.ticker===opData.ticker);
-      if(ex){
-        if(opData.tipo==="COMPRA"){const nc=ex.cantidad+opData.cantidad;const np=((ex.cantidad*ex.ppc)+(opData.cantidad*opData.precio))/nc;setPos(pos.map(p=>p.ticker===opData.ticker?{...p,cantidad:nc,ppc:np}:p));}
-        else{const nc=ex.cantidad-opData.cantidad;if(nc<=0)setPos(pos.filter(p=>p.ticker!==opData.ticker));else setPos(pos.map(p=>p.ticker===opData.ticker?{...p,cantidad:nc}:p));}
-      }else if(opData.tipo==="COMPRA"){setPos([...pos,{ticker:opData.ticker,cantidad:opData.cantidad,ppc:opData.precio,mercado:opData.mercado,tipo:opData.mercado==="NYSE"?"Acción":"CEDEAR",moneda:opData.moneda,broker:opData.broker,sector:"Sin clasificar",pais:opData.mercado==="NYSE"?"USA":"Argentina"}]);}
+      setOps([...ops,{id:Date.now(),...opData}]);
     }
     setForm(emptyForm);setShowForm(false);
   };
@@ -461,12 +518,30 @@ function Noticias({pos}){
 /* ── APP ─────────────────────────────────── */
 function App(){
   const [tab,setTab]=useState("resumen");
-  const [pos,setPos]=useState(INIT_POS);
   const [ops,setOps]=useState(INIT_OPS);
   const [alerts,setAlerts]=useState([{id:1,ticker:"YPFD",condition:"above",price:42,active:true},{id:2,ticker:"IBM",condition:"below",price:230,active:true},{id:3,ticker:"MELI",condition:"above",price:15,active:true}]);
   const [prices,setPrices]=useState(LIVE);
   const [macro]=useState(MACRO);
   const [lastUp,setLastUp]=useState(new Date());
+
+  /* Inmobiliario */
+  const [casa,setCasa]=useState({precioCompra:398000,anios:1,tasaAnual:4});
+  const [hipoteca,setHipoteca]=useState({uvas:200696,cotizacionUVA:1858.61});
+
+  /* Posiciones derivadas 100% de operaciones */
+  const pos=useMemo(()=>calcPositions(ops),[ops]);
+
+  /* Cálculos inmobiliarios */
+  const casaActual=useMemo(()=>{
+    const val=casa.precioCompra*Math.pow(1+casa.tasaAnual/100,casa.anios);
+    const pl=val-casa.precioCompra;
+    const rend=(pl/casa.precioCompra)*100;
+    return{valor:val,pl,rend};
+  },[casa]);
+  const deudaUSD=useMemo(()=>{
+    const deudaARS=hipoteca.uvas*hipoteca.cotizacionUVA;
+    return deudaARS/macro.dolarMEP;
+  },[hipoteca,macro]);
 
   useEffect(()=>{
     const iv=setInterval(()=>{
@@ -486,7 +561,10 @@ function App(){
   const pl=total-invertido;const rend=invertido>0?(pl/invertido)*100:0;
   const trigAlerts=useMemo(()=>alerts.filter(a=>a.active&&prices[a.ticker]&&(a.condition==="above"?prices[a.ticker].price>=a.price:prices[a.ticker].price<=a.price)),[alerts,prices]);
 
-  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"portfolio",label:"Portfolio",emoji:"📊"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"alertas",label:"Alertas",emoji:"🔔"},{id:"noticias",label:"Noticias",emoji:"📰"}];
+  /* Patrimonio total incluyendo inmueble neto */
+  const patrimonioNeto=total+casaActual.valor-deudaUSD;
+
+  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"alertas",label:"Alertas",emoji:"🔔"},{id:"noticias",label:"Noticias",emoji:"📰"}];
 
   return <div style={{minHeight:"100vh"}}>
     <header style={{background:"linear-gradient(90deg,#111827,#1e293b)",borderBottom:"1px solid #1e293b",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
@@ -508,9 +586,8 @@ function App(){
       {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{background:"none",border:"none",color:tab===t.id?"#60a5fa":"#64748b",padding:"12px 16px",cursor:"pointer",fontSize:13,fontWeight:tab===t.id?600:400,borderBottom:tab===t.id?"2px solid #2563eb":"2px solid transparent",display:"flex",alignItems:"center",gap:6,transition:"all .15s",whiteSpace:"nowrap"}}>{t.emoji} {t.label}</button>)}
     </nav>
     <main className="main-content" style={{padding:24,maxWidth:1400,margin:"0 auto"}}>
-      {tab==="resumen"&&<Resumen enriched={enriched} total={total} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices}/>}
-      {tab==="portfolio"&&<Portfolio enriched={enriched} total={total}/>}
-      {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} pos={pos} setPos={setPos} macro={macro}/>}
+      {tab==="resumen"&&<Resumen enriched={enriched} total={total} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto}/>}
+      {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro}/>}
       {tab==="alertas"&&<Alertas alerts={alerts} setAlerts={setAlerts} prices={prices} pos={pos}/>}
       {tab==="noticias"&&<Noticias pos={pos}/>}
     </main>
