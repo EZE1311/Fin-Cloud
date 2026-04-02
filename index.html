@@ -541,8 +541,8 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
           <span style={{color:pl>=0?"#34d399":"#f87171"}}>P&L: {pl>=0?"+":""}{fU(pl)} ({rend>=0?"+":""}{fmt(rend,2)}%)</span>
         </div>
         <div style={{display:"flex",gap:8,marginTop:2,fontSize:11,fontWeight:500}}>
-          <span style={{color:dailyPL.monto>=0?"#34d399":"#f87171"}}>Hoy: {dailyPL.monto>=0?"+":""}${fmt(Math.abs(dailyPL.monto))}</span>
-          <span style={{color:dailyPL.pct>=0?"#34d399":"#f87171"}}>({dailyPL.pct>=0?"+":""}{fmt(dailyPL.pct,2)}%)</span>
+          <span style={{color:dailyPL.pct>=0?"#34d399":"#f87171"}}>Hoy: {dailyPL.pct>=0?"+":""}{fmt(dailyPL.pct,2)}%</span>
+          <span style={{color:dailyPL.monto>=0?"#34d399":"#f87171"}}>({dailyPL.monto>=0?"+":""}USD {fmt(Math.abs(dailyPL.monto),2)})</span>
         </div>
       </div>
       <Stat label="Portfolio Líquido" value={fU(portfolioLiquido)} sub={caucionUSD>0?`Caución: ${fU(caucionUSD)}`:"Sin caución"} color="#60a5fa"/>
@@ -970,6 +970,7 @@ function App(){
   const [alerts,setAlerts]=useState(()=>loadLS("alerts",INIT_ALERTS));
   const [prices,setPrices]=useState(LIVE_FALLBACK);
   const [macro,setMacro]=useState(MACRO_FALLBACK);
+  const [macroPrev,setMacroPrev]=useState(()=>{try{return JSON.parse(localStorage.getItem("eid_macro_prev")||"{}")}catch(e){return{}}});
   const [news,setNews]=useState(NEWS_FALLBACK);
   const [lastUp,setLastUp]=useState(new Date());
   const [dataSource,setDataSource]=useState("cargando..."); /* live | fallback | cargando */
@@ -1071,6 +1072,18 @@ function App(){
       fetchNewsReal(allTickers)
     ]);
     setMacro(macroData);
+    /* Guardar snapshot previo para variación diaria del header */
+    try{
+      const todayStr=new Date().toISOString().split("T")[0];
+      const prev=JSON.parse(localStorage.getItem("eid_macro_prev")||"{}");
+      if(prev._date!==todayStr){
+        /* Nuevo día: el macro que teníamos se convierte en el previo */
+        const cur=JSON.parse(localStorage.getItem("eid_macro_cur")||"null");
+        if(cur)localStorage.setItem("eid_macro_prev",JSON.stringify({...cur,_date:todayStr}));
+      }
+      localStorage.setItem("eid_macro_cur",JSON.stringify(macroData));
+      setMacroPrev(JSON.parse(localStorage.getItem("eid_macro_prev")||"{}"));
+    }catch(e){}
     if(priceData&&Object.keys(priceData).length>0){
       setPrices(prev=>({...prev,...priceData}));
       setDataSource("live");
@@ -1132,22 +1145,26 @@ function App(){
             const bCCL=((macro.dolarCCL-of1)/of1*100).toFixed(1);
             const bBlue=((macro.dolarBlue-of1)/of1*100).toFixed(1);
             const bTarjeta=((macro.dolarTarjeta-of1)/of1*100).toFixed(1);
+            const mp=macroPrev;
+            const dVar=(cur,prev)=>{if(!prev||!cur||prev===0)return null;return((cur-prev)/prev*100);};
+            const fVar=v=>{if(v==null)return null;return`${v>=0?"+":""}${v.toFixed(1)}%`;};
             return[
-              {l:"Oficial",v:`$${fmt(of1)}`},
-              {l:"MEP",v:`$${fmt(macro.dolarMEP)}`,brecha:bMEP},
-              {l:"CCL",v:`$${fmt(macro.dolarCCL)}`,brecha:bCCL},
-              {l:"Blue",v:`$${fmt(macro.dolarBlue)}`,brecha:bBlue},
-              {l:"Tarjeta",v:`$${fmt(macro.dolarTarjeta)}`,brecha:bTarjeta},
-              {l:"Riesgo País",v:String(macro.riesgoPais)+" bp"},
-              {l:"Reservas",v:`USD ${fmt(macro.reservas,0)}M`},
+              {l:"Oficial",v:`$${fmt(of1)}`,daily:fVar(dVar(of1,mp.dolarOficial))},
+              {l:"MEP",v:`$${fmt(macro.dolarMEP)}`,brecha:bMEP,daily:fVar(dVar(macro.dolarMEP,mp.dolarMEP))},
+              {l:"CCL",v:`$${fmt(macro.dolarCCL)}`,brecha:bCCL,daily:fVar(dVar(macro.dolarCCL,mp.dolarCCL))},
+              {l:"Blue",v:`$${fmt(macro.dolarBlue)}`,brecha:bBlue,daily:fVar(dVar(macro.dolarBlue,mp.dolarBlue))},
+              {l:"Tarjeta",v:`$${fmt(macro.dolarTarjeta)}`,brecha:bTarjeta,daily:fVar(dVar(macro.dolarTarjeta,mp.dolarTarjeta))},
+              {l:"Riesgo País",v:String(macro.riesgoPais)+" bp",daily:fVar(dVar(macro.riesgoPais,mp.riesgoPais))},
+              {l:"Reservas",v:`USD ${fmt(macro.reservas,0)}M`,daily:fVar(dVar(macro.reservas,mp.reservas))},
               {l:"Inflación",v:`${fmt(macro.inflacion,1)}%`,sub:"mensual"},
               {l:"Infl. IA",v:`${fmt(macro.inflacionIA,1)}%`,sub:"interanual"},
-              {l:"Tasa PM",v:`${fmt(macro.tasa,1)}%`},
-              {l:"UVA",v:`$${fmt(macro.uva,2)}`,sub:macro.uvaVar30d?`30d: ${macro.uvaVar30d>0?"+":""}${macro.uvaVar30d.toFixed(1)}%`:null}
+              {l:"Tasa PM",v:`${fmt(macro.tasa,1)}%`,daily:fVar(dVar(macro.tasa,mp.tasa))},
+              {l:"UVA",v:`$${fmt(macro.uva,2)}`,sub:macro.uvaVar30d?`30d: ${macro.uvaVar30d>0?"+":""}${macro.uvaVar30d.toFixed(1)}%`:null,daily:fVar(dVar(macro.uva,mp.uva))}
             ].map(i=><div key={i.l} style={{textAlign:"center",minWidth:48}}>
               <div style={{color:"#475569",marginBottom:1,whiteSpace:"nowrap"}}>{i.l}</div>
               <div style={{fontWeight:600,color:"#94a3b8",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{i.v}</div>
               {i.brecha&&<div style={{fontSize:10,color:"#64748b",fontWeight:500}}>+{i.brecha}%</div>}
+              {i.daily&&<div style={{fontSize:9,color:i.daily.startsWith("+")?"#34d399":i.daily.startsWith("-")?"#f87171":"#64748b",fontWeight:500,marginTop:1}}>{i.daily}</div>}
               {i.sub&&<div style={{fontSize:9,color:"#64748b",marginTop:1}}>{i.sub}</div>}
             </div>);
           })()}
