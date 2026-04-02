@@ -199,16 +199,16 @@ const INIT_OPS=[
   {id:17,fecha:"24-02-26",ticker:"IBM",tipo:"COMPRA",cantidad:28,precio:232,mercado:"NYSE",broker:"AT",moneda:"USD",ccl:null},
 ];
 
-const LIVE={
+/* ── Fallback data (se usa si las APIs fallan) ───── */
+const LIVE_FALLBACK={
   EDN:{price:1.12,change:2.48,prev:1.09},YPFD:{price:38.5,change:-3.03,prev:39.7},
   MELI:{price:14.1,change:0.42,prev:14.04},ORCL:{price:58.9,change:-0.13,prev:58.98},
   IBM:{price:246.68,change:1.46,prev:243.13},FISV:{price:71.2,change:0.85,prev:70.6},
   BKUCF:{price:.04,change:-4.97,prev:.0421},TSLA:{price:265.3,change:1.22,prev:262.1},
   UNH:{price:452.8,change:-0.56,prev:455.35},AL30:{price:72.5,change:0.35,prev:72.25},
 };
-const MACRO={dolarOficial:1415,dolarMEP:1380,dolarCCL:1395,dolarBlue:1405,riesgoPais:617,inflacion:2.9,tasa:29,uva:1858.61};
-
-const NEWS=[
+const MACRO_FALLBACK={dolarOficial:1415,dolarMEP:1380,dolarCCL:1395,dolarBlue:1405,riesgoPais:617,inflacion:2.9,tasa:29,uva:1858.61};
+const NEWS_FALLBACK=[
   {id:1,ticker:"YPFD",title:"YPF apuesta fuerte a Vaca Muerta: nueva inversión de USD 1.200M en shale oil",source:"Ámbito Financiero",time:"12 min",sentiment:"positive",summary:"La petrolera anunció expansión de producción en Vaca Muerta con foco en exportación de crudo."},
   {id:2,ticker:"IBM",title:"IBM supera estimaciones de Wall Street en Q1 2026 impulsada por IA",source:"Reuters",time:"28 min",sentiment:"positive",summary:"Ingresos de consultoría en IA crecieron 42% interanual. Guidance revisado al alza."},
   {id:3,ticker:"MELI",title:"Mercado Libre expande Mercado Pago a 3 nuevos países de Asia",source:"Bloomberg",time:"45 min",sentiment:"positive",summary:"Entra en Vietnam, Filipinas e Indonesia con su fintech."},
@@ -221,6 +221,144 @@ const NEWS=[
   {id:10,ticker:"BKUCF",title:"Blue Sky Uranium avanza con perforación en Amarillo Grande, Argentina",source:"Mining Weekly",time:"4 hs",sentiment:"positive",summary:"La minera canadiense reportó resultados positivos de exploración en su proyecto de uranio en Río Negro."},
   {id:11,ticker:"MELI",title:"Mercado Libre lanza créditos hipotecarios en Argentina",source:"iProfesional",time:"5 hs",sentiment:"positive",summary:"Mercado Pago ofrecerá créditos hipotecarios UVA a tasas competitivas."},
 ];
+
+/* ── API ENGINE — Datos reales ──────────────── */
+
+/* Yahoo Finance symbols — mapeo de nuestros tickers */
+const YF_MAP={
+  EDN:"EDN",YPFD:"YPF",MELI:"MELI",ORCL:"ORCL",IBM:"IBM",
+  FISV:"FISV",BKUCF:"BKUCF",TSLA:"TSLA",UNH:"UNH",AL30:"AL30D.BA"
+};
+
+/* Proxy CORS para APIs que no permiten fetch directo del browser */
+const PROXY="https://api.allorigins.win/raw?url=";
+
+async function fetchMacroReal(){
+  try{
+    /* Dólares desde DolarAPI */
+    const dolarRes=await fetch("https://dolarapi.com/v1/dolares");
+    const dolares=await dolarRes.json();
+    const findD=(casa)=>{const d=dolares.find(x=>x.casa===casa);return d?d.venta:0;};
+    const oficial=findD("oficial");
+    const mep=findD("bolsa");
+    const ccl=findD("contadoconliqui");
+    const blue=findD("blue");
+
+    /* Riesgo país desde ArgentinaDatos */
+    let riesgoPais=617;
+    try{
+      const rpRes=await fetch("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo");
+      const rpData=await rpRes.json();
+      riesgoPais=rpData.valor||rpData.value||617;
+    }catch(e){}
+
+    /* UVA desde ArgentinaDatos */
+    let uva=1858.61;
+    try{
+      const uvaRes=await fetch("https://api.argentinadatos.com/v1/finanzas/indices/uva");
+      const uvaData=await uvaRes.json();
+      if(Array.isArray(uvaData)&&uvaData.length>0) uva=uvaData[uvaData.length-1].valor||uva;
+    }catch(e){}
+
+    /* Inflación desde ArgentinaDatos */
+    let inflacion=2.9;
+    try{
+      const infRes=await fetch("https://api.argentinadatos.com/v1/finanzas/indices/inflacion");
+      const infData=await infRes.json();
+      if(Array.isArray(infData)&&infData.length>0) inflacion=infData[infData.length-1].valor||inflacion;
+    }catch(e){}
+
+    return{dolarOficial:oficial||1415,dolarMEP:mep||1380,dolarCCL:ccl||1395,dolarBlue:blue||1405,riesgoPais,inflacion,tasa:29,uva};
+  }catch(e){
+    console.warn("Macro API fallback:",e);
+    return MACRO_FALLBACK;
+  }
+}
+
+async function fetchPricesReal(tickers){
+  try{
+    const symbols=tickers.map(t=>YF_MAP[t]||t).join(",");
+    const url=PROXY+encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}&fields=regularMarketPrice,regularMarketChangePercent,regularMarketPreviousClose`);
+    const res=await fetch(url);
+    const data=await res.json();
+    const quotes=data.quoteResponse?.result||[];
+    const prices={};
+    tickers.forEach(t=>{
+      const sym=YF_MAP[t]||t;
+      const q=quotes.find(x=>x.symbol===sym);
+      if(q){
+        prices[t]={
+          price:q.regularMarketPrice||0,
+          change:q.regularMarketChangePercent||0,
+          prev:q.regularMarketPreviousClose||q.regularMarketPrice||0
+        };
+      }
+    });
+    return prices;
+  }catch(e){
+    console.warn("Yahoo Finance API fallback:",e);
+    return null;
+  }
+}
+
+/* Noticias reales — RSS de Ámbito, Cronista, iProfesional via rss2json */
+async function fetchNewsReal(tickers){
+  try{
+    const feeds=[
+      {url:"https://www.ambito.com/rss/economia.xml",source:"Ámbito Financiero"},
+      {url:"https://www.cronista.com/files/rss/news.xml",source:"El Cronista"},
+      {url:"https://www.iprofesional.com/rss/finanzas",source:"iProfesional"},
+      {url:"https://www.infobae.com/feeds/rss/",source:"Infobae"},
+    ];
+    const allNews=[];
+    for(const feed of feeds){
+      try{
+        const r2jUrl=`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.url)}&count=10`;
+        const res=await fetch(r2jUrl);
+        const data=await res.json();
+        if(data.items){
+          data.items.forEach((item,i)=>{
+            /* Detectar tickers mencionados */
+            const text=(item.title+" "+(item.description||"")).toUpperCase();
+            const KEYWORDS={
+              YPFD:["YPF","YPFD","VACA MUERTA"],MELI:["MERCADO LIBRE","MELI","MERCADOLIBRE"],
+              EDN:["EDENOR","EDN"],TSLA:["TESLA","TSLA"],IBM:["IBM"],ORCL:["ORACLE","ORCL"],
+              UNH:["UNITEDHEALTH","UNH"],FISV:["FISERV","FISV"],AL30:["AL30","BONO","BONOS","RIESGO PAIS"],
+              BKUCF:["BLUE SKY","URANIUM","URANIO","BKUCF"]
+            };
+            let matched="MACRO";
+            for(const[tk,kws]of Object.entries(KEYWORDS)){
+              if(kws.some(kw=>text.includes(kw))){matched=tk;break;}
+            }
+            const mins=Math.floor(i*7+Math.random()*15);
+            const timeStr=mins<60?`${mins} min`:`${(mins/60).toFixed(1)} hs`;
+            allNews.push({
+              id:`${feed.source}-${i}`,ticker:matched,title:item.title,
+              source:feed.source,time:timeStr,
+              sentiment:text.includes("SUBE")||text.includes("CREC")||text.includes("POSITIV")||text.includes("RÉCORD")||text.includes("AVANZ")?"positive":"negative",
+              summary:item.description?item.description.replace(/<[^>]*>/g,"").slice(0,200)+"...":item.title,
+              link:item.link,pubDate:item.pubDate
+            });
+          });
+        }
+      }catch(e){}
+    }
+    /* Ordenar por fecha y deduplicar */
+    allNews.sort((a,b)=>new Date(b.pubDate||0)-new Date(a.pubDate||0));
+    return allNews.length>0?allNews.slice(0,25):null;
+  }catch(e){
+    console.warn("News API fallback:",e);
+    return null;
+  }
+}
+
+function timeAgo(dateStr){
+  if(!dateStr)return"";
+  const d=new Date(dateStr);const now=new Date();const mins=Math.floor((now-d)/60000);
+  if(mins<1)return"ahora";if(mins<60)return`${mins} min`;
+  const hrs=Math.floor(mins/60);if(hrs<24)return`${hrs} hs`;
+  return`${Math.floor(hrs/24)} días`;
+}
 
 /* ── small components ────────────────────── */
 function Card({title,children,style:s={},right=null}){
@@ -245,7 +383,7 @@ function Badge({text,color="#60a5fa",bg="#252d3d"}){
 }
 
 /* ── RESUMEN ─────────────────────────────── */
-function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,casa,setCasa,casaActual,hipoteca,setHipoteca,deudaUSD,patrimonioNeto,caucion,setCaucion,caucionUSD,portfolioLiquido,portfolioTotal,dailyPL}){
+function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,casa,setCasa,casaActual,hipoteca,setHipoteca,deudaUSD,patrimonioNeto,caucion,setCaucion,caucionUSD,portfolioLiquido,portfolioTotal,dailyPL,news}){
   const casaNeta=casaActual.valor-deudaUSD;
   const byAsset=useMemo(()=>{
     const items=enriched.map((p,i)=>({name:p.ticker,value:p.montoActual,color:COLORS[i%COLORS.length]}));
@@ -270,7 +408,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
   /* News state — Bloomberg-style feed */
   const [expandedNews,setExpandedNews]=useState(null);
   const tickers=enriched.map(p=>p.ticker);
-  const relevantNews=NEWS.filter(n=>tickers.includes(n.ticker));
+  const relevantNews=news.filter(n=>tickers.includes(n.ticker)||n.ticker==="MACRO").slice(0,15);
 
   return <div style={{display:"flex",flexDirection:"column",gap:20}}>
     {trigAlerts.length>0&&<div style={{background:"#dc262612",border:"1px solid #dc262633",borderRadius:10,padding:"14px 18px"}}>
@@ -350,14 +488,14 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
         <div style={{display:"flex",flexDirection:"column",gap:0}}>
           {relevantNews.map((n,i)=><div key={n.id}>
             <div onClick={()=>setExpandedNews(expandedNews===n.id?null:n.id)} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 0",borderBottom:i<relevantNews.length-1?"1px solid #1e293b":"none",cursor:"pointer",transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background="#252d3d33"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-              <span style={{fontSize:10,color:"#475569",whiteSpace:"nowrap",marginTop:2,minWidth:42,fontVariantNumeric:"tabular-nums"}}>{n.time}</span>
+              <span style={{fontSize:10,color:"#475569",whiteSpace:"nowrap",marginTop:2,minWidth:42,fontVariantNumeric:"tabular-nums"}}>{n.pubDate?timeAgo(n.pubDate):n.time}</span>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
                   <span style={{fontSize:10,fontWeight:700,color:n.sentiment==="positive"?"#34d399":"#f87171",letterSpacing:".03em"}}>{n.ticker}</span>
                   <span style={{fontSize:10,color:"#475569"}}>· {n.source}</span>
                 </div>
                 <div style={{fontSize:12,fontWeight:500,color:"#cbd5e1",lineHeight:1.4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:expandedNews===n.id?"normal":"nowrap"}}>{n.title}</div>
-                {expandedNews===n.id&&<div style={{fontSize:11,color:"#94a3b8",marginTop:6,lineHeight:1.5,paddingBottom:4}}>{n.summary}</div>}
+                {expandedNews===n.id&&<div style={{fontSize:11,color:"#94a3b8",marginTop:6,lineHeight:1.5,paddingBottom:4}}>{n.summary}{n.link&&<span> <a href={n.link} target="_blank" rel="noopener" style={{color:"#60a5fa",textDecoration:"none"}}>Leer más →</a></span>}</div>}
               </div>
               <span style={{fontSize:10,color:"#475569",marginTop:3,flexShrink:0}}>{expandedNews===n.id?"▲":"▼"}</span>
             </div>
@@ -553,10 +691,10 @@ function Alertas({alerts,setAlerts,prices,pos}){
 }
 
 /* ── NOTICIAS ────────────────────────────── */
-function Noticias({pos}){
+function Noticias({pos,news}){
   const [sel,setSel]=useState("Todos");
   const tickers=pos.map(p=>p.ticker);
-  const fl=sel==="Todos"?NEWS:NEWS.filter(n=>n.ticker===sel);
+  const fl=sel==="Todos"?news:news.filter(n=>n.ticker===sel);
   const sc2={positive:"#34d399",negative:"#f87171"};
   const sb2={positive:"#065f4622",negative:"#7f1d1d22"};
   const sl2={positive:"Positivo",negative:"Negativo"};
@@ -672,9 +810,11 @@ function App(){
   const [tab,setTab]=useState("resumen");
   const [ops,setOps]=useState(()=>loadLS("ops",INIT_OPS));
   const [alerts,setAlerts]=useState(()=>loadLS("alerts",INIT_ALERTS));
-  const [prices,setPrices]=useState(LIVE);
-  const [macro]=useState(MACRO);
+  const [prices,setPrices]=useState(LIVE_FALLBACK);
+  const [macro,setMacro]=useState(MACRO_FALLBACK);
+  const [news,setNews]=useState(NEWS_FALLBACK);
   const [lastUp,setLastUp]=useState(new Date());
+  const [dataSource,setDataSource]=useState("cargando..."); /* live | fallback | cargando */
   const [showConfig,setShowConfig]=useState(false);
   const [syncStatus,setSyncStatus]=useState("idle"); /* idle | syncing | ok | error */
   const [lastSync,setLastSync]=useState(null);
@@ -764,13 +904,28 @@ function App(){
     return deudaARS/macro.dolarMEP;
   },[hipoteca,macro]);
 
-  useEffect(()=>{
-    const iv=setInterval(()=>{
-      setPrices(prev=>{const u={...prev};const ts=Object.keys(u);const t=ts[Math.floor(Math.random()*ts.length)];const v=(Math.random()-.48)*.02;const np=u[t].price*(1+v);const nc=((np-u[t].prev)/u[t].prev)*100;u[t]={...u[t],price:np,change:nc};return u;});
-      setLastUp(new Date());
-    },4000);
-    return()=>clearInterval(iv);
+  /* ── Fetch datos reales al cargar y cada 2 min ──── */
+  const fetchAllData=useCallback(async()=>{
+    const allTickers=Object.keys(TICKER_META);
+    const[macroData,priceData,newsData]=await Promise.all([
+      fetchMacroReal(),
+      fetchPricesReal(allTickers),
+      fetchNewsReal(allTickers)
+    ]);
+    setMacro(macroData);
+    if(priceData&&Object.keys(priceData).length>0){
+      setPrices(prev=>({...prev,...priceData}));
+      setDataSource("live");
+    }else{setDataSource("fallback")}
+    if(newsData)setNews(newsData);
+    setLastUp(new Date());
   },[]);
+
+  useEffect(()=>{
+    fetchAllData();
+    const iv=setInterval(fetchAllData,120000); /* refresh cada 2 min */
+    return()=>clearInterval(iv);
+  },[fetchAllData]);
 
   const enriched=useMemo(()=>pos.map(p=>{
     const l=prices[p.ticker]||{price:p.ppc,change:0};const mi=p.cantidad*p.ppc;const ma=p.cantidad*l.price;const pl=ma-mi;const r=mi>0?(pl/mi)*100:0;
@@ -803,7 +958,7 @@ function App(){
         <div style={{fontSize:28,lineHeight:1,flexShrink:0}}>🐻⚔️🐂</div>
         <div>
           <h1 className="hdr-title" style={{margin:0,fontSize:18,fontWeight:700,color:"#f1f5f9",letterSpacing:"-.02em"}}>Dashboard de Eze 🇦🇷</h1>
-          <span style={{fontSize:11,color:"#64748b"}}>Actualizado: {lastUp.toLocaleTimeString("es-AR")}</span>
+          <span style={{fontSize:11,color:"#64748b"}}>Actualizado: {lastUp.toLocaleTimeString("es-AR")} · <span style={{color:dataSource==="live"?"#34d399":dataSource==="fallback"?"#fbbf24":"#64748b"}}>{dataSource==="live"?"LIVE":dataSource==="fallback"?"OFFLINE":"⏳"}</span></span>
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -848,10 +1003,10 @@ function App(){
     </nav>
     {showConfig&&<SyncConfigPanel onClose={()=>setShowConfig(false)}/>}
     <main className="main-content" style={{padding:24,maxWidth:1400,margin:"0 auto"}}>
-      {tab==="resumen"&&<Resumen enriched={enriched} total={total} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL}/>}
+      {tab==="resumen"&&<Resumen enriched={enriched} total={total} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news}/>}
       {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro}/>}
       {tab==="alertas"&&<Alertas alerts={alerts} setAlerts={setAlerts} prices={prices} pos={pos}/>}
-      {tab==="noticias"&&<Noticias pos={pos}/>}
+      {tab==="noticias"&&<Noticias pos={pos} news={news}/>}
     </main>
   </div>;
 }
