@@ -488,14 +488,13 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
       <Stat label="Portfolio Líquido" value={fU(portfolioLiquido)} sub={caucionUSD>0?`Caución: ${fU(caucionUSD)}`:"Sin caución"} color="#60a5fa"/>
       {(()=>{const bCCL=macro.dolarOficial>0?(macro.dolarCCL-macro.dolarOficial)/macro.dolarOficial:0;const portAR=portfolioLiquido*(1+bCCL);return <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
         <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Portfolio Líq. Argentina</div>
-        <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fU(portAR)}</div>
-        <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>Líquido × (1+brecha CCL {fmt(bCCL*100,1)}%)</div>
+        <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#60a5fa",fontVariantNumeric:"tabular-nums"}}>{fU(portAR)}</div>
       </div>;})()}
       <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
         <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Caución Tomada</div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:11,color:"#94a3b8"}}>$</span>
-          <input type="number" value={caucion.montoARS} onChange={e=>setCaucion({montoARS:+e.target.value})} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",color:"#fbbf24",fontSize:18,fontWeight:700,width:130,fontVariantNumeric:"tabular-nums",outline:"none"}} placeholder="0"/>
+          <input type="text" value={caucion.montoARS?caucion.montoARS.toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setCaucion({montoARS:raw?parseInt(raw,10):0});}} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",color:"#fbbf24",fontSize:18,fontWeight:700,width:150,fontVariantNumeric:"tabular-nums",outline:"none"}} placeholder="0"/>
         </div>
         <div style={{fontSize:12,color:"#94a3b8",marginTop:4}}>≈ {fU(caucionUSD)} <span style={{color:"#475569"}}>(MEP ${fmt(macro.dolarMEP)})</span></div>
       </div>
@@ -557,7 +556,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
                   <span style={{fontSize:10,color:"#475569"}}>· {n.source}</span>
                 </div>
                 <div style={{fontSize:12,fontWeight:500,color:"#cbd5e1",lineHeight:1.4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:expandedNews===n.id?"normal":"nowrap"}}>{n.title}</div>
-                {expandedNews===n.id&&<div style={{fontSize:11,color:"#94a3b8",marginTop:6,lineHeight:1.5,paddingBottom:4}}>{n.summary}{n.link&&<span> <a href={n.link} target="_blank" rel="noopener" style={{color:"#60a5fa",textDecoration:"none"}}>Leer más →</a></span>}</div>}
+                {expandedNews===n.id&&<div style={{fontSize:11,color:"#94a3b8",marginTop:6,lineHeight:1.5,paddingBottom:4}}>{n.summary}<div style={{marginTop:6}}>{n.link&&<a href={n.link} target="_blank" rel="noopener" style={{color:"#60a5fa",textDecoration:"none",fontSize:12,fontWeight:500}} onClick={e=>e.stopPropagation()}>Abrir publicación ↗</a>}</div></div>}
               </div>
               <span style={{fontSize:10,color:"#475569",marginTop:3,flexShrink:0}}>{expandedNews===n.id?"▲":"▼"}</span>
             </div>
@@ -773,9 +772,9 @@ function Noticias({pos,news}){
           <div style={{display:"flex",alignItems:"center",gap:8}}><Badge text={n.ticker} color="#60a5fa"/><Badge text={sl2[n.sentiment]} color={sc2[n.sentiment]} bg={sb2[n.sentiment]}/></div>
           <span style={{fontSize:11,color:"#475569"}}>Hace {n.time}</span>
         </div>
-        <h4 style={{margin:"0 0 6px",fontSize:15,fontWeight:600,color:"#f1f5f9",lineHeight:1.4}}>{n.title}</h4>
+        <h4 style={{margin:"0 0 6px",fontSize:15,fontWeight:600,color:"#f1f5f9",lineHeight:1.4}}>{n.link?<a href={n.link} target="_blank" rel="noopener" style={{color:"inherit",textDecoration:"none"}} onMouseEnter={e=>e.currentTarget.style.color="#60a5fa"} onMouseLeave={e=>e.currentTarget.style.color="#f1f5f9"}>{n.title}</a>:n.title}</h4>
         <p style={{margin:"0 0 8px",fontSize:13,color:"#94a3b8",lineHeight:1.5}}>{n.summary}</p>
-        <div style={{fontSize:11,color:"#475569"}}>{n.source}</div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:11,color:"#475569"}}>{n.source}</span>{n.link&&<a href={n.link} target="_blank" rel="noopener" style={{fontSize:11,color:"#60a5fa",textDecoration:"none",fontWeight:500}}>Abrir publicación ↗</a>}</div>
       </div>)}
     </div>
   </div>;
@@ -1025,7 +1024,7 @@ function App(){
       </div>
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
         {trigAlerts.length>0&&<div style={{background:"#dc262622",border:"1px solid #dc262655",borderRadius:6,padding:"4px 10px",fontSize:12,color:"#fca5a5",display:"flex",alignItems:"center",gap:6,animation:"pulse 2s infinite"}}>🔔 {trigAlerts.length} alerta{trigAlerts.length>1?"s":""}</div>}
-        <div className="macro-strip" style={{display:"flex",gap:12,fontSize:10}}>
+        <div className="macro-strip" style={{display:"flex",gap:12,fontSize:12}}>
           {(()=>{
             const of1=macro.dolarOficial;
             const bMEP=((macro.dolarMEP-of1)/of1*100).toFixed(1);
@@ -1047,8 +1046,8 @@ function App(){
             ].map(i=><div key={i.l} style={{textAlign:"center",minWidth:48}}>
               <div style={{color:"#475569",marginBottom:1,whiteSpace:"nowrap"}}>{i.l}</div>
               <div style={{fontWeight:600,color:"#94a3b8",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{i.v}</div>
-              {i.brecha&&<div style={{fontSize:9,color:+i.brecha>0?"#fbbf24":"#34d399",fontWeight:500}}>+{i.brecha}%</div>}
-              {i.sub&&<div style={{fontSize:8,color:"#64748b",marginTop:1}}>{i.sub}</div>}
+              {i.brecha&&<div style={{fontSize:10,color:"#64748b",fontWeight:500}}>+{i.brecha}%</div>}
+              {i.sub&&<div style={{fontSize:9,color:"#64748b",marginTop:1}}>{i.sub}</div>}
             </div>);
           })()}
         </div>
