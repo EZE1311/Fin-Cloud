@@ -574,14 +574,15 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12}}>{fmt(p.cantidad)}</td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12}}>{fU(p.ppc)}</td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600}}>{fU(p.precioActual)}</td>
-            <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600,color:p.variacion>=0?"#34d399":"#f87171"}}>{fP(p.variacion)}</td>
+            <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600,color:p.variacion>=0?"#34d399":"#f87171"}}><div>{fP(p.variacion)}</div><div style={{fontSize:10,fontWeight:500}}>{(()=>{const dm=p.montoActual*(p.variacion/100);return(dm>=0?"+":"")+fU(dm);})()}</div></td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12}}>{fU(p.montoInvertido)}</td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600}}>{fU(p.montoActual)}</td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600,color:p.pl>=0?"#34d399":"#f87171"}}>{fU(p.pl)}</td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600,color:p.rendimiento>=0?"#34d399":"#f87171"}}>{fP(p.rendimiento)}</td>
           </tr>)}</tbody>
           <tfoot><tr style={{borderTop:"2px solid #2563eb"}}>
-            <td colSpan={5} style={{padding:10,fontWeight:700,fontSize:13}}>TOTAL</td>
+            <td colSpan={4} style={{padding:10,fontWeight:700,fontSize:13}}>TOTAL</td>
+            <td style={{padding:10,textAlign:"right",fontWeight:700,fontVariantNumeric:"tabular-nums",fontSize:12,color:dailyPL.pct>=0?"#34d399":"#f87171"}}><div>{dailyPL.pct>=0?"+":""}{fmt(dailyPL.pct,2)}%</div><div style={{fontSize:10}}>{dailyPL.monto>=0?"+":""}{fU(dailyPL.monto)}</div></td>
             <td style={{padding:10,textAlign:"right",fontWeight:700,fontVariantNumeric:"tabular-nums",fontSize:12}}>{fU(invertido)}</td>
             <td style={{padding:10,textAlign:"right",fontWeight:700,fontVariantNumeric:"tabular-nums",fontSize:12}}>{fU(total)}</td>
             <td style={{padding:10,textAlign:"right",fontWeight:700,fontVariantNumeric:"tabular-nums",fontSize:12,color:pl>=0?"#34d399":"#f87171"}}>{fU(pl)}</td>
