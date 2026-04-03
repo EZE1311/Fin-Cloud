@@ -136,21 +136,78 @@ function HBarChart({data,height:h2=220}){
 
 /* ── data ─────────────────────────────────── */
 const COLORS=["#2563eb","#059669","#d97706","#dc2626","#7c3aed","#0891b2","#be185d","#65a30d","#ea580c","#4f46e5"];
-const SC={"Energía":"#f59e0b","Petróleo":"#78716c","Tecnología":"#3b82f6","Fintech":"#8b5cf6","Automotriz":"#ef4444","Salud":"#10b981","Renta Fija":"#6366f1","Uranio":"#22c55e","Inmobiliario":"#f97316","Real Estate":"#a78bfa"};
+const SC_KNOWN={"Energía":"#f59e0b","Petróleo":"#78716c","Tecnología":"#3b82f6","Fintech":"#8b5cf6","Automotriz":"#ef4444","Salud":"#10b981","Renta Fija":"#6366f1","Uranio":"#22c55e","Inmobiliario":"#f97316","Real Estate":"#a78bfa","Comunicación":"#06b6d4","Finanzas":"#a855f7","Consumo":"#f97316","Industrial":"#84cc16","Materiales":"#d97706","Servicios Públicos":"#eab308","Sin clasificar":"#64748b"};
+const SC_AUTO_COLORS=["#0ea5e9","#d946ef","#f43f5e","#14b8a6","#fb923c","#a3e635","#818cf8","#fbbf24","#2dd4bf","#c084fc"];
+let scAutoIdx=0;
+function sectorColor(name){if(SC_KNOWN[name])return SC_KNOWN[name];const c=SC_AUTO_COLORS[scAutoIdx%SC_AUTO_COLORS.length];scAutoIdx++;SC_KNOWN[name]=c;return c;}
 
-/* Metadata por ticker — sector, país, tipo de instrumento */
-const TICKER_META={
-  EDN:{sector:"Energía",pais:"Argentina",tipo:"CEDEAR"},
-  YPFD:{sector:"Petróleo",pais:"Argentina",tipo:"CEDEAR"},
-  MELI:{sector:"Tecnología",pais:"Argentina",tipo:"CEDEAR"},
-  ORCL:{sector:"Tecnología",pais:"USA",tipo:"CEDEAR"},
-  IBM:{sector:"Tecnología",pais:"USA",tipo:"Acción"},
-  FISV:{sector:"Fintech",pais:"USA",tipo:"Acción"},
-  BKUCF:{sector:"Uranio",pais:"Canadá",tipo:"Acción"},
-  TSLA:{sector:"Automotriz",pais:"USA",tipo:"CEDEAR"},
-  UNH:{sector:"Salud",pais:"USA",tipo:"CEDEAR"},
-  AL30:{sector:"Renta Fija",pais:"Argentina",tipo:"Bono"},
-};
+/* Metadata dinámica por ticker — se infiere tipo/país de data912, sector de Yahoo Finance, todo cacheado en localStorage */
+const META_CACHE_KEY="eid_ticker_meta";
+function loadMetaCache(){try{return JSON.parse(localStorage.getItem(META_CACHE_KEY)||"{}");}catch(e){return{};}}
+function saveMetaCache(cache){try{localStorage.setItem(META_CACHE_KEY,JSON.stringify(cache));}catch(e){}}
+
+/* Traducciones de sector Yahoo → español */
+const SECTOR_MAP={"Technology":"Tecnología","Energy":"Energía","Healthcare":"Salud","Financial Services":"Finanzas","Consumer Cyclical":"Consumo","Consumer Defensive":"Consumo","Communication Services":"Comunicación","Industrials":"Industrial","Basic Materials":"Materiales","Real Estate":"Real Estate","Utilities":"Servicios Públicos"};
+
+/* Buscar sector + nombre de empresa de Yahoo Finance */
+async function fetchProfileYahoo(symbol){
+  const usaSym=d912Sym(symbol,D912_USA_ALIAS);
+  const url=`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(usaSym)}?modules=assetProfile,price`;
+  try{
+    let r;
+    try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+    const data=await r.json();
+    const res=data?.quoteSummary?.result?.[0];
+    const profile=res?.assetProfile;
+    const price=res?.price;
+    const sector=profile?.sector?SECTOR_MAP[profile.sector]||profile.sector:null;
+    const name=price?.shortName||price?.longName||null;
+    const country=profile?.country||null;
+    return{sector,name,country};
+  }catch(e){}
+  return{sector:null,name:null,country:null};
+}
+
+/* Construir metadata para un ticker basándose en data912 membership + Yahoo sector */
+function inferMeta(ticker,broker,mercado,d912Info){
+  const tu=ticker.toUpperCase();
+  /* Tipo y país desde data912 */
+  let tipo="Acción",pais="USA";
+  if(d912Info){
+    if(d912Info.isBond){tipo="Bono";pais="Argentina";}
+    else if(d912Info.isCedear){tipo="CEDEAR";pais=broker==="BM"?"Argentina":"USA";}
+    else if(d912Info.isArgStock){tipo="Acción";pais="Argentina";}
+    else if(d912Info.isUsaStock){tipo="Acción";pais="USA";}
+  } else {
+    /* Fallback por broker/mercado */
+    if(mercado==="BYMA"){pais="Argentina";tipo="CEDEAR";}
+    else{pais="USA";tipo="Acción";}
+  }
+  return{tipo,pais};
+}
+
+/* Seed inicial: sectores conocidos para no depender de Yahoo en la primera carga */
+const SECTOR_SEED={EDN:"Energía",YPFD:"Petróleo",MELI:"Tecnología",ORCL:"Tecnología",IBM:"Tecnología",FISV:"Fintech",BKUCF:"Uranio",TSLA:"Automotriz",UNH:"Salud",AL30:"Renta Fija"};
+(function seedMeta(){const c=loadMetaCache();let u=false;Object.entries(SECTOR_SEED).forEach(([t,s])=>{if(!c[t]||!c[t].sector){c[t]={...c[t],sector:s};u=true;}});if(u)saveMetaCache(c);})();
+
+/* Actualizar cache de metadata con sectores y nombres (async, no bloquea render) */
+async function refreshMetaCache(tickers,priceData){
+  const cache=loadMetaCache();
+  let updated=false;
+  const promises=tickers.filter(t=>!cache[t]||!cache[t].sector).map(async t=>{
+    const{sector,name,country}=await fetchProfileYahoo(t);
+    if(sector||name){
+      cache[t]={...cache[t]};
+      if(sector)cache[t].sector=sector;
+      if(name)cache[t].name=name;
+      if(country)cache[t].country=country;
+      updated=true;
+    }
+  });
+  await Promise.allSettled(promises);
+  if(updated)saveMetaCache(cache);
+  return cache;
+}
 
 /* Calcula posiciones abiertas a partir de operaciones */
 function calcPositions(ops){
@@ -170,8 +227,17 @@ function calcPositions(ops){
   return Object.values(map).filter(p=>(p.cantCompra-p.cantVenta)>0).map(p=>{
     const cantidad=p.cantCompra-p.cantVenta;
     const ppc=p.cantCompra>0?p.costoTotal/p.cantCompra:0;
-    const meta=TICKER_META[p.ticker]||{sector:"Sin clasificar",pais:p.mercado==="NYSE"?"USA":"Argentina",tipo:p.mercado==="NYSE"?"Acción":"CEDEAR"};
-    return{ticker:p.ticker,cantidad,ppc,mercado:p.mercado,broker:p.broker,moneda:p.moneda,...meta};
+    return{ticker:p.ticker,cantidad,ppc,mercado:p.mercado,broker:p.broker,moneda:p.moneda};
+  });
+}
+
+/* Enriquece posiciones con metadata dinámica (tipo, país, sector) */
+function applyMeta(positions,prices,metaCache){
+  return positions.map(p=>{
+    const cached=metaCache[p.ticker]||{};
+    const d912=prices[p.ticker]?.d912||null;
+    const inferred=inferMeta(p.ticker,p.broker,p.mercado,d912);
+    return{...p,sector:cached.sector||"Sin clasificar",pais:cached.pais||inferred.pais,tipo:cached.tipo||inferred.tipo};
   });
 }
 
@@ -195,28 +261,17 @@ const INIT_OPS=[
   {id:17,fecha:"24-02-26",ticker:"IBM",tipo:"COMPRA",cantidad:28,precio:232,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
 ];
 
-/* ── Fallback data (se usa si las APIs fallan) ───── */
-const LIVE_FALLBACK={
-  EDN:{price:1.12,change:2.48,prev:1.09},YPFD:{price:38.5,change:-3.03,prev:39.7},
-  MELI:{price:14.1,change:0.42,prev:14.04},ORCL:{price:58.9,change:-0.13,prev:58.98},
-  IBM:{price:246.68,change:1.46,prev:243.13},FISV:{price:71.2,change:0.85,prev:70.6},
-  BKUCF:{price:.04,change:-4.97,prev:.0421},TSLA:{price:265.3,change:1.22,prev:262.1},
-  UNH:{price:452.8,change:-0.56,prev:455.35},AL30:{price:72.5,change:0.35,prev:72.25},
-};
+/* ── Fallback data dinámico — usa último precio guardado en localStorage, o vacío ── */
+const PRICE_CACHE_KEY="eid_price_cache";
+function loadPriceCache(){try{return JSON.parse(localStorage.getItem(PRICE_CACHE_KEY)||"{}");}catch(e){return{};}}
+function savePriceCache(prices){try{localStorage.setItem(PRICE_CACHE_KEY,JSON.stringify(prices));}catch(e){}}
+const LIVE_FALLBACK=loadPriceCache();
 const MACRO_FALLBACK={dolarOficial:1415,dolarMEP:1380,dolarCCL:1395,dolarBlue:1405,dolarTarjeta:1885,riesgoPais:617,inflacion:2.9,inflacionIA:33.1,tasa:29,uva:1858.61,uvaVar30d:0,reservas:28500};
-const NEWS_FALLBACK=[
-  {id:1,ticker:"YPFD",title:"YPF apuesta fuerte a Vaca Muerta: nueva inversión de USD 1.200M en shale oil",source:"Ámbito Financiero",time:"12 min",sentiment:"positive",summary:"La petrolera anunció expansión de producción en Vaca Muerta con foco en exportación de crudo."},
-  {id:2,ticker:"IBM",title:"IBM supera estimaciones de Wall Street en Q1 2026 impulsada por IA",source:"Reuters",time:"28 min",sentiment:"positive",summary:"Ingresos de consultoría en IA crecieron 42% interanual. Guidance revisado al alza."},
-  {id:3,ticker:"MELI",title:"Mercado Libre expande Mercado Pago a 3 nuevos países de Asia",source:"Bloomberg",time:"45 min",sentiment:"positive",summary:"Entra en Vietnam, Filipinas e Indonesia con su fintech."},
-  {id:4,ticker:"EDN",title:"Edenor: ENRE aprueba nuevo cuadro tarifario con ajuste del 18%",source:"Infobae",time:"1 hora",sentiment:"positive",summary:"Ente regulador autorizó actualización de tarifas para Q2."},
-  {id:5,ticker:"TSLA",title:"Tesla recorta precios del Model 3 en Europa ante competencia china",source:"CNBC",time:"1.5 hs",sentiment:"negative",summary:"Reduce precios entre 5% y 8% en principales mercados europeos."},
-  {id:6,ticker:"ORCL",title:"Oracle Cloud gana contrato millonario con el Pentágono",source:"The Verge",time:"2 hs",sentiment:"positive",summary:"OCI seleccionada para contrato de USD 3.4B en infraestructura cloud del DoD."},
-  {id:7,ticker:"UNH",title:"UnitedHealth bajo presión regulatoria por prácticas de cobertura",source:"WSJ",time:"2.5 hs",sentiment:"negative",summary:"Departamento de Justicia investiga posibles prácticas anticompetitivas."},
-  {id:8,ticker:"FISV",title:"Fiserv reporta crecimiento récord en pagos digitales",source:"Finextra",time:"3 hs",sentiment:"positive",summary:"Volumen de transacciones creció 35% en el trimestre."},
-  {id:9,ticker:"AL30",title:"Bono AL30 rinde 12.5% anual tras baja del riesgo país",source:"El Cronista",time:"3 hs",sentiment:"positive",summary:"Bonos soberanos extienden rally con riesgo país en mínimos."},
-  {id:10,ticker:"BKUCF",title:"Blue Sky Uranium avanza con perforación en Amarillo Grande, Argentina",source:"Mining Weekly",time:"4 hs",sentiment:"positive",summary:"La minera canadiense reportó resultados positivos de exploración en su proyecto de uranio en Río Negro."},
-  {id:11,ticker:"MELI",title:"Mercado Libre lanza créditos hipotecarios en Argentina",source:"iProfesional",time:"5 hs",sentiment:"positive",summary:"Mercado Pago ofrecerá créditos hipotecarios UVA a tasas competitivas."},
-];
+/* Noticias: cache dinámico en localStorage, fallback vacío */
+const NEWS_CACHE_KEY="eid_news_cache";
+function loadNewsCache(){try{return JSON.parse(localStorage.getItem(NEWS_CACHE_KEY)||"[]");}catch(e){return[];}}
+function saveNewsCache(news){try{localStorage.setItem(NEWS_CACHE_KEY,JSON.stringify(news.slice(0,30)));}catch(e){}}
+const NEWS_FALLBACK=loadNewsCache();
 
 /* ── API ENGINE — Datos reales ──────────────── */
 
@@ -225,13 +280,10 @@ const NEWS_FALLBACK=[
 /* Campos: symbol, c (precio), pct_change (var%), v (volumen), px_bid, px_ask, q_bid, q_ask, q_op */
 const DATA912_BASE="https://data912.com/live";
 
-/* Mapeo ticker interno → symbol en data912 */
-/* BM (Bull Market) → cotiza en ARS en BYMA — usamos arg_cedears / arg_stocks de data912 */
-/* CS (Charles Schwab) → cotiza en USD en NYSE — usamos usa_stocks de data912 */
-const D912_CEDEARS={EDN:"EDN",YPFD:"YPFD",MELI:"MELI",ORCL:"ORCL",TSLA:"TSLA",UNH:"UNH",IBM:"IBM",FISV:"FISV"};
-const D912_ARG_STOCKS={YPFD:"YPFD",EDN:"EDN"};
-const D912_ARG_BONDS={AL30:"AL30"};
-const D912_USA={EDN:"EDN",YPFD:"YPF",MELI:"MELI",ORCL:"ORCL",IBM:"IBM",FISV:"FISV",TSLA:"TSLA",UNH:"UNH"};
+/* Excepciones: ticker interno → símbolo distinto en data912 USA (solo cuando difieren) */
+const D912_USA_ALIAS={YPFD:"YPF"};
+/* Resolver símbolo: usa el alias si existe, sino el ticker tal cual */
+const d912Sym=(ticker,aliases={})=>aliases[ticker.toUpperCase()]||ticker.toUpperCase();
 
 /* Proxy CORS para APIs que no permiten fetch directo del browser */
 const PROXY="https://api.allorigins.win/raw?url=";
@@ -340,19 +392,18 @@ async function fetchPricesReal(tickers){
     const prices={};
     tickers.forEach(t=>{
       const tu=t.toUpperCase();
-      /* Precio ARS: buscar en CEDEARs → acciones arg → bonos arg */
-      const cedearSym=D912_CEDEARS[tu];
-      const argSym=D912_ARG_STOCKS[tu];
-      const bondSym=D912_ARG_BONDS[tu];
-      const arsData=cedearSym&&idxCedears[cedearSym]?idxCedears[cedearSym]
-        :(argSym&&idxArg[argSym]?idxArg[argSym]
-        :(bondSym&&idxBonds[bondSym]?idxBonds[bondSym]:null));
+      /* Buscar dinámicamente en todos los endpoints de data912 */
+      const inCedears=idxCedears[tu]||null;
+      const inArg=idxArg[tu]||null;
+      const inBonds=idxBonds[tu]||null;
+      const usaSym=d912Sym(tu,D912_USA_ALIAS);
+      const inUsa=idxUsa[usaSym]||idxUsa[tu]||null;
 
-      /* Precio USD: buscar en usa_stocks */
-      const usaSym=D912_USA[tu];
-      const usdData=usaSym&&idxUsa[usaSym]?idxUsa[usaSym]:null;
+      /* Precio ARS: CEDEARs → acciones arg → bonos arg */
+      const arsData=inCedears||inArg||inBonds;
+      /* Precio USD: usa_stocks */
+      const usdData=inUsa;
 
-      /* Construir objeto de precios */
       const priceARS=arsData?arsData.c:null;
       const changeARS=arsData?arsData.pct_change:null;
       const priceUSD=usdData?usdData.c:null;
@@ -364,18 +415,23 @@ async function fetchPricesReal(tickers){
           change:changeUSD||0,
           prev:priceUSD?(priceUSD/(1+(changeUSD||0)/100)):0,
           priceARS:priceARS||null,
-          changeARS:changeARS??null
+          changeARS:changeARS??null,
+          d912:{isCedear:!!inCedears,isArgStock:!!inArg,isBond:!!inBonds,isUsaStock:!!inUsa}
         };
       }
     });
 
-    /* BKUCF: micro-cap canadiense no está en data912, usar Yahoo Finance como fallback */
-    if(!prices["BKUCF"]&&tickers.includes("BKUCF")){
+    /* Yahoo Finance fallback para tickers no encontrados en data912 */
+    const missing=tickers.filter(t=>!prices[t]);
+    if(missing.length>0){
       try{
-        const yfUrl=PROXY+encodeURIComponent("https://query1.finance.yahoo.com/v7/finance/quote?symbols=BKUCF&fields=regularMarketPrice,regularMarketChangePercent,regularMarketPreviousClose");
+        const syms=missing.map(t=>d912Sym(t,D912_USA_ALIAS)).join(",");
+        const yfUrl=PROXY+encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms}&fields=regularMarketPrice,regularMarketChangePercent,regularMarketPreviousClose`);
         const yfRes=await fetch(yfUrl);const yfData=await yfRes.json();
-        const q=yfData.quoteResponse?.result?.[0];
-        if(q)prices["BKUCF"]={price:q.regularMarketPrice||0,change:q.regularMarketChangePercent||0,prev:q.regularMarketPreviousClose||0,priceARS:null,changeARS:null};
+        (yfData.quoteResponse?.result||[]).forEach(q=>{
+          const ticker=missing.find(t=>d912Sym(t,D912_USA_ALIAS)===q.symbol)||q.symbol;
+          if(q.regularMarketPrice)prices[ticker]={price:q.regularMarketPrice,change:q.regularMarketChangePercent||0,prev:q.regularMarketPreviousClose||0,priceARS:null,changeARS:null,d912:{isCedear:false,isArgStock:false,isBond:false,isUsaStock:true}};
+        });
       }catch(e){}
     }
     return prices;
@@ -386,7 +442,8 @@ async function fetchPricesReal(tickers){
 }
 
 /* ── KEYWORDS para detección de tickers en noticias ── */
-const TICKER_KW={
+/* Seed de keywords conocidos + auto-generación para tickers nuevos */
+const TICKER_KW_SEED={
   YPFD:["YPF","YPFD","VACA MUERTA","SHALE","NEUQUÉN","NEUQUEN"],
   MELI:["MERCADO LIBRE","MELI","MERCADOLIBRE","MERCADO PAGO"],
   EDN:["EDENOR","EDN","DISTRIBUIDORA","TARIFAS ELÉCTRICAS"],
@@ -398,6 +455,18 @@ const TICKER_KW={
   AL30:["AL30","BONO SOBERANO","BONOS ARGENTINOS","RIESGO PAÍS","RIESGO PAIS","DEUDA ARGENTINA"],
   BKUCF:["BLUE SKY URANIUM","BKUCF","AMARILLO GRANDE","URANIO","URANIUM"]
 };
+/* Devuelve keywords para un ticker: seed si existe, sino genera [TICKER, USA_ALIAS] + nombre de empresa del metaCache */
+function getTickerKW(ticker){
+  const tu=ticker.toUpperCase();
+  if(TICKER_KW_SEED[tu])return TICKER_KW_SEED[tu];
+  const kws=[tu];
+  const alias=d912Sym(tu,D912_USA_ALIAS);
+  if(alias!==tu)kws.push(alias);
+  /* Buscar nombre de empresa en metaCache (guardado por refreshMetaCache) */
+  const cache=loadMetaCache();
+  if(cache[tu]?.name)kws.push(cache[tu].name.toUpperCase());
+  return kws;
+}
 
 /* Noticias — Bloomberg-style deep search across global + local portals */
 async function fetchNewsReal(tickers){
@@ -434,8 +503,9 @@ async function fetchNewsReal(tickers){
         const text=(item.title+" "+(item.description||"")).toUpperCase();
         /* Solo incluir si menciona algún ticker del portfolio */
         let matched=null;
-        for(const[tk,kws]of Object.entries(TICKER_KW)){
-          if(tickers.includes(tk)&&kws.some(kw=>text.includes(kw))){matched=tk;break;}
+        for(const tk of tickers){
+          const kws=getTickerKW(tk);
+          if(kws.some(kw=>text.includes(kw.toUpperCase()))){matched=tk;break;}
         }
         if(!matched)return; /* Descartamos noticias no relevantes */
         /* Dedup por título similar */
@@ -504,7 +574,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
   const bySector=useMemo(()=>{
     const m={};enriched.forEach(p=>{m[p.sector]=(m[p.sector]||0)+p.montoActual});
     if(casaNeta>0) m["Real Estate"]=(m["Real Estate"]||0)+casaNeta;
-    return Object.entries(m).map(([name,value])=>({name,value,color:SC[name]||"#64748b"})).sort((a,b)=>b.value-a.value);
+    return Object.entries(m).map(([name,value])=>({name,value,color:sectorColor(name)})).sort((a,b)=>b.value-a.value);
   },[enriched,casaNeta]);
   const byCountry=useMemo(()=>{
     let usa=0,arg=0;
@@ -1050,7 +1120,9 @@ function App(){
   },[]);
 
   /* Posiciones derivadas 100% de operaciones */
-  const pos=useMemo(()=>calcPositions(ops),[ops]);
+  const posRaw=useMemo(()=>calcPositions(ops),[ops]);
+  const [metaCache,setMetaCache]=useState(()=>loadMetaCache());
+  const pos=useMemo(()=>applyMeta(posRaw,prices,metaCache),[posRaw,prices,metaCache]);
 
   /* Cálculos inmobiliarios */
   const casaActual=useMemo(()=>{
@@ -1066,7 +1138,7 @@ function App(){
 
   /* ── Fetch datos reales al cargar y cada 2 min ──── */
   const fetchAllData=useCallback(async()=>{
-    const allTickers=Object.keys(TICKER_META);
+    const allTickers=posRaw.map(p=>p.ticker);
     const[macroData,priceData,newsData]=await Promise.all([
       fetchMacroReal(),
       fetchPricesReal(allTickers),
@@ -1078,7 +1150,6 @@ function App(){
       const todayStr=new Date().toISOString().split("T")[0];
       const prev=JSON.parse(localStorage.getItem("eid_macro_prev")||"{}");
       if(prev._date!==todayStr){
-        /* Nuevo día: el macro que teníamos se convierte en el previo */
         const cur=JSON.parse(localStorage.getItem("eid_macro_cur")||"null");
         if(cur)localStorage.setItem("eid_macro_prev",JSON.stringify({...cur,_date:todayStr}));
       }
@@ -1086,12 +1157,14 @@ function App(){
       setMacroPrev(JSON.parse(localStorage.getItem("eid_macro_prev")||"{}"));
     }catch(e){}
     if(priceData&&Object.keys(priceData).length>0){
-      setPrices(prev=>({...prev,...priceData}));
+      setPrices(prev=>{const merged={...prev,...priceData};savePriceCache(merged);return merged;});
       setDataSource("live");
+      /* Refresh metadata de sectores async (no bloquea UI) */
+      refreshMetaCache(allTickers,priceData).then(cache=>setMetaCache({...cache}));
     }else{setDataSource("fallback")}
-    if(newsData)setNews(newsData);
+    if(newsData){setNews(newsData);saveNewsCache(newsData);}
     setLastUp(new Date());
-  },[]);
+  },[posRaw]);
 
   useEffect(()=>{
     fetchAllData();
