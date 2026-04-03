@@ -1134,7 +1134,12 @@ function App(){
         <div style={{fontSize:28,lineHeight:1,flexShrink:0}}>🐻⚔️🐂</div>
         <div>
           <h1 className="hdr-title" style={{margin:0,fontSize:18,fontWeight:700,color:"#f1f5f9",letterSpacing:"-.02em"}}>Dashboard de Eze 🇦🇷</h1>
-          <span style={{fontSize:11,color:"#64748b"}}>Actualizado: {lastUp.toLocaleTimeString("es-AR")} · <span style={{color:dataSource==="live"?"#34d399":dataSource==="fallback"?"#fbbf24":"#64748b"}}>{dataSource==="live"?"LIVE":dataSource==="fallback"?"OFFLINE":"⏳"}</span></span>
+          <div style={{fontSize:11,color:"#64748b"}}>Actualizado: {lastUp.toLocaleTimeString("es-AR")}</div>
+          <div style={{display:"flex",gap:10,fontSize:10,marginTop:2}}>
+            <span>Data: <span style={{color:dataSource==="live"?"#34d399":dataSource==="fallback"?"#fbbf24":"#64748b",fontWeight:600}}>{dataSource==="live"?"Online":dataSource==="fallback"?"Offline":"⏳"}</span></span>
+            {(()=>{const now=new Date();const utc=now.getTime()+now.getTimezoneOffset()*60000;const art=new Date(utc-3*3600000);const h=art.getHours();const d=art.getDay();const bymaOn=d>=1&&d<=5&&h>=11&&h<17;return <span>BYMA: <span style={{color:bymaOn?"#34d399":"#f87171",fontWeight:600}}>{bymaOn?"Online":"Offline"}</span></span>;})()}
+            {(()=>{const now=new Date();const utc=now.getTime()+now.getTimezoneOffset()*60000;const et=new Date(utc-4*3600000);const h=et.getHours();const m=et.getMinutes();const d=et.getDay();const t=h*60+m;const nyseOn=d>=1&&d<=5&&t>=570&&t<960;return <span>NYSE: <span style={{color:nyseOn?"#34d399":"#f87171",fontWeight:600}}>{nyseOn?"Online":"Offline"}</span></span>;})()}
+          </div>
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -1150,7 +1155,7 @@ function App(){
             const dVar=(cur,prev)=>{if(!prev||!cur||prev===0)return null;return((cur-prev)/prev*100);};
             const fVar=v=>{if(v==null)return null;return`${v>=0?"+":""}${v.toFixed(1)}%`;};
             return[
-              {l:"Oficial",v:`$${fmt(of1)}`,daily:fVar(dVar(of1,mp.dolarOficial))},
+              {l:"Oficial",v:`$${fmt(of1)}`,sub:"Brecha",daily:fVar(dVar(of1,mp.dolarOficial))},
               {l:"MEP",v:`$${fmt(macro.dolarMEP)}`,brecha:bMEP,daily:fVar(dVar(macro.dolarMEP,mp.dolarMEP))},
               {l:"CCL",v:`$${fmt(macro.dolarCCL)}`,brecha:bCCL,daily:fVar(dVar(macro.dolarCCL,mp.dolarCCL))},
               {l:"Blue",v:`$${fmt(macro.dolarBlue)}`,brecha:bBlue,daily:fVar(dVar(macro.dolarBlue,mp.dolarBlue))},
@@ -1164,9 +1169,8 @@ function App(){
             ].map(i=><div key={i.l} style={{textAlign:"center",minWidth:48}}>
               <div style={{color:"#475569",marginBottom:1,whiteSpace:"nowrap"}}>{i.l}</div>
               <div style={{fontWeight:600,color:"#94a3b8",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{i.v}</div>
-              {i.brecha&&<div style={{fontSize:10,color:"#64748b",fontWeight:500}}>+{i.brecha}%</div>}
-              {i.daily&&<div style={{fontSize:9,color:i.daily.startsWith("+")?"#34d399":i.daily.startsWith("-")?"#f87171":"#64748b",fontWeight:500,marginTop:1}}>{i.daily}</div>}
-              {i.sub&&<div style={{fontSize:9,color:"#64748b",marginTop:1}}>{i.sub}</div>}
+              <div style={{fontSize:10,color:"#64748b",fontWeight:500,minHeight:14}}>{i.brecha?`${i.brecha>=0?"+":""}${i.brecha}%`:i.sub||"\u00A0"}</div>
+              <div style={{fontSize:9,fontWeight:500,minHeight:13,color:i.daily?(i.daily.startsWith("+")?"#34d399":i.daily.startsWith("-")?"#f87171":"#64748b"):"transparent"}}>{i.daily||"\u00A0"}</div>
             </div>);
           })()}
         </div>
