@@ -492,7 +492,7 @@ async function fetchNewsReal(tickers){
     const seen=new Set();
     /* Fetch en paralelo para velocidad */
     const results=await Promise.allSettled(feeds.map(async feed=>{
-      const r2jUrl=`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.url)}&count=12`;
+      const r2jUrl=`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.url)}`;
       const res=await fetch(r2jUrl);
       return{feed,data:await res.json()};
     }));
