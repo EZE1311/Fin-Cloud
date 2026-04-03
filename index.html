@@ -525,6 +525,18 @@ async function fetchNewsReal(tickers){
         });
       });
     });
+    /* Si no hay noticias específicas del portfolio, incluir noticias generales de mercado */
+    if(allNews.length===0){
+      results.forEach(r=>{
+        if(r.status!=="fulfilled"||!r.value.data.items)return;
+        const{feed,data}=r.value;
+        data.items.slice(0,3).forEach(item=>{
+          const key=item.title.slice(0,50).toUpperCase();
+          if(seen.has(key))return;seen.add(key);
+          allNews.push({id:`${feed.source}-${item.title.slice(0,20)}`,ticker:"MERCADO",title:item.title,source:feed.source,sentiment:"neutral",summary:item.description?item.description.replace(/<[^>]*>/g,"").slice(0,250):"",link:item.link,pubDate:item.pubDate});
+        });
+      });
+    }
     allNews.sort((a,b)=>new Date(b.pubDate||0)-new Date(a.pubDate||0));
     return allNews.length>0?allNews.slice(0,40):null;
   }catch(e){
@@ -1138,7 +1150,7 @@ function App(){
 
   /* ── Fetch datos reales al cargar y cada 2 min ──── */
   const fetchAllData=useCallback(async()=>{
-    const allTickers=posRaw.map(p=>p.ticker);
+    const allTickers=[...new Set(ops.map(o=>o.ticker))];
     const[macroData,priceData,newsData]=await Promise.all([
       fetchMacroReal(),
       fetchPricesReal(allTickers),
@@ -1164,7 +1176,7 @@ function App(){
     }else{setDataSource("fallback")}
     if(newsData){setNews(newsData);saveNewsCache(newsData);}
     setLastUp(new Date());
-  },[posRaw]);
+  },[ops]);
 
   useEffect(()=>{
     fetchAllData();
