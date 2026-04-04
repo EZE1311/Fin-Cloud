@@ -206,6 +206,42 @@ function calcComision(monto, broker, tipo){
   return exento?subtotal:subtotal*IVA;
 }
 
+/* ── Caución calculation (shared by Caucion tab + Resumen) ── */
+const CAUCION_DER_MERCADO_DIARIO=0.00045/90;
+const CAUCION_GTO_GTIA_DIARIO=0.00045/90;
+const CAUCION_IVA=0.21;
+const CAUCION_COM_TOMADORA_MENSUAL=0.005;
+const CAUCION_COM_COLOCADORA_MENSUAL=0.00083;
+
+function calcCaucion(m,tna,d,esColocadora){
+  if(m<=0||d<=0)return null;
+  const tasaDecimal=tna/100;
+  const tasa=tasaDecimal*d/365;
+  const interes=m*tasa;
+  const montoFuturo=m+interes;
+  const comMensual=esColocadora?CAUCION_COM_COLOCADORA_MENSUAL:CAUCION_COM_TOMADORA_MENSUAL;
+  const comision=montoFuturo*comMensual*d/30;
+  const derMercado=montoFuturo*CAUCION_DER_MERCADO_DIARIO*d;
+  const gtoGtia=esColocadora?0:montoFuturo*CAUCION_GTO_GTIA_DIARIO*d;
+  const gastos=comision+derMercado+gtoGtia;
+  const iva=gastos*CAUCION_IVA;
+  const totalGastos=gastos+iva;
+  const hoy=new Date();const venc=new Date(hoy);venc.setDate(venc.getDate()+d);
+  const fmtDate=dt=>`${String(dt.getDate()).padStart(2,"0")}/${String(dt.getMonth()+1).padStart(2,"0")}/${dt.getFullYear()}`;
+  if(esColocadora){
+    const montoCobrar=montoFuturo-totalGastos;
+    const ganNeta=montoCobrar-m;
+    const tasaNeta=m>0?(ganNeta/m)*(365/d)*100:0;
+    const tePeriodo=m>0?(ganNeta/m)*100:0;
+    return{monto:m,tna,dias:d,tasa:tasa*100,interes,montoFuturo,comision,derMercado,gtoGtia,gastos,iva,totalGastos,montoCobrar,ganNeta,tasaNeta,tePeriodo,fechaOp:fmtDate(hoy),fechaVenc:fmtDate(venc)};
+  }else{
+    const montoPagar=montoFuturo+totalGastos;
+    const cft=m>0?(montoPagar-m)/m*(365/d)*100:0;
+    const tePeriodo=m>0?((montoPagar-m)/m)*100:0;
+    return{monto:m,tna,dias:d,tasa:tasa*100,interes,montoFuturo,comision,derMercado,gtoGtia,gastos,iva,totalGastos,montoPagar,costoNeto:-totalGastos,cft,tePeriodo,fechaOp:fmtDate(hoy),fechaVenc:fmtDate(venc)};
+  }
+}
+
 /* Seed inicial: sectores conocidos para no depender de Yahoo en la primera carga */
 const SECTOR_SEED={EDN:"Energía",YPFD:"Petróleo",MELI:"Tecnología",ORCL:"Tecnología",IBM:"Tecnología",FISV:"Fintech",BKUCF:"Uranio",TSLA:"Automotriz",UNH:"Salud",AL30:"Renta Fija"};
 (function seedMeta(){const c=loadMetaCache();let u=false;Object.entries(SECTOR_SEED).forEach(([t,s])=>{if(!c[t]||!c[t].sector){c[t]={...c[t],sector:s};u=true;}});if(u)saveMetaCache(c);})();
@@ -677,14 +713,37 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
         <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#60a5fa",fontVariantNumeric:"tabular-nums"}}>{fU(portAR)}</div>
         <div style={{fontSize:10,color:"#fbbf24",marginTop:4}}>Comisión venta: -{fU(totalComVenta)}</div>
       </div>;})()}
-      <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
-        <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Caución Tomada</div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:11,color:"#f87171"}}>$</span>
-          <input type="text" value={caucion.montoARS?caucion.montoARS.toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setCaucion({montoARS:raw?parseInt(raw,10):0});}} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",color:"#f87171",fontSize:18,fontWeight:700,width:150,fontVariantNumeric:"tabular-nums",outline:"none"}} placeholder="0"/>
-        </div>
-        <div style={{fontSize:12,color:"#f87171",marginTop:4}}>≈ {fU(caucionUSD)} <span style={{color:"#475569"}}>(MEP ${fmt(macro.dolarMEP)})</span></div>
-      </div>
+      {(()=>{
+        const cData=caucion.montoARS>0&&caucion.tna>0&&caucion.dias>0?calcCaucion(caucion.montoARS,caucion.tna,caucion.dias,false):null;
+        /* CFT and TE for 30 days: simulate rolling 30-day caución at current TNA */
+        const c30=caucion.montoARS>0&&caucion.tna>0?calcCaucion(caucion.montoARS,caucion.tna,30,false):null;
+        return <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
+          <div style={{fontSize:11,color:"#64748b",marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Caución Tomada</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:8}}>
+            <div>
+              <div style={{fontSize:9,color:"#64748b",marginBottom:2}}>Monto ARS</div>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <span style={{fontSize:10,color:"#f87171"}}>$</span>
+                <input type="text" value={caucion.montoARS?caucion.montoARS.toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setCaucion({...caucion,montoARS:raw?parseInt(raw,10):0});}} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",color:"#f87171",fontSize:16,fontWeight:700,width:"100%",fontVariantNumeric:"tabular-nums",outline:"none"}} placeholder="0"/>
+              </div>
+            </div>
+            <div>
+              <div style={{fontSize:9,color:"#64748b",marginBottom:2}}>TNA %</div>
+              <input type="number" step="0.5" value={caucion.tna||""} onChange={e=>setCaucion({...caucion,tna:parseFloat(e.target.value)||0})} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",color:"#f87171",fontSize:16,fontWeight:700,width:"100%",fontVariantNumeric:"tabular-nums",outline:"none"}} placeholder="21"/>
+            </div>
+            <div>
+              <div style={{fontSize:9,color:"#64748b",marginBottom:2}}>Días</div>
+              <input type="number" value={caucion.dias||""} onChange={e=>setCaucion({...caucion,dias:parseInt(e.target.value)||0})} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",color:"#f87171",fontSize:16,fontWeight:700,width:"100%",fontVariantNumeric:"tabular-nums",outline:"none"}} placeholder="1"/>
+            </div>
+          </div>
+          <div style={{fontSize:12,color:"#f87171",marginBottom:6}}>≈ {fU(caucionUSD)} <span style={{color:"#475569"}}>(MEP ${fmt(macro.dolarMEP)})</span></div>
+          {cData&&<div style={{background:"#111827",borderRadius:8,padding:"8px 10px",marginTop:4}}>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"3px 0",borderBottom:"1px solid #1e293b"}}><span style={{fontSize:11,color:"#94a3b8"}}>C.F.T. (anualizado)</span><span style={{fontSize:12,fontWeight:700,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{cData.cft!=null?cData.cft.toFixed(2)+" %":"—"}</span></div>
+            {c30&&<div style={{display:"flex",justifyContent:"space-between",padding:"3px 0",borderBottom:"1px solid #1e293b"}}><span style={{fontSize:11,color:"#94a3b8"}}>T.E. Período (30d)</span><span style={{fontSize:12,fontWeight:700,color:"#f87171",fontVariantNumeric:"tabular-nums"}}>{c30.tePeriodo!=null?c30.tePeriodo.toFixed(4)+" %":"—"}</span></div>}
+            {c30&&<div style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}><span style={{fontSize:11,color:"#94a3b8"}}>Costo Neto (30d)</span><span style={{fontSize:12,fontWeight:700,color:"#f87171",fontVariantNumeric:"tabular-nums"}}>$ {c30.totalGastos!=null?new Intl.NumberFormat("es-AR",{minimumFractionDigits:0,maximumFractionDigits:0}).format(c30.totalGastos):"—"}</span></div>}
+          </div>}
+        </div>;
+      })()}
     </div>
 
     {/* ── Tabla Portfolio ── */}
@@ -1045,6 +1104,82 @@ function Operaciones({ops,setOps,macro,enriched}){
   </div>;
 }
 
+/* ── CALCULADORA CAUCIÓN ──────────────────── */
+function Caucion(){
+  const fARS=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
+  const fPct=(n,d=2)=>n==null||isNaN(n)?"—":`${n.toFixed(d)} %`;
+
+  const [monto,setMonto]=useState("66521399");
+  const [tnaTom,setTnaTom]=useState("21");
+  const [diasTom,setDiasTom]=useState("4");
+  const [tnaCol,setTnaCol]=useState("22");
+  const [diasCol,setDiasCol]=useState("3");
+
+  const tom=calcCaucion(parseFloat(monto)||0,parseFloat(tnaTom)||0,parseInt(diasTom)||0,false);
+  const col=calcCaucion(parseFloat(monto)||0,parseFloat(tnaCol)||0,parseInt(diasCol)||0,true);
+
+  const inputSt={background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"8px 12px",color:"#e2e8f0",fontSize:15,fontWeight:600,width:"100%",fontVariantNumeric:"tabular-nums"};
+  const labelSt={fontSize:11,color:"#64748b",display:"block",marginBottom:4,textTransform:"uppercase",letterSpacing:".04em"};
+  const rowSt={display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #1e293b"};
+  const valSt={fontVariantNumeric:"tabular-nums",fontWeight:600,fontSize:13};
+
+  function CaucionPanel({title,color,bg,data,esColocadora}){
+    if(!data)return<div style={{background:"#1a1f2e",borderRadius:10,padding:20,flex:1,border:"1px solid #252d3d"}}><div style={{color:"#475569",textAlign:"center",padding:40}}>Ingresá los valores para calcular</div></div>;
+    return<div style={{background:"#1a1f2e",borderRadius:10,padding:0,flex:1,border:`1px solid ${color}33`,overflow:"hidden"}}>
+      <div style={{background:bg,padding:"12px 18px",borderBottom:`1px solid ${color}33`}}>
+        <div style={{fontSize:14,fontWeight:700,color}}>{title}</div>
+      </div>
+      <div style={{padding:"14px 18px"}}>
+        {/* Datos de la operación */}
+        <div style={{background:"#111827",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Fecha:</span><span style={valSt}>{data.fechaOp}</span></div>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Monto Contado:</span><span style={{...valSt,color:"#f1f5f9"}}>{fARS(data.monto)}</span></div>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Tasa Bruta (TNA):</span><span style={valSt}>{fPct(data.tna)}</span></div>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Días:</span><span style={valSt}>{data.dias}</span></div>
+          <div style={{...rowSt,borderBottom:"none"}}><span style={{color:"#94a3b8",fontSize:12,fontWeight:600}}>Monto Futuro:</span><span style={{...valSt,color:"#f1f5f9",fontSize:14}}>{fARS(data.montoFuturo)}</span></div>
+        </div>
+        {/* Desglose de gastos */}
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:8,letterSpacing:".04em"}}>Desglose de Gastos</div>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Comisión:</span><span style={{...valSt,color:"#fbbf24"}}>{fARS(data.comision)}</span></div>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Derecho Mercado:</span><span style={valSt}>{fARS(data.derMercado)}</span></div>
+          {!esColocadora&&<div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Gto. Adm. Gtías:</span><span style={valSt}>{fARS(data.gtoGtia)}</span></div>}
+          {esColocadora&&<div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Gto. Adm. Gtías:</span><span style={{...valSt,color:"#475569"}}>$ 0,00</span></div>}
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>IVA (21%):</span><span style={valSt}>{fARS(data.iva)}</span></div>
+          <div style={{...rowSt,borderBottom:"none",borderTop:"1px solid #334155",paddingTop:8}}><span style={{color:"#94a3b8",fontSize:12,fontWeight:700}}>Total Gastos:</span><span style={{...valSt,color:"#f87171",fontSize:14}}>{fARS(data.totalGastos)}</span></div>
+        </div>
+        {/* Resultado */}
+        <div style={{background:esColocadora?"#065f4622":"#7f1d1d22",borderRadius:8,padding:"12px 14px",border:`1px solid ${esColocadora?"#34d39933":"#f8717133"}`}}>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Fecha {esColocadora?"cobro":"pago"}:</span><span style={valSt}>{data.fechaVenc}</span></div>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12,fontWeight:700}}>{esColocadora?"Monto a Cobrar":"Monto a Pagar"}:</span><span style={{...valSt,color:esColocadora?"#34d399":"#f87171",fontSize:15}}>{fARS(esColocadora?data.montoCobrar:data.montoPagar)}</span></div>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>{esColocadora?"Tasa Neta":"C.F.T."}:</span><span style={valSt}>{fPct(esColocadora?data.tasaNeta:data.cft)}</span></div>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>T.E. Período:</span><span style={{...valSt,color:esColocadora?"#34d399":"#f87171",background:esColocadora?"#065f4644":"#fbbf2433",padding:"2px 8px",borderRadius:4}}>{fPct(data.tePeriodo)}</span></div>
+          <div style={{...rowSt,borderBottom:"none"}}><span style={{color:"#94a3b8",fontSize:12,fontWeight:700}}>{esColocadora?"Ganancia Neta":"Costo Neto"}:</span><span style={{...valSt,color:esColocadora?"#34d399":"#f87171",fontSize:15}}>{fARS(esColocadora?data.ganNeta:data.costoNeto)}</span></div>
+        </div>
+      </div>
+    </div>;
+  }
+
+  return <div style={{display:"flex",flexDirection:"column",gap:18}}>
+    {/* Inputs compartidos */}
+    <Card title="Calculadora de Caución" right={<span style={{fontSize:10,color:"#475569"}}>BYMA · Bull Market Active Trader Plus</span>}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:14,alignItems:"end"}}>
+        <div style={{gridColumn:"span 1"}}><label style={labelSt}>Monto Contado ($)</label><input type="text" value={monto?parseInt(monto).toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setMonto(raw);}} style={inputSt}/></div>
+        <div><label style={labelSt}>TNA Tomadora (%)</label><input type="number" step="0.5" value={tnaTom} onChange={e=>setTnaTom(e.target.value)} style={inputSt}/></div>
+        <div><label style={labelSt}>Días Tomadora</label><input type="number" value={diasTom} onChange={e=>setDiasTom(e.target.value)} style={inputSt}/></div>
+        <div><label style={labelSt}>TNA Colocadora (%)</label><input type="number" step="0.5" value={tnaCol} onChange={e=>setTnaCol(e.target.value)} style={inputSt}/></div>
+        <div><label style={labelSt}>Días Colocadora</label><input type="number" value={diasCol} onChange={e=>setDiasCol(e.target.value)} style={inputSt}/></div>
+      </div>
+    </Card>
+    {/* Paneles lado a lado */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+      <CaucionPanel title="CAUCIÓN TOMADORA" color="#f87171" bg="#7f1d1d33" data={tom} esColocadora={false}/>
+      <CaucionPanel title="CAUCIÓN COLOCADORA" color="#34d399" bg="#065f4633" data={col} esColocadora={true}/>
+    </div>
+    <div style={{fontSize:9,color:"#475569",fontStyle:"italic",textAlign:"center"}}>Comisión Tomadora: 0,5% mensual · Colocadora: 0,083% mensual · Derechos+Gtías: 0,045%/90 días · IVA 21% · Fuente: Tarifario BM Marzo 2025 + BYMA</div>
+  </div>;
+}
+
 /* ── ALERTAS ──────────────────────────────── */
 function Alertas({alerts,setAlerts,prices,pos}){
   const [showForm,setShowForm]=useState(false);
@@ -1123,7 +1258,7 @@ function saveLS(key,val){try{localStorage.setItem("eid_"+key,JSON.stringify(val)
 const INIT_ALERTS=[{id:1,ticker:"YPFD",condition:"above",price:42,active:true},{id:2,ticker:"IBM",condition:"below",price:230,active:true},{id:3,ticker:"MELI",condition:"above",price:15,active:true}];
 const INIT_CASA={precioCompra:398000,anios:1,tasaAnual:4};
 const INIT_HIPOTECA={uvas:200696};
-const INIT_CAUCION={montoARS:0};
+const INIT_CAUCION={montoARS:0,tna:21,dias:1};
 
 /* ── GIST SYNC ENGINE ───────────────────── */
 const GIST_FILENAME="fin-cloud-data.json";
@@ -1415,7 +1550,7 @@ function App(){
   /* Patrimonio total incluyendo inmueble neto - caución */
   const patrimonioNeto=portfolioTotal+casaActual.valor-deudaUSD-caucionUSD;
 
-  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"alertas",label:"Alertas",emoji:"🔔"},{id:"noticias",label:"Noticias",emoji:"📰"}];
+  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"alertas",label:"Alertas",emoji:"🔔"},{id:"noticias",label:"Noticias",emoji:"📰"},{id:"caucion",label:"Caución",emoji:"🏦"}];
 
   return <div style={{minHeight:"100vh"}}>
     <header style={{background:"linear-gradient(90deg,#111827,#1e293b)",borderBottom:"1px solid #1e293b",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
@@ -1485,6 +1620,7 @@ function App(){
       {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro} enriched={enriched}/>}
       {tab==="alertas"&&<Alertas alerts={alerts} setAlerts={setAlerts} prices={prices} pos={pos}/>}
       {tab==="noticias"&&<Noticias pos={pos} news={news}/>}
+      {tab==="caucion"&&<Caucion/>}
     </main>
   </div>;
 }
