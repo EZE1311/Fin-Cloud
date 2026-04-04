@@ -812,24 +812,9 @@ async function iolFetchCaucionRate(){
 
   const result={pesos1d:null,pesos30d:null,usd1d:null,usd30d:null};
 
-  /* ── Fetch all available panels ── */
-  /* Panel "Todos" has everything; "Pesos" and specific panels may have more detail */
+  /* ── Fetch panel "Todos" — the only panel IOL reliably supports ── */
   const allClassified=await fetchPanel("Todos","Cauciones Todos",null);
   assignRates(allClassified,result);
-
-  /* If missing data, try panel "Pesos" which may have more plazo detail */
-  if(result.pesos30d==null){
-    const pesosCl=await fetchPanel("Pesos","Cauciones Pesos","ARS");
-    assignRates(pesosCl,result);
-  }
-
-  /* Try dollar panels — IOL may or may not support these */
-  if(result.usd1d==null){
-    for(const panel of ["Dolares","DolarEstadounidense","D%C3%B3lares"]){
-      const usdCl=await fetchPanel(panel,"Cauciones "+panel,"USD");
-      if(usdCl.length>0){assignRates(usdCl,result);break;}
-    }
-  }
 
   /* ── Save all rates ── */
   console.log("[IOL] Resultado final:",JSON.stringify(result));
@@ -1370,63 +1355,39 @@ function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetc
     </div>;
   }
 
-  /* Rate display helper */
-  const RateCard=({label,tna,color,icon})=>(
-    <div style={{background:"#111827",borderRadius:10,padding:"14px 16px",flex:1,minWidth:140,border:"1px solid #252d3d"}}>
-      <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>{icon} {label}</div>
-      {tna!=null&&tna>0?
-        <div style={{fontSize:24,fontWeight:800,color,fontVariantNumeric:"tabular-nums"}}>{tna}%<span style={{fontSize:12,fontWeight:500,color:"#64748b",marginLeft:4}}>TNA</span></div>:
-        <div style={{fontSize:14,color:"#475569"}}>Sin datos</div>
-      }
-    </div>
-  );
-
   const statusColor=iolStatus?.status==="ok"?"#34d399":iolStatus?.status==="cached"?"#fbbf24":iolStatus?.status==="error"?"#f87171":"#64748b";
   const statusDot=<span style={{width:8,height:8,borderRadius:"50%",background:statusColor,display:"inline-block",animation:iolStatus?.status==="fetching"?"pulse 1s infinite":"none"}}/>;
+  const tna1d=iolStatus?.pesos1d;
+  const te1d=tna1d?(tna1d/365):null;
 
   return <div style={{display:"flex",flexDirection:"column",gap:18}}>
-    {/* ── TASAS IOL — panel prominente arriba ── */}
-    <div style={{background:"linear-gradient(135deg,#1a1f2e 0%,#0f172a 100%)",border:"1px solid #334155",borderRadius:12,overflow:"hidden"}}>
-      <div style={{padding:"16px 20px",borderBottom:"1px solid #252d3d",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:18}}>📊</span>
-          <div>
-            <h3 style={{margin:0,fontSize:16,fontWeight:700,color:"#e2e8f0"}}>Tasas de Caución — IOL en Vivo</h3>
-            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
-              {statusDot}
-              {iolStatus?.status==="ok"&&<span style={{fontSize:11,color:"#34d399"}}>Conectado</span>}
-              {iolStatus?.status==="cached"&&<span style={{fontSize:11,color:"#fbbf24"}}>Cache</span>}
-              {iolStatus?.status==="fetching"&&<span style={{fontSize:11,color:"#60a5fa"}}>Consultando...</span>}
-              {iolStatus?.status==="error"&&<span style={{fontSize:11,color:"#f87171"}} title={window._iolLastError||iolStatus?.msg||""}>{window._iolLastError?.includes("CORS")?"CORS bloqueado":window._iolLastError?.includes("Credenciales")?"Credenciales/API inválida":"Error"}</span>}
-              {iolStatus?.status==="idle"&&<span style={{fontSize:11,color:"#64748b"}}>No configurado</span>}
-              {iolStatus?.ts&&<span style={{fontSize:10,color:"#475569"}}>· {timeAgo(new Date(iolStatus.ts).toISOString())}</span>}
-            </div>
+    {/* ── TASA IOL — Caución Pesos 1D ── */}
+    <div style={{background:"linear-gradient(135deg,#1a1f2e 0%,#0f172a 100%)",border:"1px solid #334155",borderRadius:12,padding:"20px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:16}}>
+        <div style={{background:"#111827",borderRadius:10,padding:"12px 16px",border:"1px solid #252d3d",textAlign:"center",minWidth:120}}>
+          {tna1d!=null&&tna1d>0?
+            <div style={{fontSize:28,fontWeight:800,color:"#34d399",fontVariantNumeric:"tabular-nums",lineHeight:1}}>{tna1d}%<span style={{fontSize:13,fontWeight:500,color:"#64748b",marginLeft:4}}>TNA</span></div>:
+            iolStatus?.status==="fetching"?
+              <div style={{fontSize:14,color:"#60a5fa",animation:"pulse 1s infinite"}}>Consultando...</div>:
+              <div style={{fontSize:14,color:"#475569"}}>Sin datos</div>
+          }
+          {te1d!=null&&<div style={{fontSize:10,color:"#64748b",marginTop:4}}>T.E. diaria: {te1d.toFixed(4)}%</div>}
+        </div>
+        <div>
+          <h3 style={{margin:0,fontSize:15,fontWeight:700,color:"#e2e8f0"}}>Caución Pesos 1 Día</h3>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
+            {statusDot}
+            {iolStatus?.status==="ok"&&<span style={{fontSize:11,color:"#34d399"}}>IOL Conectado</span>}
+            {iolStatus?.status==="cached"&&<span style={{fontSize:11,color:"#fbbf24"}}>Cache</span>}
+            {iolStatus?.status==="error"&&<span style={{fontSize:11,color:"#f87171"}} title={window._iolLastError||iolStatus?.msg||""}>{window._iolLastError?.includes("Credenciales")?"Credenciales inválidas":"Error de conexión"}</span>}
+            {iolStatus?.status==="idle"&&<span style={{fontSize:11,color:"#64748b"}}>No configurado</span>}
+            {iolStatus?.ts&&<span style={{fontSize:10,color:"#475569"}}>· {timeAgo(new Date(iolStatus.ts).toISOString())}</span>}
           </div>
         </div>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={fetchCaucionRate} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"6px 12px",fontSize:12,cursor:"pointer",fontWeight:500}}>🔄 Actualizar</button>
-          <button onClick={()=>setShowIOLConfig(!showIOLConfig)} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"6px 12px",fontSize:12,cursor:"pointer",fontWeight:500}}>⚙️ Config</button>
-        </div>
       </div>
-      <div style={{padding:"18px 20px"}}>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
-          <RateCard label="Pesos 1 Día" tna={iolStatus?.pesos1d} color="#34d399" icon="🇦🇷"/>
-          <RateCard label="Pesos 30 Días" tna={iolStatus?.pesos30d} color="#60a5fa" icon="🇦🇷"/>
-          <RateCard label="Dólares 1 Día" tna={iolStatus?.usd1d} color="#a78bfa" icon="🇺🇸"/>
-          <RateCard label="Dólares 30 Días" tna={iolStatus?.usd30d} color="#fb923c" icon="🇺🇸"/>
-        </div>
-        {iolStatus?.pesos1d!=null&&iolStatus.pesos1d>0&&<div style={{marginTop:14,display:"flex",gap:16,flexWrap:"wrap"}}>
-          {(()=>{
-            const te1d=iolStatus.pesos1d/365;
-            const te30d=iolStatus.pesos30d?(iolStatus.pesos30d/365*30):null;
-            return<>
-              <span style={{fontSize:11,color:"#94a3b8"}}>T.E. 1D Pesos: <b style={{color:"#34d399"}}>{te1d.toFixed(4)}%</b></span>
-              {te30d!=null&&<span style={{fontSize:11,color:"#94a3b8"}}>T.E. 30D Pesos: <b style={{color:"#60a5fa"}}>{te30d.toFixed(4)}%</b></span>}
-              {iolStatus.usd1d!=null&&iolStatus.usd1d>0&&<span style={{fontSize:11,color:"#94a3b8"}}>T.E. 1D USD: <b style={{color:"#a78bfa"}}>{(iolStatus.usd1d/365).toFixed(4)}%</b></span>}
-              {iolStatus.usd30d!=null&&iolStatus.usd30d>0&&<span style={{fontSize:11,color:"#94a3b8"}}>T.E. 30D USD: <b style={{color:"#fb923c"}}>{(iolStatus.usd30d/365*30).toFixed(4)}%</b></span>}
-            </>;
-          })()}
-        </div>}
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={fetchCaucionRate} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"6px 12px",fontSize:12,cursor:"pointer",fontWeight:500}}>🔄 Actualizar</button>
+        <button onClick={()=>setShowIOLConfig(!showIOLConfig)} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"6px 12px",fontSize:12,cursor:"pointer",fontWeight:500}}>⚙️ Config</button>
       </div>
     </div>
 
