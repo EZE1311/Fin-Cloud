@@ -49,7 +49,7 @@ input::placeholder{color:#475569}
 const {useState,useEffect,useMemo,useCallback}=React;
 /* ── helpers ─────────────────────────────── */
 const fmt=(n,d=0)=>{if(n==null||isNaN(n))return"—";return new Intl.NumberFormat("es-AR",{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)};
-const fU=n=>n==null||isNaN(n)?"—":`USD ${fmt(n,2)}`;
+const fU=n=>{if(n==null||isNaN(n))return"—";const abs=Math.abs(n);const d=abs<0.01?6:abs<1?4:2;return`USD ${fmt(n,d)}`;};
 const fP=n=>n==null||isNaN(n)?"—":`${n>=0?"+":""}${fmt(n,2)}%`;
 const today=()=>{const d=new Date();return`${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getFullYear()).slice(2)}`};
 
@@ -1225,16 +1225,28 @@ function App(){
     return deudaARS/macro.dolarMEP;
   },[hipoteca,macro]);
 
-  /* ── Fetch datos reales al cargar y cada 2 min ──── */
-  const fetchAllData=useCallback(async()=>{
-    const allTickers=[...new Set(ops.map(o=>o.ticker))];
-    const[macroData,priceData,newsData]=await Promise.all([
-      fetchMacroReal(),
-      fetchPricesReal(allTickers),
-      fetchNewsReal(allTickers)
-    ]);
+  /* ── Helpers: mercado abierto? ──── */
+  const isMarketOpen=useCallback(()=>{
+    const now=new Date();
+    const day=now.getDay();
+    if(day===0||day===6)return{byma:false,nyse:false,any:false};
+    /* BYMA: Lun-Vie 11:00-17:00 ART (UTC-3) */
+    const artH=now.getUTCHours()-3;const artM=now.getUTCMinutes();
+    const artMin=artH*60+artM;
+    const byma=artMin>=660&&artMin<1020; /* 11:00-17:00 */
+    /* NYSE: Lun-Vie 9:30-16:00 ET (UTC-4 o UTC-5 DST) */
+    const etOff=(() => {const jan=new Date(now.getFullYear(),0,1).getTimezoneOffset();const jul=new Date(now.getFullYear(),6,1).getTimezoneOffset();const isDST=now.getTimezoneOffset()<Math.max(jan,jul);return isDST?-4:-5;})();
+    const etH=now.getUTCHours()+etOff;const etM=now.getUTCMinutes();
+    const etMin=etH*60+etM;
+    const nyse=etMin>=570&&etMin<960; /* 9:30-16:00 */
+    return{byma,nyse,any:byma||nyse};
+  },[]);
+
+  /* ── Fetch separados: precios vs macro+noticias ──── */
+  const allTickers=useMemo(()=>[...new Set(ops.map(o=>o.ticker))],[ops]);
+
+  const updateMacro=useCallback((macroData)=>{
     setMacro(macroData);
-    /* Guardar snapshot previo para variación diaria del header */
     try{
       const todayStr=new Date().toISOString().split("T")[0];
       const prev=JSON.parse(localStorage.getItem("eid_macro_prev")||"{}");
@@ -1245,21 +1257,50 @@ function App(){
       localStorage.setItem("eid_macro_cur",JSON.stringify(macroData));
       setMacroPrev(JSON.parse(localStorage.getItem("eid_macro_prev")||"{}"));
     }catch(e){}
+  },[]);
+
+  const updatePrices=useCallback((priceData)=>{
     if(priceData&&Object.keys(priceData).length>0){
       setPrices(prev=>{const merged={...prev,...priceData};savePriceCache(merged);return merged;});
       setDataSource("live");
-      /* Refresh metadata de sectores async (no bloquea UI) */
       refreshMetaCache(allTickers,priceData).then(cache=>setMetaCache({...cache}));
     }else{setDataSource("fallback")}
+  },[allTickers]);
+
+  /* Fetch completo (carga inicial) */
+  const fetchAllData=useCallback(async()=>{
+    const[macroData,priceData,newsData]=await Promise.all([
+      fetchMacroReal(),fetchPricesReal(allTickers),fetchNewsReal(allTickers)
+    ]);
+    updateMacro(macroData);
+    updatePrices(priceData);
     if(newsData){setNews(newsData);saveNewsCache(newsData);}
     setLastUp(new Date());
-  },[ops]);
+  },[allTickers,updateMacro,updatePrices]);
+
+  /* Fetch solo precios (cada 60s en horario de mercado) */
+  const fetchPricesOnly=useCallback(async()=>{
+    if(!isMarketOpen().any)return;
+    const priceData=await fetchPricesReal(allTickers);
+    updatePrices(priceData);
+    setLastUp(new Date());
+  },[allTickers,updatePrices,isMarketOpen]);
+
+  /* Fetch macro+noticias (cada 5 min en horario de mercado) */
+  const fetchMacroNews=useCallback(async()=>{
+    if(!isMarketOpen().any)return;
+    const[macroData,newsData]=await Promise.all([fetchMacroReal(),fetchNewsReal(allTickers)]);
+    updateMacro(macroData);
+    if(newsData){setNews(newsData);saveNewsCache(newsData);}
+    setLastUp(new Date());
+  },[allTickers,updateMacro,isMarketOpen]);
 
   useEffect(()=>{
-    fetchAllData();
-    const iv=setInterval(fetchAllData,120000); /* refresh cada 2 min */
-    return()=>clearInterval(iv);
-  },[fetchAllData]);
+    fetchAllData(); /* carga inicial siempre */
+    const ivPrices=setInterval(fetchPricesOnly,60000);    /* precios cada 60s */
+    const ivMacro=setInterval(fetchMacroNews,300000);     /* macro+news cada 5 min */
+    return()=>{clearInterval(ivPrices);clearInterval(ivMacro);};
+  },[fetchAllData,fetchPricesOnly,fetchMacroNews]);
 
   const enriched=useMemo(()=>pos.map(p=>{
     const l=prices[p.ticker]||{price:p.ppc,change:0};
