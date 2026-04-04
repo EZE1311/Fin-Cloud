@@ -489,14 +489,15 @@ async function fetchNewsReal(tickers){
     const negWords=["BAJA","CAE","NEGATIV","PIERDE","CAÍDA","RECORT","PRESIÓN","LOSS","DROP","FALL","CUT","DECLINE","WARN","RISK","SLUMP","DOWN","CRASH","DOWNGRADE"];
 
     const addItem=(ticker,item,source)=>{
-      const key=item.title.slice(0,50).toUpperCase();
-      if(seen.has(key))return;seen.add(key);
+      /* Dedup: normalizar título (sin puntuación, espacios extra) para detectar duplicados */
+      const norm=item.title.replace(/[^a-zA-Z0-9\s]/g,"").replace(/\s+/g," ").trim().toUpperCase().slice(0,60);
+      if(seen.has(norm))return;seen.add(norm);
       const text=(item.title+" "+(item.description||"")).toUpperCase();
       let sentiment="neutral";
       if(posWords.some(w=>text.includes(w)))sentiment="positive";
       if(negWords.some(w=>text.includes(w)))sentiment=sentiment==="positive"?"positive":"negative";
       allNews.push({
-        id:`${source}-${item.title.slice(0,20)}`,ticker,title:item.title,source,
+        id:`${ticker}-${norm.slice(0,30)}-${allNews.length}`,ticker,title:item.title,source,
         sentiment,summary:item.description?item.description.replace(/<[^>]*>/g,"").slice(0,250):"",
         link:item.link,pubDate:item.pubDate
       });
