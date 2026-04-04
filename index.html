@@ -482,76 +482,89 @@ function getTickerKW(ticker){
 /* Noticias — Bloomberg-style deep search across global + local portals */
 async function fetchNewsReal(tickers){
   try{
-    /* Feeds globales + argentinos — cobertura amplia tipo Bloomberg Terminal */
-    const feeds=[
-      /* Argentina */
+    const R2J="https://api.rss2json.com/v1/api.json?rss_url=";
+    const allNews=[];
+    const seen=new Set();
+    const posWords=["SUBE","CRECE","POSITIV","RÉCORD","AVANZ","GANA","SUPERA","BEAT","SURGE","RALLY","GAIN","PROFIT","RECORD","EXPAND","RISE","SOAR","UPGRADE"];
+    const negWords=["BAJA","CAE","NEGATIV","PIERDE","CAÍDA","RECORT","PRESIÓN","LOSS","DROP","FALL","CUT","DECLINE","WARN","RISK","SLUMP","DOWN","CRASH","DOWNGRADE"];
+
+    const addItem=(ticker,item,source)=>{
+      const key=item.title.slice(0,50).toUpperCase();
+      if(seen.has(key))return;seen.add(key);
+      const text=(item.title+" "+(item.description||"")).toUpperCase();
+      let sentiment="neutral";
+      if(posWords.some(w=>text.includes(w)))sentiment="positive";
+      if(negWords.some(w=>text.includes(w)))sentiment=sentiment==="positive"?"positive":"negative";
+      allNews.push({
+        id:`${source}-${item.title.slice(0,20)}`,ticker,title:item.title,source,
+        sentiment,summary:item.description?item.description.replace(/<[^>]*>/g,"").slice(0,250):"",
+        link:item.link,pubDate:item.pubDate
+      });
+    };
+
+    /* ── 1) Feeds POR TICKER — noticias específicas de cada activo ── */
+    const tickerFeeds=[];
+    tickers.forEach(tk=>{
+      const sym=d912Sym(tk,D912_USA_ALIAS);
+      /* Yahoo Finance por ticker */
+      tickerFeeds.push({tk,url:`https://feeds.finance.yahoo.com/rss/2.0/headline?s=${sym}&region=US&lang=en-US`,source:"Yahoo Finance"});
+      /* Google News por ticker (busca nombre empresa o ticker) */
+      const kws=getTickerKW(tk);
+      const q=encodeURIComponent(kws[0]||tk);
+      tickerFeeds.push({tk,url:`https://news.google.com/rss/search?q=${q}+stock&hl=en-US&gl=US&ceid=US:en`,source:"Google News"});
+    });
+
+    const tickerResults=await Promise.allSettled(tickerFeeds.map(async f=>{
+      const res=await fetch(R2J+encodeURIComponent(f.url));
+      return{...f,data:await res.json()};
+    }));
+    tickerResults.forEach(r=>{
+      if(r.status!=="fulfilled"||!r.value.data?.items)return;
+      const{tk,source,data}=r.value;
+      data.items.slice(0,5).forEach(item=>addItem(tk,item,source));
+    });
+
+    /* ── 2) Feeds ARGENTINOS generales — para bonos, CEDEARs arg, mercado local ── */
+    const argFeeds=[
       {url:"https://www.ambito.com/rss/economia.xml",source:"Ámbito"},
       {url:"https://www.cronista.com/files/rss/news.xml",source:"Cronista"},
       {url:"https://www.iprofesional.com/rss/finanzas",source:"iProfesional"},
-      {url:"https://www.infobae.com/feeds/rss/",source:"Infobae"},
-      /* Internacionales */
-      {url:"https://feeds.bloomberg.com/markets/news.rss",source:"Bloomberg"},
-      {url:"https://feeds.reuters.com/reuters/businessNews",source:"Reuters"},
-      {url:"https://www.cnbc.com/id/100003114/device/rss/rss.html",source:"CNBC"},
-      {url:"https://feeds.marketwatch.com/marketwatch/topstories/",source:"MarketWatch"},
-      {url:"https://seekingalpha.com/market_currents.xml",source:"Seeking Alpha"},
-      {url:"https://finance.yahoo.com/news/rssindex",source:"Yahoo Finance"},
-      {url:"https://www.ft.com/?format=rss",source:"Financial Times"},
-      {url:"https://feeds.wsj.com/xml/rss/3_7085.xml",source:"WSJ"},
     ];
-    const allNews=[];
-    const seen=new Set();
-    /* Fetch en paralelo para velocidad */
-    const results=await Promise.allSettled(feeds.map(async feed=>{
-      const r2jUrl=`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.url)}`;
-      const res=await fetch(r2jUrl);
-      return{feed,data:await res.json()};
+    const argResults=await Promise.allSettled(argFeeds.map(async f=>{
+      const res=await fetch(R2J+encodeURIComponent(f.url));
+      return{...f,data:await res.json()};
     }));
-    results.forEach(r=>{
-      if(r.status!=="fulfilled"||!r.value.data.items)return;
-      const{feed,data}=r.value;
+    argResults.forEach(r=>{
+      if(r.status!=="fulfilled"||!r.value.data?.items)return;
+      const{source,data}=r.value;
       data.items.forEach(item=>{
         const text=(item.title+" "+(item.description||"")).toUpperCase();
-        /* Solo incluir si menciona algún ticker del portfolio */
         let matched=null;
         for(const tk of tickers){
           const kws=getTickerKW(tk);
-          if(kws.some(kw=>{const escaped=kw.toUpperCase().replace(/[.*+?^${}()|[\]\\]/g,"\\$&");return new RegExp("\\b"+escaped+"\\b").test(text);})){matched=tk;break;}
+          if(kws.some(kw=>{const esc=kw.toUpperCase().replace(/[.*+?^${}()|[\]\\]/g,"\\$&");return new RegExp("\\b"+esc+"\\b").test(text);})){matched=tk;break;}
         }
-        if(!matched)return; /* Descartamos noticias no relevantes */
-        /* Dedup por título similar */
-        const key=item.title.slice(0,50).toUpperCase();
-        if(seen.has(key))return;seen.add(key);
-        const posWords=["SUBE","CRECE","POSITIV","RÉCORD","AVANZ","GANA","SUPERA","RÉCORD","BEAT","SURGE","RALLY","UP","GAIN","PROFIT","RECORD","EXPAND"];
-        const negWords=["BAJA","CAE","NEGATIV","PIERDE","CAÍDA","RECORT","PRESIÓN","LOSS","DROP","FALL","CUT","DECLINE","WARN","RISK","SLUMP","DOWN"];
-        let sentiment="neutral";
-        if(posWords.some(w=>text.includes(w)))sentiment="positive";
-        if(negWords.some(w=>text.includes(w)))sentiment=sentiment==="positive"?"positive":"negative";
-        allNews.push({
-          id:`${feed.source}-${item.title.slice(0,20)}`,ticker:matched,title:item.title,
-          source:feed.source,
-          sentiment,
-          summary:item.description?item.description.replace(/<[^>]*>/g,"").slice(0,250):"",
-          link:item.link,pubDate:item.pubDate
-        });
+        if(matched)addItem(matched,item,source);
       });
     });
-    /* Si no hay noticias específicas del portfolio, incluir noticias generales de mercado */
+
+    /* ── 3) Si no hay nada, noticias generales de mercado ── */
     if(allNews.length===0){
-      results.forEach(r=>{
-        if(r.status!=="fulfilled"||!r.value.data.items)return;
-        const{feed,data}=r.value;
-        data.items.slice(0,3).forEach(item=>{
-          const key=item.title.slice(0,50).toUpperCase();
-          if(seen.has(key))return;seen.add(key);
-          allNews.push({id:`${feed.source}-${item.title.slice(0,20)}`,ticker:"MERCADO",title:item.title,source:feed.source,sentiment:"neutral",summary:item.description?item.description.replace(/<[^>]*>/g,"").slice(0,250):"",link:item.link,pubDate:item.pubDate});
-        });
+      const genFeeds=[{url:"https://feeds.reuters.com/reuters/businessNews",source:"Reuters"},{url:"https://www.cnbc.com/id/100003114/device/rss/rss.html",source:"CNBC"}];
+      const genResults=await Promise.allSettled(genFeeds.map(async f=>{
+        const res=await fetch(R2J+encodeURIComponent(f.url));
+        return{...f,data:await res.json()};
+      }));
+      genResults.forEach(r=>{
+        if(r.status!=="fulfilled"||!r.value.data?.items)return;
+        r.value.data.items.slice(0,5).forEach(item=>addItem("MERCADO",item,r.value.source));
       });
     }
+
     allNews.sort((a,b)=>new Date(b.pubDate||0)-new Date(a.pubDate||0));
     return allNews.length>0?allNews.slice(0,40):null;
   }catch(e){
-    console.warn("News API fallback:",e);
+    console.warn("News fetch error:",e);
     return null;
   }
 }
