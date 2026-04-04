@@ -186,6 +186,26 @@ function inferMeta(ticker,broker,mercado,d912Info){
   return{tipo,pais};
 }
 
+/* ── Comisiones Bull Market — Active Trader Plus ── */
+/* Calcula comisión total (broker + derecho mercado + IVA si aplica) sobre un monto */
+function calcComision(monto, broker, tipo){
+  if(broker!=="BM") return 0; /* CS u otros brokers USA: sin comisión */
+  const IVA=1.21;
+  /* Bonos, Letras, ONs → exentos de IVA */
+  const exento=tipo==="Bono"||tipo==="Letra"||tipo==="ON";
+  let comBroker, derechoMercado;
+  if(tipo==="Bono"||tipo==="ON"){
+    comBroker=0.0010; derechoMercado=0.0001; /* 0.10% + 0.01% */
+  } else if(tipo==="Letra"){
+    comBroker=0.0010; derechoMercado=0.00001; /* 0.10% + 0.001% */
+  } else {
+    /* Acciones, CEDEARs */
+    comBroker=0.0010; derechoMercado=0.0008; /* 0.10% + 0.08% */
+  }
+  const subtotal=monto*(comBroker+derechoMercado);
+  return exento?subtotal:subtotal*IVA;
+}
+
 /* Seed inicial: sectores conocidos para no depender de Yahoo en la primera carga */
 const SECTOR_SEED={EDN:"Energía",YPFD:"Petróleo",MELI:"Tecnología",ORCL:"Tecnología",IBM:"Tecnología",FISV:"Fintech",BKUCF:"Uranio",TSLA:"Automotriz",UNH:"Salud",AL30:"Renta Fija"};
 (function seedMeta(){const c=loadMetaCache();let u=false;Object.entries(SECTOR_SEED).forEach(([t,s])=>{if(!c[t]||!c[t].sector){c[t]={...c[t],sector:s};u=true;}});if(u)saveMetaCache(c);})();
@@ -601,7 +621,7 @@ function Badge({text,color="#60a5fa",bg="#252d3d"}){
 }
 
 /* ── RESUMEN ─────────────────────────────── */
-function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,casa,setCasa,casaActual,hipoteca,setHipoteca,deudaUSD,patrimonioNeto,caucion,setCaucion,caucionUSD,portfolioLiquido,portfolioTotal,dailyPL,news}){
+function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,casa,setCasa,casaActual,hipoteca,setHipoteca,deudaUSD,patrimonioNeto,caucion,setCaucion,caucionUSD,portfolioLiquido,portfolioTotal,dailyPL,news,portfolioNeto,totalComVenta}){
   const casaNeta=casaActual.valor-deudaUSD;
   const byAsset=useMemo(()=>{
     const items=enriched.map((p,i)=>({name:p.ticker,value:p.montoActual,color:COLORS[i%COLORS.length]}));
@@ -652,9 +672,10 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
         </div>
       </div>
       <Stat label="Portfolio Líquido" value={fU(portfolioLiquido)} sub={caucionUSD>0?`Caución: ${fU(caucionUSD)}`:"Sin caución"} color="#60a5fa"/>
-      {(()=>{const bCCL=macro.dolarOficial>0?(macro.dolarCCL-macro.dolarOficial)/macro.dolarOficial:0;const portAR=portfolioLiquido*(1+bCCL);return <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
-        <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Portfolio Líq. Argentina</div>
+      {(()=>{const bCCL=macro.dolarOficial>0?(macro.dolarCCL-macro.dolarOficial)/macro.dolarOficial:0;const portAR=portfolioNeto*(1+bCCL);return <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
+        <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Portfolio Líq. Argentina <span style={{fontSize:9,color:"#475569"}}>(neto comisiones)</span></div>
         <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#60a5fa",fontVariantNumeric:"tabular-nums"}}>{fU(portAR)}</div>
+        <div style={{fontSize:10,color:"#fbbf24",marginTop:4}}>Comisión venta: -{fU(totalComVenta)}</div>
       </div>;})()}
       <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
         <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Caución Tomada</div>
@@ -874,7 +895,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
 }
 
 /* ── OPERACIONES ─────────────────────────── */
-function Operaciones({ops,setOps,macro}){
+function Operaciones({ops,setOps,macro,enriched}){
   const [showForm,setShowForm]=useState(false);
   const [editId,setEditId]=useState(null);
   const [form,setForm]=useState({ticker:"",tipo:"COMPRA",cantidad:"",precio:"",mercado:"BYMA",broker:"BM",moneda:"ARS",fecha:"",ccl:""});
@@ -963,6 +984,63 @@ function Operaciones({ops,setOps,macro}){
         </table>
       </div>
     </Card>
+
+    {/* ── Simulador de Comisiones ── */}
+    {enriched&&enriched.length>0&&<Card title="Comisiones Estimadas" right={<span style={{fontSize:10,color:"#475569"}}>Bull Market · Active Trader Plus</span>}>
+      {(()=>{
+        const totComCompra=enriched.reduce((s,p)=>s+p.comCompra,0);
+        const totComVenta=enriched.reduce((s,p)=>s+p.comVenta,0);
+        const totCom=totComCompra+totComVenta;
+        const totActual=enriched.reduce((s,p)=>s+p.montoActual,0);
+        const pctCost=totActual>0?(totCom/totActual*100):0;
+        return<div>
+          {/* Resumen */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:16}}>
+            <div style={{background:"#111827",borderRadius:8,padding:"12px 14px",textAlign:"center"}}>
+              <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Comisión Compra</div>
+              <div style={{fontSize:18,fontWeight:700,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fU(totComCompra)}</div>
+              <div style={{fontSize:10,color:"#475569"}}>ya pagada</div>
+            </div>
+            <div style={{background:"#111827",borderRadius:8,padding:"12px 14px",textAlign:"center"}}>
+              <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Comisión Venta</div>
+              <div style={{fontSize:18,fontWeight:700,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fU(totComVenta)}</div>
+              <div style={{fontSize:10,color:"#475569"}}>estimada a valor actual</div>
+            </div>
+            <div style={{background:"#111827",borderRadius:8,padding:"12px 14px",textAlign:"center"}}>
+              <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Costo Total</div>
+              <div style={{fontSize:18,fontWeight:700,color:"#f87171",fontVariantNumeric:"tabular-nums"}}>{fU(totCom)}</div>
+              <div style={{fontSize:10,color:"#475569"}}>{fmt(pctCost,3)}% del portfolio</div>
+            </div>
+          </div>
+          {/* Detalle por posición */}
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead><tr>
+              {["Ticker","Tipo","Broker","Compra","Venta","Total","IVA"].map(h=><th key={h} style={{padding:"6px 8px",textAlign:h==="Ticker"||h==="Tipo"||h==="Broker"?"left":"right",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
+            </tr></thead>
+            <tbody>{enriched.map(p=>{
+              const exento=p.tipo==="Bono"||p.tipo==="Letra"||p.tipo==="ON";
+              return<tr key={p.ticker} style={{borderBottom:"1px solid #1e293b"}}>
+                <td style={{padding:"6px 8px",fontWeight:700,fontSize:12}}>{p.ticker}</td>
+                <td style={{padding:"6px 8px",fontSize:11,color:"#94a3b8"}}>{p.tipo}</td>
+                <td style={{padding:"6px 8px",fontSize:11,color:"#94a3b8"}}>{p.broker}</td>
+                <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums",color:p.comCompra>0?"#fbbf24":"#475569"}}>{fU(p.comCompra)}</td>
+                <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums",color:p.comVenta>0?"#fbbf24":"#475569"}}>{fU(p.comVenta)}</td>
+                <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums",fontWeight:600,color:p.comTotal>0?"#f87171":"#475569"}}>{fU(p.comTotal)}</td>
+                <td style={{padding:"6px 8px",textAlign:"right",fontSize:10,color:exento?"#34d399":"#fbbf24"}}>{exento?"Exento":"21%"}</td>
+              </tr>;
+            })}</tbody>
+            <tfoot><tr style={{borderTop:"2px solid #334155"}}>
+              <td colSpan={3} style={{padding:"8px",fontWeight:700,fontSize:12}}>TOTAL</td>
+              <td style={{padding:"8px",textAlign:"right",fontWeight:700,fontSize:12,color:"#fbbf24"}}>{fU(totComCompra)}</td>
+              <td style={{padding:"8px",textAlign:"right",fontWeight:700,fontSize:12,color:"#fbbf24"}}>{fU(totComVenta)}</td>
+              <td style={{padding:"8px",textAlign:"right",fontWeight:700,fontSize:12,color:"#f87171"}}>{fU(totCom)}</td>
+              <td></td>
+            </tr></tfoot>
+          </table>
+          <div style={{fontSize:9,color:"#475569",marginTop:8,fontStyle:"italic"}}>Bonos, Letras y ONs exentos de IVA · Mercado internacional (CS) sin comisión · Fuente: Tarifario BM Marzo 2025</div>
+        </div>;
+      })()}
+    </Card>}
   </div>;
 }
 
@@ -1309,13 +1387,20 @@ function App(){
     const precioUSD=(p.broker==="BM"&&l.priceARS)?l.priceARS/ccl:l.price;
     const varPct=(p.broker==="BM"&&l.changeARS!=null)?l.changeARS:l.change;
     const mi=p.cantidad*p.ppc;const ma=p.cantidad*precioUSD;const pl=ma-mi;const r=mi>0?(pl/mi)*100:0;
-    return{...p,precioActual:precioUSD,variacion:varPct,montoInvertido:mi,montoActual:ma,pl,rendimiento:r,priceARS:l.priceARS||null,changeARS:l.changeARS||null};
+    const comCompra=calcComision(mi,p.broker,p.tipo);
+    const comVenta=calcComision(ma,p.broker,p.tipo);
+    const comTotal=comCompra+comVenta;
+    const plNeto=pl-comTotal;
+    const rendNeto=mi>0?((ma-comVenta-(mi+comCompra))/(mi+comCompra))*100:0;
+    return{...p,precioActual:precioUSD,variacion:varPct,montoInvertido:mi,montoActual:ma,pl,rendimiento:r,priceARS:l.priceARS||null,changeARS:l.changeARS||null,comCompra,comVenta,comTotal,plNeto,rendNeto};
   }),[pos,prices,macro]);
 
   const portfolioTotal=useMemo(()=>enriched.reduce((s,p)=>s+p.montoActual,0),[enriched]);
   const invertido=useMemo(()=>enriched.reduce((s,p)=>s+p.montoInvertido,0),[enriched]);
   const caucionUSD=caucion.montoARS>0?caucion.montoARS/macro.dolarMEP:0;
   const portfolioLiquido=portfolioTotal-caucionUSD;
+  const totalComVenta=useMemo(()=>enriched.reduce((s,p)=>s+p.comVenta,0),[enriched]);
+  const portfolioNeto=portfolioLiquido-totalComVenta; /* lo que queda en mano si vendés todo */
   const pl=portfolioTotal-invertido;const rend=invertido>0?(pl/invertido)*100:0;
   const trigAlerts=useMemo(()=>alerts.filter(a=>a.active&&prices[a.ticker]&&(a.condition==="above"?prices[a.ticker].price>=a.price:prices[a.ticker].price<=a.price)),[alerts,prices]);
 
@@ -1395,8 +1480,8 @@ function App(){
     </nav>
     {showConfig&&<SyncConfigPanel onClose={()=>setShowConfig(false)}/>}
     <main className="main-content" style={{padding:24,maxWidth:1400,margin:"0 auto"}}>
-      {tab==="resumen"&&<Resumen enriched={enriched} total={portfolioTotal} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news}/>}
-      {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro}/>}
+      {tab==="resumen"&&<Resumen enriched={enriched} total={portfolioTotal} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news} portfolioNeto={portfolioNeto} totalComVenta={totalComVenta}/>}
+      {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro} enriched={enriched}/>}
       {tab==="alertas"&&<Alertas alerts={alerts} setAlerts={setAlerts} prices={prices} pos={pos}/>}
       {tab==="noticias"&&<Noticias pos={pos} news={news}/>}
     </main>
