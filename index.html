@@ -675,45 +675,74 @@ async function iolGetToken(){
 async function iolFetchCaucionRate(){
   const token=await iolGetToken();
   if(!token)return null;
-  /* Try multiple possible endpoint patterns */
-  const endpoints=[
-    "https://api.invertironline.com/api/v2/bCBA/Titulos/CAUCION/Cotizacion",
-    "https://api.invertironline.com/api/v2/argentina/Titulos/CAUC1D/Cotizacion",
-    "https://api.invertironline.com/api/v2/Cotizaciones/cauciones/argentina/Todos"
-  ];
-  for(const url of endpoints){
+  const base="https://api.invertironline.com/api/v2";
+  const hdrs={"Authorization":"Bearer "+token};
+
+  /* ── Strategy 1: Cotizaciones de cauciones ── */
+  /* GET /api/v2/Cotizaciones/{Instrumento}/{Pais}/Todos */
+  /* Response: { titulos:[{ simbolo, ultimoPrecio, puntas:{precioCompra,precioVenta,...} }] } */
+  try{
+    const res=await fetch(base+"/Cotizaciones/cauciones/argentina/Todos",{headers:hdrs});
+    if(res.ok){
+      const d=await res.json();
+      const titulos=d.titulos||d;
+      if(Array.isArray(titulos)&&titulos.length>0){
+        /* Find 1-day caucion — symbol usually contains "1" for 1 day */
+        const c1d=titulos.find(t=>
+          /1\s*d/i.test(t.simbolo||"")||/1\s*d/i.test(t.descripcion||"")||
+          t.simbolo==="CAUC"||t.simbolo==="CAUC1D"||t.simbolo==="CAUCION"
+        )||titulos[0];
+        /* ultimoPrecio = TNA for cauciones */
+        const tna=c1d.ultimoPrecio||c1d.puntas?.precioCompra||0;
+        if(tna>0){
+          saveLS("iol_caucion",{tna,ts:Date.now(),src:"cotizaciones",sym:c1d.simbolo});
+          return tna;
+        }
+      }
+    }
+  }catch(e){console.log("IOL cotizaciones err:",e)}
+
+  /* ── Strategy 2: CPD (Caución/Pase Determinado) subastas ── */
+  /* GET /api/v2/operar/CPD/{estado}/{segmento} */
+  /* Response: { subasta:[{ tasaCompra, duracion, segmento, ... }] } */
+  const cpdSegmentos=["Pesos","pesos_Prioridad_Precio","Pesos_Prioridad_Precio"];
+  for(const seg of cpdSegmentos){
     try{
-      const res=await fetch(url,{headers:{"Authorization":"Bearer "+token}});
+      const res=await fetch(base+"/operar/CPD/activas/"+encodeURIComponent(seg),{headers:hdrs});
       if(res.ok){
         const d=await res.json();
-        /* Extract TNA from response — structure may vary */
-        if(Array.isArray(d)&&d.length>0){
-          /* Find 1-day caucion */
-          const c1d=d.find(r=>r.plazo===1||r.descripcion?.includes("1")||r.simbolo?.includes("1D"));
-          if(c1d){
-            const tna=c1d.ultimoPrecio||c1d.tna||c1d.tasaPromedio||c1d.ultimo;
-            if(tna>0){
-              saveLS("iol_caucion",{tna,ts:Date.now(),endpoint:url});
-              return tna;
-            }
-          }
-          /* Fallback: first item */
-          const first=d[0];
-          const tna=first.ultimoPrecio||first.tna||first.tasaPromedio||first.ultimo;
+        const subs=d.subasta||d;
+        if(Array.isArray(subs)&&subs.length>0){
+          /* Find shortest duration (1 day) */
+          const sorted=[...subs].sort((a,b)=>(a.duracion||999)-(b.duracion||999));
+          const best=sorted[0];
+          const tna=best.tasaCompra||best.tasa||0;
           if(tna>0){
-            saveLS("iol_caucion",{tna,ts:Date.now(),endpoint:url});
-            return tna;
-          }
-        }else if(d&&!Array.isArray(d)){
-          const tna=d.ultimoPrecio||d.tna||d.tasaPromedio||d.ultimo;
-          if(tna>0){
-            saveLS("iol_caucion",{tna,ts:Date.now(),endpoint:url});
+            saveLS("iol_caucion",{tna,ts:Date.now(),src:"cpd",seg,dur:best.duracion});
             return tna;
           }
         }
       }
     }catch(e){}
   }
+
+  /* ── Strategy 3: Cotización directa de título ── */
+  /* GET /api/v2/{Mercado}/Titulos/{Simbolo}/Cotizacion */
+  const simbolos=["CAUC","CAUC1D","CAUCION"];
+  for(const sym of simbolos){
+    try{
+      const res=await fetch(base+"/bCBA/Titulos/"+sym+"/Cotizacion",{headers:hdrs});
+      if(res.ok){
+        const d=await res.json();
+        const tna=d.ultimoPrecio||d.cierreAnterior||0;
+        if(tna>0){
+          saveLS("iol_caucion",{tna,ts:Date.now(),src:"titulo",sym});
+          return tna;
+        }
+      }
+    }catch(e){}
+  }
+
   return null;
 }
 
@@ -1261,7 +1290,7 @@ function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetc
         {iolStatus?.status==="ok"&&<span style={{fontSize:13,fontWeight:700,color:"#34d399"}}>{iolStatus.tna}% TNA</span>}
         {iolStatus?.status==="cached"&&<span style={{fontSize:13,fontWeight:700,color:"#fbbf24"}}>{iolStatus.tna}% <span style={{fontSize:10,fontWeight:400,color:"#64748b"}}>(cache)</span></span>}
         {iolStatus?.status==="fetching"&&<span style={{fontSize:11,color:"#60a5fa",animation:"pulse 1s infinite"}}>Consultando...</span>}
-        {iolStatus?.status==="error"&&<span style={{fontSize:11,color:"#f87171"}}>Error al consultar</span>}
+        {iolStatus?.status==="error"&&<span style={{fontSize:11,color:"#f87171"}} title={iolStatus?.msg||""}>Error al consultar</span>}
         {iolStatus?.status==="idle"&&<span style={{fontSize:11,color:"#64748b"}}>No configurado</span>}
         {iolStatus?.ts&&<span style={{fontSize:9,color:"#475569"}}>· {timeAgo(new Date(iolStatus.ts).toISOString())}</span>}
       </div>
@@ -1634,21 +1663,28 @@ function App(){
     const creds=loadLS("iol_creds",null);
     if(!creds)return;
     setIolStatus(s=>({...s,status:"fetching"}));
-    const tna=await iolFetchCaucionRate();
-    if(tna!=null){
-      setIolStatus({tna,ts:Date.now(),status:"ok"});
-      /* Auto-update caucion.tna if user hasn't manually changed it */
-      setCaucion(c=>({...c,tna:Math.round(tna*10)/10}));
-    }else{
-      setIolStatus(s=>({...s,status:"error"}));
+    try{
+      const tna=await iolFetchCaucionRate();
+      if(tna!=null){
+        const cached=loadLS("iol_caucion",null);
+        setIolStatus({tna,ts:Date.now(),status:"ok",src:cached?.src||"api"});
+        /* Auto-update caucion.tna */
+        setCaucion(c=>({...c,tna:Math.round(tna*10)/10}));
+      }else{
+        /* Check if we have a recent cache to fall back to */
+        const cached=loadLS("iol_caucion",null);
+        if(cached&&cached.tna&&(Date.now()-cached.ts)<3600000){
+          setIolStatus({tna:cached.tna,ts:cached.ts,status:"cached"});
+        }else{
+          setIolStatus(s=>({...s,status:"error",msg:"Sin datos de caución"}));
+        }
+      }
+    }catch(e){
+      setIolStatus(s=>({...s,status:"error",msg:e.message||"Error de conexión"}));
     }
   },[setCaucion]);
 
   useEffect(()=>{
-    /* Init IOL creds if not set */
-    if(!loadLS("iol_creds",null)){
-      saveLS("iol_creds",{user:"ibanez@ar.ibm.com",pass:"Isidoro504."});
-    }
     fetchCaucionRate();
     /* Refresh every 5 min during BYMA hours */
     const iv=setInterval(()=>{if(isMarketOpen().byma)fetchCaucionRate()},300000);
