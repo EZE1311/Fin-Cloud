@@ -455,16 +455,16 @@ async function fetchPricesReal(tickers){
 /* ── KEYWORDS para detección de tickers en noticias ── */
 /* Seed de keywords conocidos + auto-generación para tickers nuevos */
 const TICKER_KW_SEED={
-  YPFD:["YPF","YPFD","VACA MUERTA","SHALE","NEUQUÉN","NEUQUEN"],
-  MELI:["MERCADO LIBRE","MELI","MERCADOLIBRE","MERCADO PAGO"],
-  EDN:["EDENOR","EDN","DISTRIBUIDORA","TARIFAS ELÉCTRICAS"],
-  TSLA:["TESLA","TSLA","ELON MUSK","CYBERTRUCK","MODEL"],
-  IBM:["IBM","WATSON","RED HAT","HASHICORP"],
-  ORCL:["ORACLE","ORCL","ORACLE CLOUD","OCI","LARRY ELLISON"],
-  UNH:["UNITEDHEALTH","UNH","OPTUM","CHANGE HEALTHCARE"],
-  FISV:["FISERV","FISV","CLOVER","FINTECH FISERV"],
-  AL30:["AL30","BONO SOBERANO","BONOS ARGENTINOS","RIESGO PAÍS","RIESGO PAIS","DEUDA ARGENTINA"],
-  BKUCF:["BLUE SKY URANIUM","BKUCF","AMARILLO GRANDE","URANIO","URANIUM"]
+  YPFD:["YPF","YPFD","VACA MUERTA"],
+  MELI:["MERCADO LIBRE","MERCADOLIBRE","MERCADO PAGO"],
+  EDN:["EDENOR"],
+  TSLA:["TESLA","ELON MUSK","CYBERTRUCK"],
+  IBM:["IBM","RED HAT","HASHICORP"],
+  ORCL:["ORACLE","ORACLE CLOUD","LARRY ELLISON"],
+  UNH:["UNITEDHEALTH","OPTUM"],
+  FISV:["FISERV"],
+  AL30:["AL30","BONO SOBERANO","BONOS ARGENTINOS","DEUDA ARGENTINA"],
+  BKUCF:["BLUE SKY URANIUM","AMARILLO GRANDE"]
 };
 /* Devuelve keywords para un ticker: seed si existe, sino genera [TICKER, USA_ALIAS] + nombre de empresa del metaCache */
 function getTickerKW(ticker){
@@ -516,7 +516,7 @@ async function fetchNewsReal(tickers){
         let matched=null;
         for(const tk of tickers){
           const kws=getTickerKW(tk);
-          if(kws.some(kw=>text.includes(kw.toUpperCase()))){matched=tk;break;}
+          if(kws.some(kw=>{const escaped=kw.toUpperCase().replace(/[.*+?^${}()|[\]\\]/g,"\\$&");return new RegExp("\\b"+escaped+"\\b").test(text);})){matched=tk;break;}
         }
         if(!matched)return; /* Descartamos noticias no relevantes */
         /* Dedup por título similar */
@@ -613,7 +613,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
       const benchName=p.broker==="BM"?"Merval":"S&P 500";
       /* Buscar noticia asociada */
       const kws=getTickerKW(p.ticker);
-      const matchedNews=news.find(n=>n.ticker===p.ticker)||(kws?news.find(n=>{const t=(n.title+" "+(n.summary||"")).toUpperCase();return kws.some(kw=>t.includes(kw.toUpperCase()));}):null);
+      const matchedNews=news.find(n=>n.ticker===p.ticker)||(kws?news.find(n=>{const t=(n.title+" "+(n.summary||"")).toUpperCase();return kws.some(kw=>{const escaped=kw.toUpperCase().replace(/[.*+?^${}()|[\]\\]/g,"\\$&");return new RegExp("\\b"+escaped+"\\b").test(t);});}):null);
       /* Clasificación: si va en la misma dirección y dentro del 50% del benchmark, es arrastre de mercado */
       let context="",contextColor="#64748b";
       if(Math.abs(v)<0.5){context="Sin cambio significativo";}
