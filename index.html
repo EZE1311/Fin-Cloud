@@ -965,8 +965,8 @@ function Operaciones({ops,setOps,macro,enriched}){
     <Card>
       <div className="table-wrap" style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",minWidth:950}}>
-          <thead><tr>{["Fecha","Ticker","Tipo","Cantidad","Precio","CCL","Monto ARS","Monto USD","Broker",""].map(h2=><th key={h2} style={{padding:"10px 8px",textAlign:["Fecha","Ticker","Tipo",""].includes(h2)?"left":"right",fontSize:11,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d",background:"#151a27"}}>{h2}</th>)}</tr></thead>
-          <tbody>{[...fl].reverse().map(op=>{const usd=montoUSD(op);return <tr key={op.id} style={{borderBottom:"1px solid #1e293b",background:editId===op.id?"#2563eb11":"transparent"}} onMouseEnter={e=>{if(editId!==op.id)e.currentTarget.style.background="#252d3d33"}} onMouseLeave={e=>{if(editId!==op.id)e.currentTarget.style.background=editId===op.id?"#2563eb11":"transparent"}}>
+          <thead><tr>{["Fecha","Ticker","Tipo","Cantidad","Precio","CCL","Monto ARS","Monto USD","Comisión","Broker",""].map(h2=><th key={h2} style={{padding:"10px 8px",textAlign:["Fecha","Ticker","Tipo",""].includes(h2)?"left":"right",fontSize:11,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d",background:"#151a27"}}>{h2}</th>)}</tr></thead>
+          <tbody>{[...fl].reverse().map(op=>{const usd=montoUSD(op);const ep=enriched&&enriched.find(e=>e.ticker===op.ticker);const tipoActivo=ep?ep.tipo:"Acción";const com=usd!=null?calcComision(usd,op.broker,tipoActivo):0;return <tr key={op.id} style={{borderBottom:"1px solid #1e293b",background:editId===op.id?"#2563eb11":"transparent"}} onMouseEnter={e=>{if(editId!==op.id)e.currentTarget.style.background="#252d3d33"}} onMouseLeave={e=>{if(editId!==op.id)e.currentTarget.style.background=editId===op.id?"#2563eb11":"transparent"}}>
             <td style={{padding:"10px 8px",fontSize:13}}>{op.fecha}</td>
             <td style={{padding:"10px 8px",fontWeight:700,fontSize:14}}>{op.ticker}</td>
             <td style={{padding:"10px 8px"}}><Badge text={op.tipo} color={op.tipo==="COMPRA"?"#34d399":"#f87171"} bg={op.tipo==="COMPRA"?"#065f4622":"#7f1d1d22"}/></td>
@@ -975,6 +975,7 @@ function Operaciones({ops,setOps,macro,enriched}){
             <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,color:op.ccl?"#60a5fa":"#334155"}}>{op.ccl?`$${fmt(op.ccl,2)}`:"—"}</td>
             <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{op.moneda==="ARS"?`$${fmt(op.cantidad*op.precio)}`:"—"}</td>
             <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontWeight:600,color:"#f1f5f9"}}>{usd!=null?fU(usd):"—"}</td>
+            <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,color:com>0?"#fbbf24":"#475569"}}>{com>0?fU(com):"—"}</td>
             <td style={{padding:"10px 8px",textAlign:"right",fontSize:12,color:"#94a3b8"}}>{op.broker}</td>
             <td style={{padding:"10px 8px",whiteSpace:"nowrap"}}>
               <button onClick={()=>startEdit(op)} title="Editar" style={{background:"none",border:"none",cursor:"pointer",padding:"4px 6px",fontSize:14,opacity:.5,transition:"opacity .15s"}} onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=.5}>✏️</button>
