@@ -378,7 +378,7 @@ async function fetchMacroReal(){
     }catch(e){}
 
     /* Inflación mensual desde ArgentinaDatos */
-    let inflacion=2.9;
+    let inflacion=0;
     try{
       const infRes=await fetch("https://api.argentinadatos.com/v1/finanzas/indices/inflacion");
       const infData=await infRes.json();
@@ -404,7 +404,7 @@ async function fetchMacroReal(){
     };
 
     /* BCRA: Tasa PM (6), Inflación IA (28), Reservas (1) — en paralelo */
-    let tasa=29,inflacionIA=33.1,reservas=28500;
+    let tasa=0,inflacionIA=0,reservas=0;
     try{
       const [vTasa,vIA,vRes]=await Promise.allSettled([bcraFetch(6),bcraFetch(28),bcraFetch(1)]);
       if(vTasa.status==="fulfilled"&&vTasa.value) tasa=vTasa.value;
@@ -423,7 +423,7 @@ async function fetchMacroReal(){
       });
     }catch(e){}
 
-    return{dolarOficial:oficial||1415,dolarMEP:mep||1380,dolarCCL:ccl||1395,dolarBlue:blue||1405,dolarTarjeta:tarjeta||1885,riesgoPais,inflacion,inflacionIA,tasa,uva,uvaVar30d,reservas,sp500Chg,mervalChg};
+    return{dolarOficial:oficial||0,dolarMEP:mep||0,dolarCCL:ccl||0,dolarBlue:blue||0,dolarTarjeta:tarjeta||0,riesgoPais,inflacion,inflacionIA,tasa,uva,uvaVar30d,reservas,sp500Chg,mervalChg};
   }catch(e){
     console.warn("Macro API fallback:",e);
     return MACRO_FALLBACK;
@@ -889,11 +889,6 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
   const relevantNews=news.filter(n=>tickers.includes(n.ticker)||n.ticker==="MACRO").slice(0,15);
 
   return <div style={{display:"flex",flexDirection:"column",gap:20}}>
-    {trigAlerts.length>0&&<div style={{background:"#dc262612",border:"1px solid #dc262633",borderRadius:10,padding:"14px 18px"}}>
-      <div style={{fontSize:13,fontWeight:600,color:"#fca5a5",marginBottom:8}}>⚠ Alertas Activadas</div>
-      {trigAlerts.map(a=><div key={a.id} style={{fontSize:12,color:"#fca5a5",padding:"3px 0"}}>{a.ticker} {a.condition==="above"?"superó":"cayó debajo de"} USD {fmt(a.price,2)} → Actual: USD {fmt(prices[a.ticker]?.price,4)}</div>)}
-    </div>}
-
     {/* ── KPIs — todos en una fila ── */}
     <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:14}}>
       <Stat label="Patrimonio Neto" value={fU(patrimonioNeto)} sub="Port + Casa - Hipoteca - Caución" color="#a78bfa"/>
@@ -1434,45 +1429,199 @@ function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetc
   </div>;
 }
 
-/* ── ALERTAS ──────────────────────────────── */
-function Alertas({alerts,setAlerts,prices,pos}){
-  const [showForm,setShowForm]=useState(false);
-  const [form,setForm]=useState({ticker:"",condition:"above",price:""});
-  const add=e=>{e.preventDefault();if(!form.ticker||!form.price)return;setAlerts([...alerts,{id:Date.now(),ticker:form.ticker.toUpperCase(),condition:form.condition,price:parseFloat(form.price),active:true}]);setForm({ticker:"",condition:"above",price:""});setShowForm(false);};
+/* ── TRADING — Simulador Intraday ────────── */
+function Trading({macro}){
+  const fARS=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:0,maximumFractionDigits:0}).format(n)}`;
+  const fARS2=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
+  const fPct=(n,d=2)=>n==null||isNaN(n)?"—":`${n.toFixed(d)}%`;
+
+  /* Comisiones configurables */
+  const [comBroker,setComBroker]=useState("0.10");   /* % */
+  const [derMercado,setDerMercado]=useState("0.07");  /* % */
+  const [intraVenta,setIntraVenta]=useState("0.05");  /* % adicional en venta intraday */
+  const [ivaRate]=useState(21);                       /* % IVA */
+
+  /* Operación */
+  const [cantidad,setCantidad]=useState("15000");
+  const [precioCompra,setPrecioCompra]=useState("4430");
+  const [precioVenta,setPrecioVenta]=useState("");
+  const [tipoActivo,setTipoActivo]=useState("accion"); /* accion, bono, letra, on */
+
+  const cant=parseFloat(cantidad)||0;
+  const pc=parseFloat(precioCompra)||0;
+  const pv=parseFloat(precioVenta)||0;
+  const montoCompra=cant*pc;
+  const montoVenta=cant*pv;
+
+  const comPct=parseFloat(comBroker)/100||0;
+  const derPct=parseFloat(derMercado)/100||0;
+  const intraPct=parseFloat(intraVenta)/100||0;
+  const ivaMult=(tipoActivo==="bono"||tipoActivo==="letra"||tipoActivo==="on")?1:(1+ivaRate/100);
+  const exento=tipoActivo==="bono"||tipoActivo==="letra"||tipoActivo==="on";
+
+  /* Comisiones compra */
+  const comCompra=montoCompra*(comPct+derPct)*ivaMult;
+  /* Comisiones venta (incluye intra venta) */
+  const comVentaBase=montoVenta*(comPct+derPct)*ivaMult;
+  const comIntra=montoVenta*intraPct*ivaMult;
+  const comVenta=comVentaBase+comIntra;
+  const totalGastos=comCompra+comVenta;
+
+  /* P&L */
+  const bruto=montoVenta-montoCompra;
+  const neto=bruto-totalGastos;
+
+  /* Breakeven: precio al que hay que vender para P&L neto = 0 */
+  /* montoVenta_be - montoCompra - comCompra - montoVenta_be*(comPct+derPct+intraPct)*ivaMult = 0 */
+  /* cant*pBE - montoCompra - comCompra - cant*pBE*(comPct+derPct+intraPct)*ivaMult = 0 */
+  /* cant*pBE*(1 - (comPct+derPct+intraPct)*ivaMult) = montoCompra + comCompra */
+  const ventaFactor=(comPct+derPct+intraPct)*ivaMult;
+  const breakeven=cant>0?(montoCompra+comCompra)/(cant*(1-ventaFactor)):0;
+
+  /* Quick P&L for different scenarios */
+  const scenarios=pc>0?[-3,-2,-1,-0.5,0.5,1,2,3].map(pct=>{
+    const pvS=pc*(1+pct/100);
+    const mvS=cant*pvS;
+    const cvS=mvS*(comPct+derPct+intraPct)*ivaMult;
+    const netoS=mvS-montoCompra-comCompra-cvS;
+    return{pct,pv:pvS,neto:netoS};
+  }):[];
+
+  const inputSt={background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"8px 12px",color:"#e2e8f0",fontSize:15,fontWeight:600,width:"100%",fontVariantNumeric:"tabular-nums"};
+  const labelSt={fontSize:11,color:"#64748b",display:"block",marginBottom:4,textTransform:"uppercase",letterSpacing:".04em"};
+  const rowSt={display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #1e293b"};
+  const valSt={fontVariantNumeric:"tabular-nums",fontWeight:600,fontSize:13};
 
   return <div style={{display:"flex",flexDirection:"column",gap:18}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
-      <div><h2 style={{margin:0,fontSize:18,fontWeight:700}}>Alertas de Precio</h2><p style={{margin:"4px 0 0",fontSize:13,color:"#64748b"}}>Configurá alertas para monitorear precios.</p></div>
-      <Btn onClick={()=>setShowForm(!showForm)}>+ Nueva Alerta</Btn>
+    {/* Header */}
+    <div>
+      <h2 style={{margin:0,fontSize:18,fontWeight:700}}>Simulador de Trading Intraday</h2>
+      <p style={{margin:"4px 0 0",fontSize:13,color:"#64748b"}}>Simulá compra y venta en el día con comisiones reales. BYMA · Bull Market.</p>
     </div>
-    {showForm&&<Card title="Crear Alerta">
-      <form onSubmit={add} style={{display:"flex",gap:12,alignItems:"flex-end",flexWrap:"wrap"}}>
-        <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Ticker</label><select value={form.ticker} onChange={e=>setForm({...form,ticker:e.target.value})} required style={{minWidth:120}}><option value="">Seleccionar...</option>{pos.map(p=><option key={p.ticker} value={p.ticker}>{p.ticker}</option>)}</select></div>
-        <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Condición</label><select value={form.condition} onChange={e=>setForm({...form,condition:e.target.value})} style={{minWidth:160}}><option value="above">Sube por encima de</option><option value="below">Baja por debajo de</option></select></div>
-        <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Precio USD</label><input type="number" step="0.0001" value={form.price} onChange={e=>setForm({...form,price:e.target.value})} required style={{width:130}}/></div>
-        <Btn variant="success" onClick={add}>Crear</Btn>
-      </form>
+
+    {/* Comisiones configurables */}
+    <Card title="Comisiones" right={<span style={{fontSize:10,color:"#475569"}}>Bull Market · Active Trader Plus</span>}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:14,alignItems:"end"}}>
+        <div><label style={labelSt}>Comisión Broker (%)</label><input type="number" step="0.01" value={comBroker} onChange={e=>setComBroker(e.target.value)} style={inputSt}/></div>
+        <div><label style={labelSt}>Der. Mercado (%)</label><input type="number" step="0.01" value={derMercado} onChange={e=>setDerMercado(e.target.value)} style={inputSt}/></div>
+        <div><label style={labelSt}>Intra Venta (%)</label><input type="number" step="0.01" value={intraVenta} onChange={e=>setIntraVenta(e.target.value)} style={inputSt}/></div>
+        <div><label style={labelSt}>IVA</label><div style={{...inputSt,background:"#0f172a",color:"#64748b"}}>{exento?"Exento":"21%"}</div></div>
+        <div><label style={labelSt}>Tipo Activo</label>
+          <select value={tipoActivo} onChange={e=>setTipoActivo(e.target.value)} style={{...inputSt,cursor:"pointer"}}>
+            <option value="accion">Acción / CEDEAR</option>
+            <option value="bono">Bono</option>
+            <option value="letra">Letra</option>
+            <option value="on">ON</option>
+          </select>
+        </div>
+      </div>
+    </Card>
+
+    {/* Operación */}
+    <Card title="Operación">
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14,alignItems:"end"}}>
+        <div><label style={labelSt}>Cantidad (nominales)</label><input type="text" value={cantidad?parseInt(cantidad).toLocaleString("es-AR"):""} onChange={e=>setCantidad(e.target.value.replace(/[^\d]/g,""))} style={inputSt}/></div>
+        <div><label style={labelSt}>Precio Compra ($)</label><input type="text" value={precioCompra?parseFloat(precioCompra).toLocaleString("es-AR",{maximumFractionDigits:2}):""} onChange={e=>setPrecioCompra(e.target.value.replace(/[^\d.,]/g,"").replace(",","."))} style={inputSt}/></div>
+        <div><label style={labelSt}>Precio Venta ($)</label><input type="text" value={precioVenta?parseFloat(precioVenta).toLocaleString("es-AR",{maximumFractionDigits:2}):""} onChange={e=>setPrecioVenta(e.target.value.replace(/[^\d.,]/g,"").replace(",","."))} style={{...inputSt,borderColor:pv>0?(neto>=0?"#065f46":"#7f1d1d"):"#334155"}} placeholder="Ingresá para calcular P&L"/></div>
+      </div>
+    </Card>
+
+    {/* Breakeven destacado */}
+    {pc>0&&cant>0&&<div style={{background:"linear-gradient(135deg,#1a1f2e 0%,#0f172a 100%)",border:"1px solid #334155",borderRadius:12,padding:"20px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:16}}>
+        <div style={{background:"#111827",borderRadius:10,padding:"12px 16px",border:"1px solid #252d3d",textAlign:"center",minWidth:150}}>
+          <div style={{fontSize:28,fontWeight:800,color:"#fbbf24",fontVariantNumeric:"tabular-nums",lineHeight:1}}>{fARS2(breakeven)}</div>
+          <div style={{fontSize:10,color:"#64748b",marginTop:4}}>por acción</div>
+        </div>
+        <div>
+          <h3 style={{margin:0,fontSize:15,fontWeight:700,color:"#e2e8f0"}}>Precio Breakeven</h3>
+          <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>Vendé a este precio o más para no perder plata</div>
+          <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Spread: {fARS2(breakeven-pc)} ({fPct((breakeven-pc)/pc*100,3)}) sobre compra</div>
+        </div>
+      </div>
+      <div style={{textAlign:"right"}}>
+        <div style={{fontSize:11,color:"#64748b"}}>Monto Compra</div>
+        <div style={{fontSize:16,fontWeight:700,color:"#e2e8f0",fontVariantNumeric:"tabular-nums"}}>{fARS(montoCompra)}</div>
+        <div style={{fontSize:10,color:"#fbbf24",marginTop:2}}>+ {fARS(comCompra)} gastos</div>
+      </div>
+    </div>}
+
+    {/* Resultado si hay precio de venta */}
+    {pv>0&&cant>0&&pc>0&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+      {/* Desglose Compra */}
+      <div style={{background:"#1a1f2e",borderRadius:10,padding:0,border:"1px solid #f8717133",overflow:"hidden"}}>
+        <div style={{background:"#7f1d1d33",padding:"12px 18px",borderBottom:"1px solid #f8717133"}}>
+          <div style={{fontSize:14,fontWeight:700,color:"#f87171"}}>COMPRA</div>
+        </div>
+        <div style={{padding:"14px 18px"}}>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Monto Bruto:</span><span style={{...valSt,color:"#f1f5f9"}}>{fARS(montoCompra)}</span></div>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Comisión ({comBroker}%):</span><span style={{...valSt,color:"#fbbf24"}}>{fARS2(montoCompra*comPct)}</span></div>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Der. Mercado ({derMercado}%):</span><span style={valSt}>{fARS2(montoCompra*derPct)}</span></div>
+          {!exento&&<div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>IVA (21%):</span><span style={valSt}>{fARS2(montoCompra*(comPct+derPct)*0.21)}</span></div>}
+          <div style={{...rowSt,borderBottom:"none",borderTop:"1px solid #334155",paddingTop:8}}><span style={{color:"#94a3b8",fontSize:12,fontWeight:700}}>Total Gastos:</span><span style={{...valSt,color:"#f87171",fontSize:14}}>{fARS2(comCompra)}</span></div>
+        </div>
+      </div>
+
+      {/* Desglose Venta */}
+      <div style={{background:"#1a1f2e",borderRadius:10,padding:0,border:"1px solid #34d39933",overflow:"hidden"}}>
+        <div style={{background:"#065f4633",padding:"12px 18px",borderBottom:"1px solid #34d39933"}}>
+          <div style={{fontSize:14,fontWeight:700,color:"#34d399"}}>VENTA</div>
+        </div>
+        <div style={{padding:"14px 18px"}}>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Monto Bruto:</span><span style={{...valSt,color:"#f1f5f9"}}>{fARS(montoVenta)}</span></div>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Comisión ({comBroker}%):</span><span style={{...valSt,color:"#fbbf24"}}>{fARS2(montoVenta*comPct)}</span></div>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Der. Mercado ({derMercado}%):</span><span style={valSt}>{fARS2(montoVenta*derPct)}</span></div>
+          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Intra Venta ({intraVenta}%):</span><span style={{...valSt,color:"#fbbf24"}}>{fARS2(montoVenta*intraPct)}</span></div>
+          {!exento&&<div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>IVA (21%):</span><span style={valSt}>{fARS2(montoVenta*(comPct+derPct+intraPct)*0.21)}</span></div>}
+          <div style={{...rowSt,borderBottom:"none",borderTop:"1px solid #334155",paddingTop:8}}><span style={{color:"#94a3b8",fontSize:12,fontWeight:700}}>Total Gastos:</span><span style={{...valSt,color:"#f87171",fontSize:14}}>{fARS2(comVenta)}</span></div>
+        </div>
+      </div>
+    </div>}
+
+    {/* P&L Summary */}
+    {pv>0&&cant>0&&pc>0&&<div style={{background:neto>=0?"#065f4622":"#7f1d1d22",border:`1px solid ${neto>=0?"#34d39955":"#f8717155"}`,borderRadius:12,padding:"20px 24px"}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,textAlign:"center"}}>
+        <div>
+          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Bruto</div>
+          <div style={{fontSize:20,fontWeight:800,color:bruto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fARS(bruto)}</div>
+        </div>
+        <div>
+          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Total Gastos</div>
+          <div style={{fontSize:20,fontWeight:800,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fARS2(totalGastos)}</div>
+        </div>
+        <div>
+          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>P&L Neto</div>
+          <div style={{fontSize:24,fontWeight:800,color:neto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fARS(neto)}</div>
+        </div>
+        <div>
+          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Rendimiento</div>
+          <div style={{fontSize:20,fontWeight:800,color:neto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fPct(montoCompra>0?neto/montoCompra*100:0,3)}</div>
+        </div>
+      </div>
+    </div>}
+
+    {/* Tabla de escenarios */}
+    {scenarios.length>0&&<Card title="Escenarios Rápidos" right={<span style={{fontSize:10,color:"#475569"}}>P&L neto según variación de precio</span>}>
+      <table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead><tr>
+          {["Variación","Precio Venta","Monto Venta","Gastos Totales","P&L Neto"].map(h=><th key={h} style={{padding:"8px 10px",textAlign:h==="Variación"?"left":"right",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
+        </tr></thead>
+        <tbody>{scenarios.map(s=>{
+          const mvS=cant*s.pv;
+          const cvS=mvS*(comPct+derPct+intraPct)*ivaMult;
+          const gastosTotal=comCompra+cvS;
+          return<tr key={s.pct} style={{borderBottom:"1px solid #1e293b",background:s.neto>=0?"#065f4608":"#7f1d1d08"}}>
+            <td style={{padding:"8px 10px",fontWeight:700,fontSize:13,color:s.pct>=0?"#34d399":"#f87171"}}>{s.pct>0?"+":""}{s.pct}%</td>
+            <td style={{padding:"8px 10px",textAlign:"right",fontSize:13,fontVariantNumeric:"tabular-nums"}}>{fARS2(s.pv)}</td>
+            <td style={{padding:"8px 10px",textAlign:"right",fontSize:13,fontVariantNumeric:"tabular-nums"}}>{fARS(mvS)}</td>
+            <td style={{padding:"8px 10px",textAlign:"right",fontSize:12,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fARS2(gastosTotal)}</td>
+            <td style={{padding:"8px 10px",textAlign:"right",fontSize:13,fontWeight:700,color:s.neto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fARS(s.neto)}</td>
+          </tr>;
+        })}</tbody>
+      </table>
     </Card>}
-    <div style={{display:"grid",gap:10}}>
-      {alerts.map(a=>{const p=prices[a.ticker];const trig=a.active&&p&&(a.condition==="above"?p.price>=a.price:p.price<=a.price);
-        return <div key={a.id} style={{background:trig?"#dc262612":"#1a1f2e",border:`1px solid ${trig?"#dc262644":"#252d3d"}`,borderRadius:10,padding:"16px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10,animation:trig?"pulse 2s infinite":"none"}}>
-          <div style={{display:"flex",alignItems:"center",gap:14}}>
-            <div style={{width:40,height:40,borderRadius:8,background:trig?"#dc262622":"#252d3d",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{a.condition==="above"?"📈":"📉"}</div>
-            <div>
-              <div style={{fontWeight:700,fontSize:16}}>{a.ticker}</div>
-              <div style={{fontSize:12,color:"#64748b"}}>{a.condition==="above"?"Sube por encima de":"Baja por debajo de"} <strong style={{color:"#e2e8f0"}}>{fU(a.price)}</strong></div>
-              <div style={{fontSize:11,color:"#64748b",marginTop:2}}>Actual: <span style={{color:p?.change>=0?"#34d399":"#f87171",fontWeight:600}}>{fU(p?.price)}</span></div>
-            </div>
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            {trig&&<Badge text="ACTIVADA" color="#fca5a5" bg="#dc262633"/>}
-            <button onClick={()=>setAlerts(alerts.map(x=>x.id===a.id?{...x,active:!x.active}:x))} style={{background:a.active?"#065f4622":"#334155",border:`1px solid ${a.active?"#065f4644":"#475569"}`,color:a.active?"#34d399":"#64748b",borderRadius:6,padding:"6px 12px",fontSize:11,cursor:"pointer",fontWeight:500}}>{a.active?"Activa":"Pausada"}</button>
-            <button onClick={()=>setAlerts(alerts.filter(x=>x.id!==a.id))} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",padding:4,fontSize:16}}>🗑</button>
-          </div>
-        </div>;
-      })}
-    </div>
-    {alerts.length===0&&<div style={{textAlign:"center",padding:60,color:"#475569"}}><div style={{fontSize:48}}>🔔</div><p style={{marginTop:12,fontSize:14}}>No tenés alertas configuradas.</p></div>}
+
+    <div style={{fontSize:9,color:"#475569",fontStyle:"italic",textAlign:"center"}}>Comisiones configurables · IVA 21% sobre comisión+derechos (Bonos/Letras/ONs exentos) · Intra Venta aplica solo en venta intraday · Fuente: Tarifario BM Marzo 2025 + BYMA</div>
   </div>;
 }
 
@@ -1509,7 +1658,6 @@ function Noticias({pos,news}){
 function loadLS(key,fallback){try{const v=localStorage.getItem("eid_"+key);return v?JSON.parse(v):fallback}catch(e){return fallback}}
 function saveLS(key,val){try{localStorage.setItem("eid_"+key,JSON.stringify(val))}catch(e){}}
 
-const INIT_ALERTS=[];
 const INIT_CASA={precioCompra:0,anios:0,tasaAnual:0};
 const INIT_HIPOTECA={uvas:0};
 const INIT_CAUCION={montoARS:0,tna:21,dias:1};
@@ -1595,7 +1743,7 @@ function SyncConfigPanel({onClose}){
 function App(){
   const [tab,setTab]=useState("resumen");
   const [ops,setOps]=useState(()=>loadLS("ops",INIT_OPS));
-  const [alerts,setAlerts]=useState(()=>loadLS("alerts",INIT_ALERTS));
+  const [alerts,setAlerts]=useState(()=>loadLS("alerts",[]));
   const [prices,setPrices]=useState(LIVE_FALLBACK);
   const [macro,setMacro]=useState(()=>{
     /* Intentar cargar macro cacheado de localStorage para no arrancar en 0 */
@@ -1848,7 +1996,7 @@ function App(){
   /* Patrimonio total incluyendo inmueble neto - caución */
   const patrimonioNeto=portfolioTotal+casaActual.valor-deudaUSD-caucionUSD;
 
-  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"alertas",label:"Alertas",emoji:"🔔"},{id:"noticias",label:"Noticias",emoji:"📰"},{id:"caucion",label:"Caución",emoji:"🏦"}];
+  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"noticias",label:"Noticias",emoji:"📰"},{id:"caucion",label:"Caución",emoji:"🏦"},{id:"trading",label:"Trading",emoji:"⚡"}];
 
   return <div style={{minHeight:"100vh"}}>
     <header style={{background:"linear-gradient(90deg,#111827,#1e293b)",borderBottom:"1px solid #1e293b",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
@@ -1865,7 +2013,6 @@ function App(){
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-        {trigAlerts.length>0&&<div style={{background:"#dc262622",border:"1px solid #dc262655",borderRadius:6,padding:"4px 10px",fontSize:12,color:"#fca5a5",display:"flex",alignItems:"center",gap:6,animation:"pulse 2s infinite"}}>🔔 {trigAlerts.length} alerta{trigAlerts.length>1?"s":""}</div>}
         <div className="macro-strip" style={{display:"flex",gap:12,fontSize:12}}>
           {(()=>{
             const of1=macro.dolarOficial;
@@ -1916,7 +2063,7 @@ function App(){
     <main className="main-content" style={{padding:24,maxWidth:1400,margin:"0 auto"}}>
       {tab==="resumen"&&<Resumen enriched={enriched} total={portfolioTotal} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news} portfolioNeto={portfolioNeto} totalComVenta={totalComVenta}/>}
       {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro} enriched={enriched}/>}
-      {tab==="alertas"&&<Alertas alerts={alerts} setAlerts={setAlerts} prices={prices} pos={pos}/>}
+      {tab==="trading"&&<Trading macro={macro}/>}
       {tab==="noticias"&&<Noticias pos={pos} news={news}/>}
       {tab==="caucion"&&<Caucion caucion={caucion} setCaucion={setCaucion} iolStatus={iolStatus} fetchCaucionRate={fetchCaucionRate}/>}
     </main>
