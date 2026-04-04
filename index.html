@@ -634,6 +634,89 @@ function timeAgo(dateStr){
   return`${Math.floor(hrs/24)} días`;
 }
 
+/* ── IOL API — Tasa de Caución ────────────── */
+async function iolGetToken(){
+  const creds=loadLS("iol_creds",null);
+  if(!creds||!creds.user||!creds.pass)return null;
+  /* Check cached token */
+  const cached=loadLS("iol_token",null);
+  if(cached&&cached.access_token&&cached.expires_at>Date.now()+60000){
+    return cached.access_token;
+  }
+  /* Try refresh token first */
+  if(cached&&cached.refresh_token){
+    try{
+      const res=await fetch("https://api.invertironline.com/token",{
+        method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
+        body:`grant_type=refresh_token&refresh_token=${encodeURIComponent(cached.refresh_token)}`
+      });
+      if(res.ok){
+        const d=await res.json();
+        const tokenData={access_token:d.access_token,refresh_token:d.refresh_token,expires_at:Date.now()+(d.expires_in||900)*1000};
+        saveLS("iol_token",tokenData);
+        return d.access_token;
+      }
+    }catch(e){}
+  }
+  /* Fresh login */
+  try{
+    const res=await fetch("https://api.invertironline.com/token",{
+      method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
+      body:`username=${encodeURIComponent(creds.user)}&password=${encodeURIComponent(creds.pass)}&grant_type=password`
+    });
+    if(!res.ok)return null;
+    const d=await res.json();
+    const tokenData={access_token:d.access_token,refresh_token:d.refresh_token,expires_at:Date.now()+(d.expires_in||900)*1000};
+    saveLS("iol_token",tokenData);
+    return d.access_token;
+  }catch(e){return null}
+}
+
+async function iolFetchCaucionRate(){
+  const token=await iolGetToken();
+  if(!token)return null;
+  /* Try multiple possible endpoint patterns */
+  const endpoints=[
+    "https://api.invertironline.com/api/v2/bCBA/Titulos/CAUCION/Cotizacion",
+    "https://api.invertironline.com/api/v2/argentina/Titulos/CAUC1D/Cotizacion",
+    "https://api.invertironline.com/api/v2/Cotizaciones/cauciones/argentina/Todos"
+  ];
+  for(const url of endpoints){
+    try{
+      const res=await fetch(url,{headers:{"Authorization":"Bearer "+token}});
+      if(res.ok){
+        const d=await res.json();
+        /* Extract TNA from response — structure may vary */
+        if(Array.isArray(d)&&d.length>0){
+          /* Find 1-day caucion */
+          const c1d=d.find(r=>r.plazo===1||r.descripcion?.includes("1")||r.simbolo?.includes("1D"));
+          if(c1d){
+            const tna=c1d.ultimoPrecio||c1d.tna||c1d.tasaPromedio||c1d.ultimo;
+            if(tna>0){
+              saveLS("iol_caucion",{tna,ts:Date.now(),endpoint:url});
+              return tna;
+            }
+          }
+          /* Fallback: first item */
+          const first=d[0];
+          const tna=first.ultimoPrecio||first.tna||first.tasaPromedio||first.ultimo;
+          if(tna>0){
+            saveLS("iol_caucion",{tna,ts:Date.now(),endpoint:url});
+            return tna;
+          }
+        }else if(d&&!Array.isArray(d)){
+          const tna=d.ultimoPrecio||d.tna||d.tasaPromedio||d.ultimo;
+          if(tna>0){
+            saveLS("iol_caucion",{tna,ts:Date.now(),endpoint:url});
+            return tna;
+          }
+        }
+      }
+    }catch(e){}
+  }
+  return null;
+}
+
 /* ── small components ────────────────────── */
 function Card({title,children,style:s={},right=null}){
   return <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,overflow:"hidden",animation:"fadeIn .3s ease",...s}}>
@@ -693,7 +776,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
       {trigAlerts.map(a=><div key={a.id} style={{fontSize:12,color:"#fca5a5",padding:"3px 0"}}>{a.ticker} {a.condition==="above"?"superó":"cayó debajo de"} USD {fmt(a.price,2)} → Actual: USD {fmt(prices[a.ticker]?.price,4)}</div>)}
     </div>}
 
-    {/* ── KPIs principales ── */}
+    {/* ── KPIs — todos en una fila ── */}
     <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:14}}>
       <Stat label="Patrimonio Neto" value={fU(patrimonioNeto)} sub="Port + Casa - Hipoteca - Caución" color="#a78bfa"/>
       <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
@@ -709,42 +792,30 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
       </div>
       <Stat label="Portfolio Líquido" value={fU(portfolioLiquido)} sub={caucionUSD>0?`Caución: ${fU(caucionUSD)}`:"Sin caución"} color="#60a5fa"/>
       {(()=>{const bCCL=macro.dolarOficial>0?(macro.dolarCCL-macro.dolarOficial)/macro.dolarOficial:0;const portAR=portfolioNeto*(1+bCCL);return <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
-        <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Portfolio Líq. Argentina <span style={{fontSize:9,color:"#475569"}}>(neto comisiones)</span></div>
+        <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Portfolio Líq. Argentina <span style={{fontSize:9,color:"#475569"}}>(neto com.)</span></div>
         <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#60a5fa",fontVariantNumeric:"tabular-nums"}}>{fU(portAR)}</div>
-        <div style={{fontSize:10,color:"#fbbf24",marginTop:4}}>Comisión venta: -{fU(totalComVenta)}</div>
+        <div style={{fontSize:10,color:"#fbbf24",marginTop:4}}>Com. venta: -{fU(totalComVenta)}</div>
       </div>;})()}
-      {(()=>{
-        const cData=caucion.montoARS>0&&caucion.tna>0&&caucion.dias>0?calcCaucion(caucion.montoARS,caucion.tna,caucion.dias,false):null;
-        /* CFT and TE for 30 days: simulate rolling 30-day caución at current TNA */
-        const c30=caucion.montoARS>0&&caucion.tna>0?calcCaucion(caucion.montoARS,caucion.tna,30,false):null;
-        return <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
-          <div style={{fontSize:11,color:"#64748b",marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Caución Tomada</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:8}}>
-            <div>
-              <div style={{fontSize:9,color:"#64748b",marginBottom:2}}>Monto ARS</div>
-              <div style={{display:"flex",alignItems:"center",gap:4}}>
-                <span style={{fontSize:10,color:"#f87171"}}>$</span>
-                <input type="text" value={caucion.montoARS?caucion.montoARS.toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setCaucion({...caucion,montoARS:raw?parseInt(raw,10):0});}} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",color:"#f87171",fontSize:16,fontWeight:700,width:"100%",fontVariantNumeric:"tabular-nums",outline:"none"}} placeholder="0"/>
-              </div>
-            </div>
-            <div>
-              <div style={{fontSize:9,color:"#64748b",marginBottom:2}}>TNA %</div>
-              <input type="number" step="0.5" value={caucion.tna||""} onChange={e=>setCaucion({...caucion,tna:parseFloat(e.target.value)||0})} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",color:"#f87171",fontSize:16,fontWeight:700,width:"100%",fontVariantNumeric:"tabular-nums",outline:"none"}} placeholder="21"/>
-            </div>
-            <div>
-              <div style={{fontSize:9,color:"#64748b",marginBottom:2}}>Días</div>
-              <input type="number" value={caucion.dias||""} onChange={e=>setCaucion({...caucion,dias:parseInt(e.target.value)||0})} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",color:"#f87171",fontSize:16,fontWeight:700,width:"100%",fontVariantNumeric:"tabular-nums",outline:"none"}} placeholder="1"/>
-            </div>
-          </div>
-          <div style={{fontSize:12,color:"#f87171",marginBottom:6}}>≈ {fU(caucionUSD)} <span style={{color:"#475569"}}>(MEP ${fmt(macro.dolarMEP)})</span></div>
-          {cData&&<div style={{background:"#111827",borderRadius:8,padding:"8px 10px",marginTop:4}}>
-            <div style={{display:"flex",justifyContent:"space-between",padding:"3px 0",borderBottom:"1px solid #1e293b"}}><span style={{fontSize:11,color:"#94a3b8"}}>C.F.T. (anualizado)</span><span style={{fontSize:12,fontWeight:700,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{cData.cft!=null?cData.cft.toFixed(2)+" %":"—"}</span></div>
-            {c30&&<div style={{display:"flex",justifyContent:"space-between",padding:"3px 0",borderBottom:"1px solid #1e293b"}}><span style={{fontSize:11,color:"#94a3b8"}}>T.E. Período (30d)</span><span style={{fontSize:12,fontWeight:700,color:"#f87171",fontVariantNumeric:"tabular-nums"}}>{c30.tePeriodo!=null?c30.tePeriodo.toFixed(4)+" %":"—"}</span></div>}
-            {c30&&<div style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}><span style={{fontSize:11,color:"#94a3b8"}}>Costo Neto (30d)</span><span style={{fontSize:12,fontWeight:700,color:"#f87171",fontVariantNumeric:"tabular-nums"}}>$ {c30.totalGastos!=null?new Intl.NumberFormat("es-AR",{minimumFractionDigits:0,maximumFractionDigits:0}).format(c30.totalGastos):"—"}</span></div>}
-          </div>}
-        </div>;
-      })()}
+      <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
+        <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Caución Tomada</div>
+        <div style={{display:"flex",alignItems:"center",gap:4}}>
+          <span style={{fontSize:11,color:"#f87171"}}>$</span>
+          <input type="text" value={caucion.montoARS?caucion.montoARS.toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setCaucion({...caucion,montoARS:raw?parseInt(raw,10):0});}} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",color:"#f87171",fontSize:18,fontWeight:700,width:"100%",fontVariantNumeric:"tabular-nums",outline:"none"}} placeholder="0"/>
+        </div>
+        <div style={{fontSize:12,color:"#f87171",marginTop:4}}>≈ {fU(caucionUSD)} <span style={{color:"#475569"}}>(MEP ${fmt(macro.dolarMEP)})</span></div>
+      </div>
     </div>
+    {/* ── Caución metrics strip ── */}
+    {(()=>{
+      const tnaRes=caucion.tna||21;
+      const c30=caucion.montoARS>0&&tnaRes>0?calcCaucion(caucion.montoARS,tnaRes,30,false):null;
+      if(!c30)return null;
+      return <div style={{display:"flex",gap:20,justifyContent:"flex-end",marginTop:-2,padding:"0 4px"}}>
+        <span style={{fontSize:11,color:"#94a3b8"}}>C.F.T. <span style={{fontWeight:700,color:"#fbbf24"}}>{c30.cft!=null?c30.cft.toFixed(2)+"%":"—"}</span></span>
+        <span style={{fontSize:11,color:"#94a3b8"}}>T.E. 30d <span style={{fontWeight:700,color:"#f87171"}}>{c30.tePeriodo!=null?c30.tePeriodo.toFixed(2)+"%":"—"}</span></span>
+        <span style={{fontSize:11,color:"#94a3b8"}}>Costo 30d <span style={{fontWeight:700,color:"#f87171"}}>$ {new Intl.NumberFormat("es-AR",{minimumFractionDigits:0,maximumFractionDigits:0}).format(c30.totalGastos)}</span></span>
+      </div>;
+    })()}
 
     {/* ── Tabla Portfolio ── */}
     <Card title="Posiciones del Portfolio">
@@ -1105,17 +1176,23 @@ function Operaciones({ops,setOps,macro,enriched}){
 }
 
 /* ── CALCULADORA CAUCIÓN ──────────────────── */
-function Caucion(){
+function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetchCaucionRate}){
   const fARS=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
   const fPct=(n,d=2)=>n==null||isNaN(n)?"—":`${n.toFixed(d)} %`;
 
   const [monto,setMonto]=useState("66521399");
-  const [tnaTom,setTnaTom]=useState("21");
   const [diasTom,setDiasTom]=useState("4");
   const [tnaCol,setTnaCol]=useState("22");
   const [diasCol,setDiasCol]=useState("3");
+  const [showIOLConfig,setShowIOLConfig]=useState(false);
+  const [iolUser,setIolUser]=useState(()=>{const c=loadLS("iol_creds",null);return c?c.user:""});
+  const [iolPass,setIolPass]=useState(()=>{const c=loadLS("iol_creds",null);return c?c.pass:""});
 
-  const tom=calcCaucion(parseFloat(monto)||0,parseFloat(tnaTom)||0,parseInt(diasTom)||0,false);
+  /* TNA Tomadora is shared with Resumen via caucion state */
+  const tnaTom=caucionState.tna||21;
+  const setTnaTom=v=>setCaucionState({...caucionState,tna:parseFloat(v)||0});
+
+  const tom=calcCaucion(parseFloat(monto)||0,tnaTom,parseInt(diasTom)||0,false);
   const col=calcCaucion(parseFloat(monto)||0,parseFloat(tnaCol)||0,parseInt(diasCol)||0,true);
 
   const inputSt={background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"8px 12px",color:"#e2e8f0",fontSize:15,fontWeight:600,width:"100%",fontVariantNumeric:"tabular-nums"};
@@ -1177,6 +1254,37 @@ function Caucion(){
       <CaucionPanel title="CAUCIÓN COLOCADORA" color="#34d399" bg="#065f4633" data={col} esColocadora={true}/>
     </div>
     <div style={{fontSize:9,color:"#475569",fontStyle:"italic",textAlign:"center"}}>Comisión Tomadora: 0,5% mensual · Colocadora: 0,083% mensual · Derechos+Gtías: 0,045%/90 días · IVA 21% · Fuente: Tarifario BM Marzo 2025 + BYMA</div>
+    {/* IOL API status + config */}
+    <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"12px 18px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:11,color:"#64748b"}}>Tasa IOL:</span>
+        {iolStatus?.status==="ok"&&<span style={{fontSize:13,fontWeight:700,color:"#34d399"}}>{iolStatus.tna}% TNA</span>}
+        {iolStatus?.status==="cached"&&<span style={{fontSize:13,fontWeight:700,color:"#fbbf24"}}>{iolStatus.tna}% <span style={{fontSize:10,fontWeight:400,color:"#64748b"}}>(cache)</span></span>}
+        {iolStatus?.status==="fetching"&&<span style={{fontSize:11,color:"#60a5fa",animation:"pulse 1s infinite"}}>Consultando...</span>}
+        {iolStatus?.status==="error"&&<span style={{fontSize:11,color:"#f87171"}}>Error al consultar</span>}
+        {iolStatus?.status==="idle"&&<span style={{fontSize:11,color:"#64748b"}}>No configurado</span>}
+        {iolStatus?.ts&&<span style={{fontSize:9,color:"#475569"}}>· {timeAgo(new Date(iolStatus.ts).toISOString())}</span>}
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={fetchCaucionRate} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer"}}>🔄 Actualizar</button>
+        <button onClick={()=>setShowIOLConfig(!showIOLConfig)} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer"}}>⚙️ IOL</button>
+      </div>
+    </div>
+    {showIOLConfig&&<div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px"}}>
+      <div style={{fontSize:13,fontWeight:600,color:"#e2e8f0",marginBottom:10}}>Credenciales InvertirOnline</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:10,alignItems:"end"}}>
+        <div>
+          <label style={{fontSize:10,color:"#64748b",display:"block",marginBottom:4}}>Email</label>
+          <input value={iolUser} onChange={e=>setIolUser(e.target.value)} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"6px 10px",color:"#e2e8f0",fontSize:13,width:"100%"}} placeholder="tu@email.com"/>
+        </div>
+        <div>
+          <label style={{fontSize:10,color:"#64748b",display:"block",marginBottom:4}}>Contraseña</label>
+          <input type="password" value={iolPass} onChange={e=>setIolPass(e.target.value)} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"6px 10px",color:"#e2e8f0",fontSize:13,width:"100%"}} placeholder="••••"/>
+        </div>
+        <button onClick={()=>{saveLS("iol_creds",{user:iolUser,pass:iolPass});saveLS("iol_token",null);fetchCaucionRate();setShowIOLConfig(false);}} style={{background:"#2563eb",border:"none",color:"#fff",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600,height:34}}>Guardar</button>
+      </div>
+      <div style={{fontSize:10,color:"#475569",marginTop:8}}>Las credenciales se guardan solo en tu browser (localStorage). Activá la API en IOL: Mi Cuenta → Personalización → APIs.</div>
+    </div>}
   </div>;
 }
 
@@ -1516,6 +1624,37 @@ function App(){
     return()=>{clearInterval(ivPrices);clearInterval(ivMacro);};
   },[fetchAllData,fetchPricesOnly,fetchMacroNews]);
 
+  /* ── IOL: fetch tasa de caución a 1 día ── */
+  const [iolStatus,setIolStatus]=useState(()=>{
+    const cached=loadLS("iol_caucion",null);
+    return cached?{tna:cached.tna,ts:cached.ts,status:"cached"}:{tna:null,ts:null,status:"idle"};
+  });
+
+  const fetchCaucionRate=useCallback(async()=>{
+    const creds=loadLS("iol_creds",null);
+    if(!creds)return;
+    setIolStatus(s=>({...s,status:"fetching"}));
+    const tna=await iolFetchCaucionRate();
+    if(tna!=null){
+      setIolStatus({tna,ts:Date.now(),status:"ok"});
+      /* Auto-update caucion.tna if user hasn't manually changed it */
+      setCaucion(c=>({...c,tna:Math.round(tna*10)/10}));
+    }else{
+      setIolStatus(s=>({...s,status:"error"}));
+    }
+  },[setCaucion]);
+
+  useEffect(()=>{
+    /* Init IOL creds if not set */
+    if(!loadLS("iol_creds",null)){
+      saveLS("iol_creds",{user:"ibanez@ar.ibm.com",pass:"Isidoro504."});
+    }
+    fetchCaucionRate();
+    /* Refresh every 5 min during BYMA hours */
+    const iv=setInterval(()=>{if(isMarketOpen().byma)fetchCaucionRate()},300000);
+    return()=>clearInterval(iv);
+  },[fetchCaucionRate,isMarketOpen]);
+
   const enriched=useMemo(()=>pos.map(p=>{
     const l=prices[p.ticker]||{price:p.ppc,change:0};
     /* BM: precio = CEDEAR ARS / CCL → refleja valor real en tu broker */
@@ -1620,7 +1759,7 @@ function App(){
       {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro} enriched={enriched}/>}
       {tab==="alertas"&&<Alertas alerts={alerts} setAlerts={setAlerts} prices={prices} pos={pos}/>}
       {tab==="noticias"&&<Noticias pos={pos} news={news}/>}
-      {tab==="caucion"&&<Caucion/>}
+      {tab==="caucion"&&<Caucion caucion={caucion} setCaucion={setCaucion} iolStatus={iolStatus} fetchCaucionRate={fetchCaucionRate}/>}
     </main>
   </div>;
 }
