@@ -755,6 +755,12 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
         const curEntry={year:curYear,capital:patrimonioNeto,pl:curPL,rend:curRend};
         /* Auto-snapshot: si estamos en enero y el año anterior no está en hist, guardarlo */
         const all=[...hist,curEntry];
+        /* CAGR — retorno anualizado compuesto */
+        const compFactor=all.reduce((acc,d)=>acc*(1+d.rend/100),1);
+        const startOfFirstYear=new Date(all[0].year,0,1);
+        const now=new Date();
+        const nYears=(now-startOfFirstYear)/(365.25*24*60*60*1000);
+        const cagr=nYears>0?(Math.pow(compFactor,1/nYears)-1)*100:0;
         const maxCap=Math.max(...all.map(d=>d.capital));
         const barW=260;
         return <Card title="Evolución del Portfolio" right={<span style={{fontSize:10,color:"#475569",fontWeight:400}}>Cierre anual en USD</span>}>
@@ -785,8 +791,13 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
                 <td style={{padding:"6px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums",fontWeight:600,color:d.rend>=0?"#34d399":"#f87171"}}>{d.rend>=0?"+":""}{d.rend.toFixed(2)}%</td>
               </tr>;
             })}</tbody>
+            <tfoot><tr style={{borderTop:"2px solid #334155"}}>
+              <td style={{padding:"8px 6px",fontSize:12,fontWeight:700,color:"#94a3b8"}}>CAGR</td>
+              <td colSpan={2} style={{padding:"8px 6px",textAlign:"right",fontSize:10,color:"#64748b"}}>Retorno anualizado</td>
+              <td style={{padding:"8px 6px",textAlign:"right",fontSize:13,fontVariantNumeric:"tabular-nums",fontWeight:700,color:cagr>=0?"#34d399":"#f87171"}}>{cagr>=0?"+":""}{cagr.toFixed(2)}%</td>
+            </tr></tfoot>
           </table>
-          <div style={{fontSize:9,color:"#475569",marginTop:6,fontStyle:"italic"}}>* {curYear} en curso — actualizado en tiempo real</div>
+          <div style={{fontSize:9,color:"#475569",marginTop:6,fontStyle:"italic"}}>* {curYear} en curso · CAGR = retorno anualizado compuesto desde {all[0].year}</div>
         </Card>;
       })()}
       <Card title="Noticias Relevantes" right={<span style={{fontSize:10,color:"#475569",fontWeight:400}}>LIVE FEED</span>}>
