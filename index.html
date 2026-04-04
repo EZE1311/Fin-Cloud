@@ -242,9 +242,8 @@ function calcCaucion(m,tna,d,esColocadora){
   }
 }
 
-/* Seed inicial: sectores conocidos para no depender de Yahoo en la primera carga */
-const SECTOR_SEED={EDN:"Energía",YPFD:"Petróleo",MELI:"Tecnología",ORCL:"Tecnología",IBM:"Tecnología",FISV:"Fintech",BKUCF:"Uranio",TSLA:"Automotriz",UNH:"Salud",AL30:"Renta Fija"};
-(function seedMeta(){const c=loadMetaCache();let u=false;Object.entries(SECTOR_SEED).forEach(([t,s])=>{if(!c[t]||!c[t].sector){c[t]={...c[t],sector:s};u=true;}});if(u)saveMetaCache(c);})();
+/* Sector seed eliminado — sectores se obtienen dinámicamente via refreshMetaCache (Yahoo Finance) */
+/* Si un ticker no tiene sector en cache, se muestra "Sin clasificar" hasta que Yahoo responda */
 
 /* Actualizar cache de metadata con sectores y nombres (async, no bloquea render) */
 async function refreshMetaCache(tickers,priceData){
@@ -297,32 +296,17 @@ function applyMeta(positions,prices,metaCache){
   });
 }
 
-const INIT_OPS=[
-  {id:1,fecha:"13-12-24",ticker:"IBM",tipo:"COMPRA",cantidad:12,precio:230,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
-  {id:2,fecha:"13-12-24",ticker:"BKUCF",tipo:"COMPRA",cantidad:750000,precio:0.0461,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
-  {id:3,fecha:"11-12-24",ticker:"BKUCF",tipo:"COMPRA",cantidad:250000,precio:0.0395,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
-  {id:4,fecha:"26-03-25",ticker:"MELI",tipo:"COMPRA",cantidad:3000,precio:19940,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1423.37},
-  {id:5,fecha:"26-03-25",ticker:"ORCL",tipo:"COMPRA",cantidad:250,precio:69500,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1419.29},
-  {id:6,fecha:"26-03-25",ticker:"YPFD",tipo:"VENTA",cantidad:1460,precio:63800,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1444.40},
-  {id:7,fecha:"13-08-25",ticker:"TSLA",tipo:"COMPRA",cantidad:1000,precio:30100,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1317.00},
-  {id:8,fecha:"13-08-25",ticker:"UNH",tipo:"COMPRA",cantidad:2500,precio:10850,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1317.00},
-  {id:9,fecha:"24-09-25",ticker:"EDN",tipo:"COMPRA",cantidad:40000,precio:1369.03,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1393.35},
-  {id:10,fecha:"19-09-25",ticker:"AL30",tipo:"COMPRA",cantidad:700,precio:70260,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1534.20},
-  {id:11,fecha:"30-10-25",ticker:"FISV",tipo:"COMPRA",cantidad:15,precio:66.085,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
-  {id:12,fecha:"30-10-25",ticker:"FISV",tipo:"COMPRA",cantidad:91,precio:67.44,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
-  {id:13,fecha:"07-11-25",ticker:"YPFD",tipo:"VENTA",cantidad:800,precio:62900,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1470.04},
-  {id:14,fecha:"07-11-25",ticker:"YPFD",tipo:"COMPRA",cantidad:2500,precio:54000,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1493.94},
-  {id:15,fecha:"11-12-25",ticker:"ORCL",tipo:"COMPRA",cantidad:500,precio:97000,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1498.47},
-  {id:16,fecha:"02-02-26",ticker:"IBM",tipo:"COMPRA",cantidad:18,precio:248.26,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
-  {id:17,fecha:"24-02-26",ticker:"IBM",tipo:"COMPRA",cantidad:28,precio:232,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
-];
+/* Operaciones iniciales vacías — los datos reales se cargan de localStorage/Gist */
+/* El usuario agrega operaciones desde el tab Operaciones del dashboard */
+const INIT_OPS=[];
 
 /* ── Fallback data dinámico — usa último precio guardado en localStorage, o vacío ── */
 const PRICE_CACHE_KEY="eid_price_cache";
 function loadPriceCache(){try{return JSON.parse(localStorage.getItem(PRICE_CACHE_KEY)||"{}");}catch(e){return{};}}
 function savePriceCache(prices){try{localStorage.setItem(PRICE_CACHE_KEY,JSON.stringify(prices));}catch(e){}}
 const LIVE_FALLBACK=loadPriceCache();
-const MACRO_FALLBACK={dolarOficial:1415,dolarMEP:1380,dolarCCL:1395,dolarBlue:1405,dolarTarjeta:1885,riesgoPais:617,inflacion:2.9,inflacionIA:33.1,tasa:29,uva:1858.61,uvaVar30d:0,reservas:28500,sp500Chg:0,mervalChg:0};
+/* Macro fallback: valores a 0 — se llenan en la primera carga desde APIs */
+const MACRO_FALLBACK={dolarOficial:0,dolarMEP:0,dolarCCL:0,dolarBlue:0,dolarTarjeta:0,riesgoPais:0,inflacion:0,inflacionIA:0,tasa:0,uva:0,uvaVar30d:0,reservas:0,sp500Chg:0,mervalChg:0};
 /* Noticias: cache dinámico en localStorage, fallback vacío */
 const NEWS_CACHE_KEY="eid_news_cache";
 function loadNewsCache(){try{return JSON.parse(localStorage.getItem(NEWS_CACHE_KEY)||"[]");}catch(e){return[];}}
@@ -509,29 +493,24 @@ async function fetchPricesReal(tickers){
 }
 
 /* ── KEYWORDS para detección de tickers en noticias ── */
-/* Seed de keywords conocidos + auto-generación para tickers nuevos */
-const TICKER_KW_SEED={
-  YPFD:["YPF","YPFD","VACA MUERTA"],
-  MELI:["MERCADO LIBRE","MERCADOLIBRE","MERCADO PAGO"],
-  EDN:["EDENOR"],
-  TSLA:["TESLA","ELON MUSK","CYBERTRUCK"],
-  IBM:["IBM","RED HAT","HASHICORP"],
-  ORCL:["ORACLE","ORACLE CLOUD","LARRY ELLISON"],
-  UNH:["UNITEDHEALTH","OPTUM"],
-  FISV:["FISERV"],
-  AL30:["AL30","BONO SOBERANO","BONOS ARGENTINOS","DEUDA ARGENTINA"],
-  BKUCF:["BLUE SKY URANIUM","AMARILLO GRANDE"]
-};
-/* Devuelve keywords para un ticker: seed si existe, sino genera [TICKER, USA_ALIAS] + nombre de empresa del metaCache */
+/* 100% dinámico — genera keywords desde metaCache (nombre empresa via Yahoo) + alias conocidos */
 function getTickerKW(ticker){
   const tu=ticker.toUpperCase();
-  if(TICKER_KW_SEED[tu])return TICKER_KW_SEED[tu];
   const kws=[tu];
+  /* Alias USA (d912) */
   const alias=d912Sym(tu,D912_USA_ALIAS);
   if(alias!==tu)kws.push(alias);
-  /* Buscar nombre de empresa en metaCache (guardado por refreshMetaCache) */
+  /* Nombre de empresa desde metaCache (populado por refreshMetaCache vía Yahoo Finance) */
   const cache=loadMetaCache();
-  if(cache[tu]?.name)kws.push(cache[tu].name.toUpperCase());
+  if(cache[tu]?.name){
+    const name=cache[tu].name.toUpperCase();
+    kws.push(name);
+    /* Agregar primera palabra del nombre si es significativa (>3 chars) para match parcial */
+    const firstWord=name.split(/[\s,\.]+/)[0];
+    if(firstWord.length>3&&firstWord!==tu&&!kws.includes(firstWord))kws.push(firstWord);
+  }
+  /* Bonos AR — agregar keywords genéricos si parece bono */
+  if(/^(AL|GD|AE|BA)\d{2}/.test(tu))kws.push("BONO SOBERANO","BONOS ARGENTINOS","DEUDA ARGENTINA");
   return kws;
 }
 
@@ -1474,9 +1453,9 @@ function Noticias({pos,news}){
 function loadLS(key,fallback){try{const v=localStorage.getItem("eid_"+key);return v?JSON.parse(v):fallback}catch(e){return fallback}}
 function saveLS(key,val){try{localStorage.setItem("eid_"+key,JSON.stringify(val))}catch(e){}}
 
-const INIT_ALERTS=[{id:1,ticker:"YPFD",condition:"above",price:42,active:true},{id:2,ticker:"IBM",condition:"below",price:230,active:true},{id:3,ticker:"MELI",condition:"above",price:15,active:true}];
-const INIT_CASA={precioCompra:398000,anios:1,tasaAnual:4};
-const INIT_HIPOTECA={uvas:200696};
+const INIT_ALERTS=[];
+const INIT_CASA={precioCompra:0,anios:0,tasaAnual:0};
+const INIT_HIPOTECA={uvas:0};
 const INIT_CAUCION={montoARS:0,tna:21,dias:1};
 
 /* ── GIST SYNC ENGINE ───────────────────── */
@@ -1562,7 +1541,10 @@ function App(){
   const [ops,setOps]=useState(()=>loadLS("ops",INIT_OPS));
   const [alerts,setAlerts]=useState(()=>loadLS("alerts",INIT_ALERTS));
   const [prices,setPrices]=useState(LIVE_FALLBACK);
-  const [macro,setMacro]=useState(MACRO_FALLBACK);
+  const [macro,setMacro]=useState(()=>{
+    /* Intentar cargar macro cacheado de localStorage para no arrancar en 0 */
+    try{const c=JSON.parse(localStorage.getItem("eid_macro_prev")||"{}");return Object.keys(c).length>3?{...MACRO_FALLBACK,...c}:MACRO_FALLBACK;}catch(e){return MACRO_FALLBACK;}
+  });
   const [macroPrev,setMacroPrev]=useState(()=>{try{return JSON.parse(localStorage.getItem("eid_macro_prev")||"{}")}catch(e){return{}}});
   const [news,setNews]=useState(NEWS_FALLBACK);
   const [lastUp,setLastUp]=useState(new Date());
@@ -1635,10 +1617,10 @@ function App(){
     a.click();URL.revokeObjectURL(url);
   },[ops,alerts,casa,hipoteca,caucion]);
 
-  /* Resetear a datos originales */
+  /* Resetear — limpia todo a vacío */
   const resetData=useCallback(()=>{
-    if(!confirm("¿Estás seguro? Esto borra todos tus cambios y vuelve a los datos iniciales."))return;
-    setOps(INIT_OPS);setAlerts(INIT_ALERTS);setCasa(INIT_CASA);setHipoteca(INIT_HIPOTECA);setCaucion(INIT_CAUCION);
+    if(!confirm("¿Estás seguro? Esto borra todas tus operaciones, alertas y configuración."))return;
+    setOps([]);setAlerts([]);setCasa({precioCompra:0,anios:0,tasaAnual:0});setHipoteca({uvas:0});setCaucion({montoARS:0,tna:21,dias:1});
   },[]);
 
   /* Posiciones derivadas 100% de operaciones */
