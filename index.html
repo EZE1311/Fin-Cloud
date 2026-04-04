@@ -152,19 +152,26 @@ const SECTOR_MAP={"Technology":"Tecnología","Energy":"Energía","Healthcare":"S
 /* Buscar sector + nombre de empresa de Yahoo Finance */
 async function fetchProfileYahoo(symbol){
   const usaSym=d912Sym(symbol,D912_USA_ALIAS);
-  const url=`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(usaSym)}?modules=assetProfile,price`;
-  try{
-    let r;
-    try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
-    const data=await r.json();
-    const res=data?.quoteSummary?.result?.[0];
-    const profile=res?.assetProfile;
-    const price=res?.price;
-    const sector=profile?.sector?SECTOR_MAP[profile.sector]||profile.sector:null;
-    const name=price?.shortName||price?.longName||null;
-    const country=profile?.country||null;
-    return{sector,name,country};
-  }catch(e){}
+  /* Intentar múltiples variantes del símbolo: original, alias USA, y con sufijo .BA (BYMA) */
+  const candidates=[usaSym];
+  if(usaSym===symbol.toUpperCase()&&!usaSym.includes("."))candidates.push(usaSym+".BA");
+  for(const sym of candidates){
+    const url=`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=assetProfile,price`;
+    try{
+      let r;
+      try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+      if(!r||!r.ok)continue;
+      const data=await r.json();
+      const res=data?.quoteSummary?.result?.[0];
+      if(!res)continue;
+      const profile=res?.assetProfile;
+      const price=res?.price;
+      const sector=profile?.sector?SECTOR_MAP[profile.sector]||profile.sector:null;
+      const name=price?.shortName||price?.longName||null;
+      const country=profile?.country||null;
+      if(sector||name)return{sector,name,country};
+    }catch(e){}
+  }
   return{sector:null,name:null,country:null};
 }
 
@@ -179,8 +186,14 @@ function inferMeta(ticker,broker,mercado,d912Info){
     else if(d912Info.isArgStock){tipo="Acción";pais="Argentina";}
     else if(d912Info.isUsaStock){tipo="Acción";pais="USA";}
   } else {
-    /* Fallback por broker/mercado */
-    if(mercado==="BYMA"){pais="Argentina";tipo="CEDEAR";}
+    /* Fallback por broker/mercado + Yahoo country */
+    const cache=loadMetaCache();
+    const yahooCountry=(cache[tu]?.country||"").toLowerCase();
+    if(mercado==="BYMA"){
+      pais="Argentina";
+      /* Si Yahoo dice que es de Argentina → acción local, sino → CEDEAR */
+      tipo=(yahooCountry.includes("argentin"))?"Acción":"CEDEAR";
+    }
     else{pais="USA";tipo="Acción";}
   }
   return{tipo,pais};
@@ -481,7 +494,11 @@ async function fetchPricesReal(tickers){
         const yfRes=await fetch(yfUrl);const yfData=await yfRes.json();
         (yfData.quoteResponse?.result||[]).forEach(q=>{
           const ticker=missing.find(t=>d912Sym(t,D912_USA_ALIAS)===q.symbol)||q.symbol;
-          if(q.regularMarketPrice)prices[ticker]={price:q.regularMarketPrice,change:q.regularMarketChangePercent||0,prev:q.regularMarketPreviousClose||0,priceARS:null,changeARS:null,d912:{isCedear:false,isArgStock:false,isBond:false,isUsaStock:true}};
+          if(q.regularMarketPrice){
+            /* Determinar si es acción arg basado en exchange/currency */
+            const isArg=q.exchange==="BUE"||q.currency==="ARS"||(q.market||"").includes("ar_market");
+            prices[ticker]={price:isArg?0:q.regularMarketPrice,change:isArg?0:(q.regularMarketChangePercent||0),prev:isArg?0:(q.regularMarketPreviousClose||0),priceARS:isArg?q.regularMarketPrice:null,changeARS:isArg?(q.regularMarketChangePercent||0):null,d912:{isCedear:false,isArgStock:isArg,isBond:false,isUsaStock:!isArg}};
+          }
         });
       }catch(e){}
     }
