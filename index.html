@@ -751,7 +751,7 @@ async function iolFetchCaucionRate(){
     }
     try{
       const d=await res.json();
-      console.log("[IOL]",label,"OK:",JSON.stringify(d).substring(0,300));
+      console.log("[IOL]",label,"OK:",JSON.stringify(d).substring(0,500));
       return d;
     }catch(e){
       console.log("[IOL]",label,"JSON parse error");
@@ -759,53 +759,120 @@ async function iolFetchCaucionRate(){
     }
   }
 
-  /* ── Strategy 1: Cotizaciones de cauciones ── */
-  const d1=await tryEndpoint(base+"/Cotizaciones/cauciones/argentina/Todos","Cotizaciones");
+  /* ── Helper: extract rate from titulos array ── */
+  function findRate(titulos,moneda,plazo){
+    if(!Array.isArray(titulos)||titulos.length===0)return null;
+    const isPesos=moneda==="ARS";
+    const isDollar=moneda==="USD";
+    /* Filter by moneda: "Pesos" or "Dólares"/"Dolares"/"USD" in simbolo/descripcion */
+    const byMoneda=titulos.filter(t=>{
+      const s=((t.simbolo||"")+" "+(t.descripcion||"")).toLowerCase();
+      if(isPesos)return s.includes("peso")||(!s.includes("dólar")&&!s.includes("dolar")&&!s.includes("usd")&&!s.includes("dollar"));
+      if(isDollar)return s.includes("dólar")||s.includes("dolar")||s.includes("usd")||s.includes("dollar");
+      return true;
+    });
+    const pool=byMoneda.length>0?byMoneda:titulos;
+    /* If plazo specified, try to match by plazo/duracion/dias */
+    if(plazo){
+      const regex=new RegExp(plazo+"\\s*d","i");
+      const byPlazo=pool.filter(t=>{
+        const s=((t.simbolo||"")+" "+(t.descripcion||"")).toLowerCase();
+        return regex.test(s)||(t.plazo===plazo)||(t.dias===plazo)||(t.duracion===plazo);
+      });
+      if(byPlazo.length>0){
+        const best=byPlazo[0];
+        return best.ultimoPrecio||best.puntas?.precioCompra||0;
+      }
+    }
+    /* Fallback: first item in pool */
+    const best=pool[0];
+    return best?best.ultimoPrecio||best.puntas?.precioCompra||0:null;
+  }
+
+  const result={pesos1d:null,pesos30d:null,usd1d:null,usd30d:null};
+
+  /* ── Strategy 1: Cotizaciones de cauciones (pesos) ── */
+  const d1=await tryEndpoint(base+"/Cotizaciones/cauciones/argentina/Todos","Cauciones ARS");
   if(d1){
     const titulos=d1.titulos||d1;
     if(Array.isArray(titulos)&&titulos.length>0){
-      const c1d=titulos.find(t=>
-        /1\s*d/i.test(t.simbolo||"")||/1\s*d/i.test(t.descripcion||"")||
-        t.simbolo==="CAUC"||t.simbolo==="CAUC1D"||t.simbolo==="CAUCION"
-      )||titulos[0];
-      const tna=c1d.ultimoPrecio||c1d.puntas?.precioCompra||0;
-      if(tna>0){
-        saveLS("iol_caucion",{tna,ts:Date.now(),src:"cotizaciones",sym:c1d.simbolo});
-        return tna;
-      }
+      console.log("[IOL] Cauciones encontradas:",titulos.map(t=>t.simbolo+" ("+t.ultimoPrecio+"%)").join(", "));
+      result.pesos1d=findRate(titulos,"ARS",1);
+      result.pesos30d=findRate(titulos,"ARS",30);
+      /* Also try to get USD from same response */
+      result.usd1d=findRate(titulos,"USD",1);
+      result.usd30d=findRate(titulos,"USD",30);
     }
   }
 
-  /* ── Strategy 2: CPD subastas ── */
-  for(const seg of ["Pesos","pesos_Prioridad_Precio"]){
-    const d2=await tryEndpoint(base+"/operar/CPD/activas/"+encodeURIComponent(seg),"CPD/"+seg);
+  /* ── Strategy 2: Cotizaciones de cauciones en dólares (separate call) ── */
+  if(result.usd1d==null){
+    const d2=await tryEndpoint(base+"/Cotizaciones/cauciones/argentina/Dolares","Cauciones USD");
     if(d2){
-      const subs=d2.subasta||d2;
-      if(Array.isArray(subs)&&subs.length>0){
-        const sorted=[...subs].sort((a,b)=>(a.duracion||999)-(b.duracion||999));
-        const best=sorted[0];
-        const tna=best.tasaCompra||best.tasa||0;
-        if(tna>0){
-          saveLS("iol_caucion",{tna,ts:Date.now(),src:"cpd",seg,dur:best.duracion});
-          return tna;
+      const titulos=d2.titulos||d2;
+      if(Array.isArray(titulos)&&titulos.length>0){
+        console.log("[IOL] Cauciones USD encontradas:",titulos.map(t=>t.simbolo+" ("+t.ultimoPrecio+"%)").join(", "));
+        result.usd1d=findRate(titulos,"USD",1);
+        result.usd30d=findRate(titulos,"USD",30);
+        /* If only one result, assign as 1d */
+        if(result.usd1d==null&&titulos.length>0){
+          result.usd1d=titulos[0].ultimoPrecio||0;
         }
       }
     }
   }
 
-  /* ── Strategy 3: Cotización directa ── */
-  for(const sym of ["CAUC","CAUC1D","CAUCION"]){
-    const d3=await tryEndpoint(base+"/bCBA/Titulos/"+sym+"/Cotizacion","Titulo/"+sym);
+  /* ── Strategy 3: Try Pesos with specific plazo filters ── */
+  if(result.pesos30d==null&&result.pesos1d!=null){
+    /* Try 30-day specific endpoint */
+    const d3=await tryEndpoint(base+"/Cotizaciones/cauciones/argentina/30dias","Cauciones 30D");
     if(d3){
-      const tna=d3.ultimoPrecio||d3.cierreAnterior||0;
-      if(tna>0){
-        saveLS("iol_caucion",{tna,ts:Date.now(),src:"titulo",sym});
-        return tna;
+      const titulos=d3.titulos||d3;
+      if(Array.isArray(titulos)&&titulos.length>0){
+        result.pesos30d=findRate(titulos,"ARS",30);
       }
     }
   }
 
-  /* ── Strategy 4: Test — portafolio (verificar que el token funciona) ── */
+  /* ── Strategy 4: CPD subastas as fallback for pesos 1D ── */
+  if(result.pesos1d==null){
+    for(const seg of ["Pesos","pesos_Prioridad_Precio"]){
+      const d4=await tryEndpoint(base+"/operar/CPD/activas/"+encodeURIComponent(seg),"CPD/"+seg);
+      if(d4){
+        const subs=d4.subasta||d4;
+        if(Array.isArray(subs)&&subs.length>0){
+          const sorted=[...subs].sort((a,b)=>(a.duracion||999)-(b.duracion||999));
+          const best=sorted[0];
+          const tna=best.tasaCompra||best.tasa||0;
+          if(tna>0){result.pesos1d=tna;break;}
+        }
+      }
+    }
+  }
+
+  /* ── Strategy 5: CPD subastas for dollars ── */
+  if(result.usd1d==null){
+    for(const seg of ["Dolares","dolares_Prioridad_Precio"]){
+      const d5=await tryEndpoint(base+"/operar/CPD/activas/"+encodeURIComponent(seg),"CPD USD/"+seg);
+      if(d5){
+        const subs=d5.subasta||d5;
+        if(Array.isArray(subs)&&subs.length>0){
+          const sorted=[...subs].sort((a,b)=>(a.duracion||999)-(b.duracion||999));
+          const best=sorted[0];
+          const tna=best.tasaCompra||best.tasa||0;
+          if(tna>0){result.usd1d=tna;break;}
+        }
+      }
+    }
+  }
+
+  /* ── Save all rates ── */
+  if(result.pesos1d!=null||result.usd1d!=null){
+    saveLS("iol_caucion",{...result,ts:Date.now(),src:"cotizaciones"});
+    return result;
+  }
+
+  /* ── Fallback: Test — portafolio (verificar que el token funciona) ── */
   const dTest=await tryEndpoint(base+"/portafolio/argentina","Test portafolio");
   if(dTest){
     console.log("[IOL] Token OK pero no se encontró caución. Portafolio:",JSON.stringify(dTest).substring(0,500));
@@ -1337,39 +1404,67 @@ function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetc
     </div>;
   }
 
+  /* Rate display helper */
+  const RateCard=({label,tna,color,icon})=>(
+    <div style={{background:"#111827",borderRadius:10,padding:"14px 16px",flex:1,minWidth:140,border:"1px solid #252d3d"}}>
+      <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>{icon} {label}</div>
+      {tna!=null&&tna>0?
+        <div style={{fontSize:24,fontWeight:800,color,fontVariantNumeric:"tabular-nums"}}>{tna}%<span style={{fontSize:12,fontWeight:500,color:"#64748b",marginLeft:4}}>TNA</span></div>:
+        <div style={{fontSize:14,color:"#475569"}}>Sin datos</div>
+      }
+    </div>
+  );
+
+  const statusColor=iolStatus?.status==="ok"?"#34d399":iolStatus?.status==="cached"?"#fbbf24":iolStatus?.status==="error"?"#f87171":"#64748b";
+  const statusDot=<span style={{width:8,height:8,borderRadius:"50%",background:statusColor,display:"inline-block",animation:iolStatus?.status==="fetching"?"pulse 1s infinite":"none"}}/>;
+
   return <div style={{display:"flex",flexDirection:"column",gap:18}}>
-    {/* Inputs compartidos */}
-    <Card title="Calculadora de Caución" right={<span style={{fontSize:10,color:"#475569"}}>BYMA · Bull Market Active Trader Plus</span>}>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:14,alignItems:"end"}}>
-        <div style={{gridColumn:"span 1"}}><label style={labelSt}>Monto Contado ($)</label><input type="text" value={monto?parseInt(monto).toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setMonto(raw);}} style={inputSt}/></div>
-        <div><label style={labelSt}>TNA Tomadora (%)</label><input type="number" step="0.5" value={tnaTom} onChange={e=>setTnaTom(e.target.value)} style={inputSt}/></div>
-        <div><label style={labelSt}>Días Tomadora</label><input type="number" value={diasTom} onChange={e=>setDiasTom(e.target.value)} style={inputSt}/></div>
-        <div><label style={labelSt}>TNA Colocadora (%)</label><input type="number" step="0.5" value={tnaCol} onChange={e=>setTnaCol(e.target.value)} style={inputSt}/></div>
-        <div><label style={labelSt}>Días Colocadora</label><input type="number" value={diasCol} onChange={e=>setDiasCol(e.target.value)} style={inputSt}/></div>
+    {/* ── TASAS IOL — panel prominente arriba ── */}
+    <div style={{background:"linear-gradient(135deg,#1a1f2e 0%,#0f172a 100%)",border:"1px solid #334155",borderRadius:12,overflow:"hidden"}}>
+      <div style={{padding:"16px 20px",borderBottom:"1px solid #252d3d",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:18}}>📊</span>
+          <div>
+            <h3 style={{margin:0,fontSize:16,fontWeight:700,color:"#e2e8f0"}}>Tasas de Caución — IOL en Vivo</h3>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
+              {statusDot}
+              {iolStatus?.status==="ok"&&<span style={{fontSize:11,color:"#34d399"}}>Conectado</span>}
+              {iolStatus?.status==="cached"&&<span style={{fontSize:11,color:"#fbbf24"}}>Cache</span>}
+              {iolStatus?.status==="fetching"&&<span style={{fontSize:11,color:"#60a5fa"}}>Consultando...</span>}
+              {iolStatus?.status==="error"&&<span style={{fontSize:11,color:"#f87171"}} title={window._iolLastError||iolStatus?.msg||""}>{window._iolLastError?.includes("CORS")?"CORS bloqueado":window._iolLastError?.includes("Credenciales")?"Credenciales/API inválida":"Error"}</span>}
+              {iolStatus?.status==="idle"&&<span style={{fontSize:11,color:"#64748b"}}>No configurado</span>}
+              {iolStatus?.ts&&<span style={{fontSize:10,color:"#475569"}}>· {timeAgo(new Date(iolStatus.ts).toISOString())}</span>}
+            </div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={fetchCaucionRate} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"6px 12px",fontSize:12,cursor:"pointer",fontWeight:500}}>🔄 Actualizar</button>
+          <button onClick={()=>setShowIOLConfig(!showIOLConfig)} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"6px 12px",fontSize:12,cursor:"pointer",fontWeight:500}}>⚙️ Config</button>
+        </div>
       </div>
-    </Card>
-    {/* Paneles lado a lado */}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-      <CaucionPanel title="CAUCIÓN TOMADORA" color="#f87171" bg="#7f1d1d33" data={tom} esColocadora={false}/>
-      <CaucionPanel title="CAUCIÓN COLOCADORA" color="#34d399" bg="#065f4633" data={col} esColocadora={true}/>
+      <div style={{padding:"18px 20px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
+          <RateCard label="Pesos 1 Día" tna={iolStatus?.pesos1d} color="#34d399" icon="🇦🇷"/>
+          <RateCard label="Pesos 30 Días" tna={iolStatus?.pesos30d} color="#60a5fa" icon="🇦🇷"/>
+          <RateCard label="Dólares 1 Día" tna={iolStatus?.usd1d} color="#a78bfa" icon="🇺🇸"/>
+          <RateCard label="Dólares 30 Días" tna={iolStatus?.usd30d} color="#fb923c" icon="🇺🇸"/>
+        </div>
+        {iolStatus?.pesos1d!=null&&iolStatus.pesos1d>0&&<div style={{marginTop:14,display:"flex",gap:16,flexWrap:"wrap"}}>
+          {(()=>{
+            const te1d=iolStatus.pesos1d/365;
+            const te30d=iolStatus.pesos30d?(iolStatus.pesos30d/365*30):null;
+            return<>
+              <span style={{fontSize:11,color:"#94a3b8"}}>T.E. 1D Pesos: <b style={{color:"#34d399"}}>{te1d.toFixed(4)}%</b></span>
+              {te30d!=null&&<span style={{fontSize:11,color:"#94a3b8"}}>T.E. 30D Pesos: <b style={{color:"#60a5fa"}}>{te30d.toFixed(4)}%</b></span>}
+              {iolStatus.usd1d!=null&&iolStatus.usd1d>0&&<span style={{fontSize:11,color:"#94a3b8"}}>T.E. 1D USD: <b style={{color:"#a78bfa"}}>{(iolStatus.usd1d/365).toFixed(4)}%</b></span>}
+              {iolStatus.usd30d!=null&&iolStatus.usd30d>0&&<span style={{fontSize:11,color:"#94a3b8"}}>T.E. 30D USD: <b style={{color:"#fb923c"}}>{(iolStatus.usd30d/365*30).toFixed(4)}%</b></span>}
+            </>;
+          })()}
+        </div>}
+      </div>
     </div>
-    <div style={{fontSize:9,color:"#475569",fontStyle:"italic",textAlign:"center"}}>Comisión Tomadora: 0,5% mensual · Colocadora: 0,083% mensual · Derechos+Gtías: 0,045%/90 días · IVA 21% · Fuente: Tarifario BM Marzo 2025 + BYMA</div>
-    {/* IOL API status + config */}
-    <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"12px 18px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-      <div style={{display:"flex",alignItems:"center",gap:10}}>
-        <span style={{fontSize:11,color:"#64748b"}}>Tasa IOL:</span>
-        {iolStatus?.status==="ok"&&<span style={{fontSize:13,fontWeight:700,color:"#34d399"}}>{iolStatus.tna}% TNA</span>}
-        {iolStatus?.status==="cached"&&<span style={{fontSize:13,fontWeight:700,color:"#fbbf24"}}>{iolStatus.tna}% <span style={{fontSize:10,fontWeight:400,color:"#64748b"}}>(cache)</span></span>}
-        {iolStatus?.status==="fetching"&&<span style={{fontSize:11,color:"#60a5fa",animation:"pulse 1s infinite"}}>Consultando...</span>}
-        {iolStatus?.status==="error"&&<span style={{fontSize:11,color:"#f87171",cursor:"help"}} title={window._iolLastError||iolStatus?.msg||""}>{window._iolLastError?.includes("CORS")?"CORS bloqueado":window._iolLastError?.includes("Credenciales")?"Credenciales/API inválida":"Error al consultar"}</span>}
-        {iolStatus?.status==="idle"&&<span style={{fontSize:11,color:"#64748b"}}>No configurado</span>}
-        {iolStatus?.ts&&<span style={{fontSize:9,color:"#475569"}}>· {timeAgo(new Date(iolStatus.ts).toISOString())}</span>}
-      </div>
-      <div style={{display:"flex",gap:8}}>
-        <button onClick={fetchCaucionRate} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer"}}>🔄 Actualizar</button>
-        <button onClick={()=>setShowIOLConfig(!showIOLConfig)} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer"}}>⚙️ IOL</button>
-      </div>
-    </div>
+
+    {/* IOL Config panel */}
     {showIOLConfig&&<div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px"}}>
       <div style={{fontSize:13,fontWeight:600,color:"#e2e8f0",marginBottom:10}}>Credenciales InvertirOnline</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:10,alignItems:"end"}}>
@@ -1392,6 +1487,23 @@ function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetc
         4. Abrí la consola del browser (F12) para ver los logs detallados [IOL]
       </div>
     </div>}
+
+    {/* ── Calculadora de Caución ── */}
+    <Card title="Calculadora de Caución" right={<span style={{fontSize:10,color:"#475569"}}>BYMA · Bull Market Active Trader Plus</span>}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:14,alignItems:"end"}}>
+        <div style={{gridColumn:"span 1"}}><label style={labelSt}>Monto Contado ($)</label><input type="text" value={monto?parseInt(monto).toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setMonto(raw);}} style={inputSt}/></div>
+        <div><label style={labelSt}>TNA Tomadora (%)</label><input type="number" step="0.5" value={tnaTom} onChange={e=>setTnaTom(e.target.value)} style={inputSt}/></div>
+        <div><label style={labelSt}>Días Tomadora</label><input type="number" value={diasTom} onChange={e=>setDiasTom(e.target.value)} style={inputSt}/></div>
+        <div><label style={labelSt}>TNA Colocadora (%)</label><input type="number" step="0.5" value={tnaCol} onChange={e=>setTnaCol(e.target.value)} style={inputSt}/></div>
+        <div><label style={labelSt}>Días Colocadora</label><input type="number" value={diasCol} onChange={e=>setDiasCol(e.target.value)} style={inputSt}/></div>
+      </div>
+    </Card>
+    {/* Paneles lado a lado */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+      <CaucionPanel title="CAUCIÓN TOMADORA" color="#f87171" bg="#7f1d1d33" data={tom} esColocadora={false}/>
+      <CaucionPanel title="CAUCIÓN COLOCADORA" color="#34d399" bg="#065f4633" data={col} esColocadora={true}/>
+    </div>
+    <div style={{fontSize:9,color:"#475569",fontStyle:"italic",textAlign:"center"}}>Comisión Tomadora: 0,5% mensual · Colocadora: 0,083% mensual · Derechos+Gtías: 0,045%/90 días · IVA 21% · Fuente: Tarifario BM Marzo 2025 + BYMA</div>
   </div>;
 }
 
@@ -1734,10 +1846,13 @@ function App(){
     return()=>{clearInterval(ivPrices);clearInterval(ivMacro);};
   },[fetchAllData,fetchPricesOnly,fetchMacroNews]);
 
-  /* ── IOL: fetch tasa de caución a 1 día ── */
+  /* ── IOL: fetch tasas de caución (pesos/USD, 1D/30D) ── */
   const [iolStatus,setIolStatus]=useState(()=>{
     const cached=loadLS("iol_caucion",null);
-    return cached?{tna:cached.tna,ts:cached.ts,status:"cached"}:{tna:null,ts:null,status:"idle"};
+    if(cached&&(cached.pesos1d!=null||cached.tna!=null)){
+      return{pesos1d:cached.pesos1d||cached.tna,pesos30d:cached.pesos30d,usd1d:cached.usd1d,usd30d:cached.usd30d,ts:cached.ts,status:"cached"};
+    }
+    return{pesos1d:null,pesos30d:null,usd1d:null,usd30d:null,ts:null,status:"idle"};
   });
 
   const fetchCaucionRate=useCallback(async()=>{
@@ -1748,15 +1863,14 @@ function App(){
     }
     setIolStatus(s=>({...s,status:"fetching"}));
     try{
-      const tna=await iolFetchCaucionRate();
-      if(tna!=null){
-        const cached=loadLS("iol_caucion",null);
-        setIolStatus({tna,ts:Date.now(),status:"ok",src:cached?.src||"api"});
-        setCaucion(c=>({...c,tna:Math.round(tna*10)/10}));
+      const rates=await iolFetchCaucionRate();
+      if(rates!=null){
+        setIolStatus({pesos1d:rates.pesos1d,pesos30d:rates.pesos30d,usd1d:rates.usd1d,usd30d:rates.usd30d,ts:Date.now(),status:"ok"});
+        if(rates.pesos1d!=null)setCaucion(c=>({...c,tna:Math.round(rates.pesos1d*10)/10}));
       }else{
         const cached=loadLS("iol_caucion",null);
-        if(cached&&cached.tna&&(Date.now()-cached.ts)<3600000){
-          setIolStatus({tna:cached.tna,ts:cached.ts,status:"cached"});
+        if(cached&&(cached.pesos1d||cached.tna)&&(Date.now()-cached.ts)<3600000){
+          setIolStatus({pesos1d:cached.pesos1d||cached.tna,pesos30d:cached.pesos30d,usd1d:cached.usd1d,usd30d:cached.usd30d,ts:cached.ts,status:"cached"});
         }else{
           setIolStatus(s=>({...s,status:"error",msg:window._iolLastError||"Sin datos de caución"}));
         }
