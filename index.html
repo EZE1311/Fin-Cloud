@@ -635,18 +635,26 @@ function timeAgo(dateStr){
 }
 
 /* ── IOL API — Tasa de Caución ────────────── */
+/* IOL error state — visible to UI */
+window._iolLastError=null;
+
 async function iolGetToken(){
   const creds=loadLS("iol_creds",null);
-  if(!creds||!creds.user||!creds.pass)return null;
+  if(!creds||!creds.user||!creds.pass){
+    window._iolLastError="Sin credenciales configuradas";
+    return null;
+  }
   /* Check cached token */
   const cached=loadLS("iol_token",null);
   if(cached&&cached.access_token&&cached.expires_at>Date.now()+60000){
     return cached.access_token;
   }
+  const tokenUrl="https://api.invertironline.com/token";
   /* Try refresh token first */
   if(cached&&cached.refresh_token){
     try{
-      const res=await fetch("https://api.invertironline.com/token",{
+      console.log("[IOL] Refreshing token...");
+      const res=await fetch(tokenUrl,{
         method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
         body:`grant_type=refresh_token&refresh_token=${encodeURIComponent(cached.refresh_token)}`
       });
@@ -654,93 +662,133 @@ async function iolGetToken(){
         const d=await res.json();
         const tokenData={access_token:d.access_token,refresh_token:d.refresh_token,expires_at:Date.now()+(d.expires_in||900)*1000};
         saveLS("iol_token",tokenData);
+        console.log("[IOL] Token refreshed OK");
+        window._iolLastError=null;
         return d.access_token;
+      }else{
+        console.log("[IOL] Refresh failed:",res.status,res.statusText);
       }
-    }catch(e){}
+    }catch(e){
+      console.log("[IOL] Refresh error (posible CORS):",e.message);
+    }
   }
   /* Fresh login */
   try{
-    const res=await fetch("https://api.invertironline.com/token",{
+    console.log("[IOL] Fresh login...");
+    const res=await fetch(tokenUrl,{
       method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
       body:`username=${encodeURIComponent(creds.user)}&password=${encodeURIComponent(creds.pass)}&grant_type=password`
     });
-    if(!res.ok)return null;
+    if(!res.ok){
+      let errDetail="";
+      try{errDetail=await res.text()}catch(x){}
+      console.error("[IOL] Login failed:",res.status,res.statusText,errDetail);
+      if(res.status===400||res.status===401){
+        window._iolLastError="Credenciales inválidas o API no activada. Revisá Mi Cuenta > Personalización > APIs en invertironline.com";
+      }else{
+        window._iolLastError=`Error ${res.status}: ${res.statusText}`;
+      }
+      return null;
+    }
     const d=await res.json();
     const tokenData={access_token:d.access_token,refresh_token:d.refresh_token,expires_at:Date.now()+(d.expires_in||900)*1000};
     saveLS("iol_token",tokenData);
+    console.log("[IOL] Login OK, token válido por",d.expires_in,"s");
+    window._iolLastError=null;
     return d.access_token;
-  }catch(e){return null}
+  }catch(e){
+    console.error("[IOL] Login error:",e);
+    if(e instanceof TypeError&&e.message.includes("Failed to fetch")){
+      window._iolLastError="CORS bloqueado: la API de IOL no permite requests desde este dominio. Probá abrir el dashboard desde localhost.";
+    }else{
+      window._iolLastError="Error de conexión: "+e.message;
+    }
+    return null;
+  }
 }
 
 async function iolFetchCaucionRate(){
   const token=await iolGetToken();
-  if(!token)return null;
+  if(!token){
+    console.log("[IOL] No token, abortando fetch de caución");
+    return null;
+  }
   const base="https://api.invertironline.com/api/v2";
   const hdrs={"Authorization":"Bearer "+token};
 
-  /* ── Strategy 1: Cotizaciones de cauciones ── */
-  /* GET /api/v2/Cotizaciones/{Instrumento}/{Pais}/Todos */
-  /* Response: { titulos:[{ simbolo, ultimoPrecio, puntas:{precioCompra,precioVenta,...} }] } */
-  try{
-    const res=await fetch(base+"/Cotizaciones/cauciones/argentina/Todos",{headers:hdrs});
-    if(res.ok){
+  /* Helper: intenta un endpoint y loguea resultado */
+  async function tryEndpoint(url,label){
+    try{
+      console.log("[IOL]",label,"→",url);
+      const res=await fetch(url,{headers:hdrs});
+      console.log("[IOL]",label,"status:",res.status);
+      if(!res.ok){
+        let body="";try{body=await res.text()}catch(x){}
+        console.log("[IOL]",label,"error body:",body.substring(0,200));
+        return null;
+      }
       const d=await res.json();
-      const titulos=d.titulos||d;
-      if(Array.isArray(titulos)&&titulos.length>0){
-        /* Find 1-day caucion — symbol usually contains "1" for 1 day */
-        const c1d=titulos.find(t=>
-          /1\s*d/i.test(t.simbolo||"")||/1\s*d/i.test(t.descripcion||"")||
-          t.simbolo==="CAUC"||t.simbolo==="CAUC1D"||t.simbolo==="CAUCION"
-        )||titulos[0];
-        /* ultimoPrecio = TNA for cauciones */
-        const tna=c1d.ultimoPrecio||c1d.puntas?.precioCompra||0;
+      console.log("[IOL]",label,"response:",JSON.stringify(d).substring(0,300));
+      return d;
+    }catch(e){
+      console.log("[IOL]",label,"exception:",e.message);
+      return null;
+    }
+  }
+
+  /* ── Strategy 1: Cotizaciones de cauciones ── */
+  const d1=await tryEndpoint(base+"/Cotizaciones/cauciones/argentina/Todos","Cotizaciones");
+  if(d1){
+    const titulos=d1.titulos||d1;
+    if(Array.isArray(titulos)&&titulos.length>0){
+      const c1d=titulos.find(t=>
+        /1\s*d/i.test(t.simbolo||"")||/1\s*d/i.test(t.descripcion||"")||
+        t.simbolo==="CAUC"||t.simbolo==="CAUC1D"||t.simbolo==="CAUCION"
+      )||titulos[0];
+      const tna=c1d.ultimoPrecio||c1d.puntas?.precioCompra||0;
+      if(tna>0){
+        saveLS("iol_caucion",{tna,ts:Date.now(),src:"cotizaciones",sym:c1d.simbolo});
+        return tna;
+      }
+    }
+  }
+
+  /* ── Strategy 2: CPD subastas ── */
+  for(const seg of ["Pesos","pesos_Prioridad_Precio"]){
+    const d2=await tryEndpoint(base+"/operar/CPD/activas/"+encodeURIComponent(seg),"CPD/"+seg);
+    if(d2){
+      const subs=d2.subasta||d2;
+      if(Array.isArray(subs)&&subs.length>0){
+        const sorted=[...subs].sort((a,b)=>(a.duracion||999)-(b.duracion||999));
+        const best=sorted[0];
+        const tna=best.tasaCompra||best.tasa||0;
         if(tna>0){
-          saveLS("iol_caucion",{tna,ts:Date.now(),src:"cotizaciones",sym:c1d.simbolo});
+          saveLS("iol_caucion",{tna,ts:Date.now(),src:"cpd",seg,dur:best.duracion});
           return tna;
         }
       }
     }
-  }catch(e){console.log("IOL cotizaciones err:",e)}
-
-  /* ── Strategy 2: CPD (Caución/Pase Determinado) subastas ── */
-  /* GET /api/v2/operar/CPD/{estado}/{segmento} */
-  /* Response: { subasta:[{ tasaCompra, duracion, segmento, ... }] } */
-  const cpdSegmentos=["Pesos","pesos_Prioridad_Precio","Pesos_Prioridad_Precio"];
-  for(const seg of cpdSegmentos){
-    try{
-      const res=await fetch(base+"/operar/CPD/activas/"+encodeURIComponent(seg),{headers:hdrs});
-      if(res.ok){
-        const d=await res.json();
-        const subs=d.subasta||d;
-        if(Array.isArray(subs)&&subs.length>0){
-          /* Find shortest duration (1 day) */
-          const sorted=[...subs].sort((a,b)=>(a.duracion||999)-(b.duracion||999));
-          const best=sorted[0];
-          const tna=best.tasaCompra||best.tasa||0;
-          if(tna>0){
-            saveLS("iol_caucion",{tna,ts:Date.now(),src:"cpd",seg,dur:best.duracion});
-            return tna;
-          }
-        }
-      }
-    }catch(e){}
   }
 
-  /* ── Strategy 3: Cotización directa de título ── */
-  /* GET /api/v2/{Mercado}/Titulos/{Simbolo}/Cotizacion */
-  const simbolos=["CAUC","CAUC1D","CAUCION"];
-  for(const sym of simbolos){
-    try{
-      const res=await fetch(base+"/bCBA/Titulos/"+sym+"/Cotizacion",{headers:hdrs});
-      if(res.ok){
-        const d=await res.json();
-        const tna=d.ultimoPrecio||d.cierreAnterior||0;
-        if(tna>0){
-          saveLS("iol_caucion",{tna,ts:Date.now(),src:"titulo",sym});
-          return tna;
-        }
+  /* ── Strategy 3: Cotización directa ── */
+  for(const sym of ["CAUC","CAUC1D","CAUCION"]){
+    const d3=await tryEndpoint(base+"/bCBA/Titulos/"+sym+"/Cotizacion","Titulo/"+sym);
+    if(d3){
+      const tna=d3.ultimoPrecio||d3.cierreAnterior||0;
+      if(tna>0){
+        saveLS("iol_caucion",{tna,ts:Date.now(),src:"titulo",sym});
+        return tna;
       }
-    }catch(e){}
+    }
+  }
+
+  /* ── Strategy 4: Test simple — portafolio (para verificar que el token funciona) ── */
+  const dTest=await tryEndpoint(base+"/portafolio/argentina","Test portafolio");
+  if(dTest){
+    console.log("[IOL] Token funciona pero no se encontró endpoint de caución. Portafolio:",JSON.stringify(dTest).substring(0,500));
+    window._iolLastError="Token OK pero no se encontró tasa de caución en los endpoints disponibles";
+  }else{
+    window._iolLastError=window._iolLastError||"No se pudo conectar a ningún endpoint de IOL";
   }
 
   return null;
@@ -1290,7 +1338,7 @@ function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetc
         {iolStatus?.status==="ok"&&<span style={{fontSize:13,fontWeight:700,color:"#34d399"}}>{iolStatus.tna}% TNA</span>}
         {iolStatus?.status==="cached"&&<span style={{fontSize:13,fontWeight:700,color:"#fbbf24"}}>{iolStatus.tna}% <span style={{fontSize:10,fontWeight:400,color:"#64748b"}}>(cache)</span></span>}
         {iolStatus?.status==="fetching"&&<span style={{fontSize:11,color:"#60a5fa",animation:"pulse 1s infinite"}}>Consultando...</span>}
-        {iolStatus?.status==="error"&&<span style={{fontSize:11,color:"#f87171"}} title={iolStatus?.msg||""}>Error al consultar</span>}
+        {iolStatus?.status==="error"&&<span style={{fontSize:11,color:"#f87171",cursor:"help"}} title={window._iolLastError||iolStatus?.msg||""}>{window._iolLastError?.includes("CORS")?"CORS bloqueado":window._iolLastError?.includes("Credenciales")?"Credenciales/API inválida":"Error al consultar"}</span>}
         {iolStatus?.status==="idle"&&<span style={{fontSize:11,color:"#64748b"}}>No configurado</span>}
         {iolStatus?.ts&&<span style={{fontSize:9,color:"#475569"}}>· {timeAgo(new Date(iolStatus.ts).toISOString())}</span>}
       </div>
@@ -1312,7 +1360,14 @@ function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetc
         </div>
         <button onClick={()=>{saveLS("iol_creds",{user:iolUser,pass:iolPass});saveLS("iol_token",null);fetchCaucionRate();setShowIOLConfig(false);}} style={{background:"#2563eb",border:"none",color:"#fff",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600,height:34}}>Guardar</button>
       </div>
-      <div style={{fontSize:10,color:"#475569",marginTop:8}}>Las credenciales se guardan solo en tu browser (localStorage). Activá la API en IOL: Mi Cuenta → Personalización → APIs.</div>
+      <div style={{fontSize:10,color:"#475569",marginTop:8}}>Las credenciales se guardan solo en tu browser (localStorage).</div>
+      <div style={{fontSize:10,color:"#fbbf24",marginTop:6,background:"#fbbf2411",padding:"8px 10px",borderRadius:6,lineHeight:1.5}}>
+        <b>Requisitos para usar la API de IOL:</b><br/>
+        1. Logueate en invertironline.com<br/>
+        2. Enviá un mensaje solicitando la activación de APIs<br/>
+        3. Una vez confirmada, aceptá los términos en: <b>Mi Cuenta → Personalización → APIs</b><br/>
+        4. Abrí la consola del browser (F12) para ver los logs detallados [IOL]
+      </div>
     </div>}
   </div>;
 }
@@ -1661,22 +1716,23 @@ function App(){
 
   const fetchCaucionRate=useCallback(async()=>{
     const creds=loadLS("iol_creds",null);
-    if(!creds)return;
+    if(!creds){
+      setIolStatus(s=>({...s,status:"idle"}));
+      return;
+    }
     setIolStatus(s=>({...s,status:"fetching"}));
     try{
       const tna=await iolFetchCaucionRate();
       if(tna!=null){
         const cached=loadLS("iol_caucion",null);
         setIolStatus({tna,ts:Date.now(),status:"ok",src:cached?.src||"api"});
-        /* Auto-update caucion.tna */
         setCaucion(c=>({...c,tna:Math.round(tna*10)/10}));
       }else{
-        /* Check if we have a recent cache to fall back to */
         const cached=loadLS("iol_caucion",null);
         if(cached&&cached.tna&&(Date.now()-cached.ts)<3600000){
           setIolStatus({tna:cached.tna,ts:cached.ts,status:"cached"});
         }else{
-          setIolStatus(s=>({...s,status:"error",msg:"Sin datos de caución"}));
+          setIolStatus(s=>({...s,status:"error",msg:window._iolLastError||"Sin datos de caución"}));
         }
       }
     }catch(e){
