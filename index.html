@@ -638,6 +638,40 @@ function timeAgo(dateStr){
 /* IOL error state — visible to UI */
 window._iolLastError=null;
 
+/* ── CORS proxy helpers ── */
+const CORS_PROXIES=[
+  url=>"https://corsproxy.io/?url="+encodeURIComponent(url),
+  url=>"https://api.allorigins.win/raw?url="+encodeURIComponent(url),
+];
+/* Smart fetch: intenta directo, si CORS falla reintenta con proxy */
+async function iolFetch(url,opts={}){
+  /* Intento directo */
+  try{
+    const res=await fetch(url,opts);
+    return res;
+  }catch(e){
+    console.log("[IOL] Directo falló (CORS), probando proxies...",e.message);
+  }
+  /* Intentar con cada proxy */
+  for(const mkProxy of CORS_PROXIES){
+    const proxyUrl=mkProxy(url);
+    try{
+      console.log("[IOL] Proxy →",proxyUrl.substring(0,80)+"...");
+      const res=await fetch(proxyUrl,{
+        ...opts,
+        headers:{...(opts.headers||{}),"x-requested-with":"XMLHttpRequest"}
+      });
+      if(res.ok||res.status===400||res.status===401){
+        console.log("[IOL] Proxy OK, status:",res.status);
+        return res;
+      }
+    }catch(e2){
+      console.log("[IOL] Proxy falló:",e2.message);
+    }
+  }
+  return null;
+}
+
 async function iolGetToken(){
   const creds=loadLS("iol_creds",null);
   if(!creds||!creds.user||!creds.pass){
@@ -652,44 +686,41 @@ async function iolGetToken(){
   const tokenUrl="https://api.invertironline.com/token";
   /* Try refresh token first */
   if(cached&&cached.refresh_token){
-    try{
-      console.log("[IOL] Refreshing token...");
-      const res=await fetch(tokenUrl,{
-        method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
-        body:`grant_type=refresh_token&refresh_token=${encodeURIComponent(cached.refresh_token)}`
-      });
-      if(res.ok){
+    console.log("[IOL] Refreshing token...");
+    const res=await iolFetch(tokenUrl,{
+      method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
+      body:`grant_type=refresh_token&refresh_token=${encodeURIComponent(cached.refresh_token)}`
+    });
+    if(res&&res.ok){
+      try{
         const d=await res.json();
         const tokenData={access_token:d.access_token,refresh_token:d.refresh_token,expires_at:Date.now()+(d.expires_in||900)*1000};
         saveLS("iol_token",tokenData);
         console.log("[IOL] Token refreshed OK");
         window._iolLastError=null;
         return d.access_token;
-      }else{
-        console.log("[IOL] Refresh failed:",res.status,res.statusText);
-      }
-    }catch(e){
-      console.log("[IOL] Refresh error (posible CORS):",e.message);
+      }catch(e){console.log("[IOL] Error parsing refresh response")}
     }
   }
   /* Fresh login */
+  console.log("[IOL] Fresh login...");
+  const res=await iolFetch(tokenUrl,{
+    method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
+    body:`username=${encodeURIComponent(creds.user)}&password=${encodeURIComponent(creds.pass)}&grant_type=password`
+  });
+  if(!res){
+    window._iolLastError="No se pudo conectar a IOL (CORS + proxies fallaron)";
+    return null;
+  }
+  if(!res.ok){
+    let errDetail="";try{errDetail=await res.text()}catch(x){}
+    console.error("[IOL] Login failed:",res.status,errDetail);
+    window._iolLastError=res.status===400||res.status===401
+      ?"Credenciales inválidas o API no activada"
+      :`Error ${res.status}`;
+    return null;
+  }
   try{
-    console.log("[IOL] Fresh login...");
-    const res=await fetch(tokenUrl,{
-      method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
-      body:`username=${encodeURIComponent(creds.user)}&password=${encodeURIComponent(creds.pass)}&grant_type=password`
-    });
-    if(!res.ok){
-      let errDetail="";
-      try{errDetail=await res.text()}catch(x){}
-      console.error("[IOL] Login failed:",res.status,res.statusText,errDetail);
-      if(res.status===400||res.status===401){
-        window._iolLastError="Credenciales inválidas o API no activada. Revisá Mi Cuenta > Personalización > APIs en invertironline.com";
-      }else{
-        window._iolLastError=`Error ${res.status}: ${res.statusText}`;
-      }
-      return null;
-    }
     const d=await res.json();
     const tokenData={access_token:d.access_token,refresh_token:d.refresh_token,expires_at:Date.now()+(d.expires_in||900)*1000};
     saveLS("iol_token",tokenData);
@@ -697,12 +728,7 @@ async function iolGetToken(){
     window._iolLastError=null;
     return d.access_token;
   }catch(e){
-    console.error("[IOL] Login error:",e);
-    if(e instanceof TypeError&&e.message.includes("Failed to fetch")){
-      window._iolLastError="CORS bloqueado: la API de IOL no permite requests desde este dominio. Probá abrir el dashboard desde localhost.";
-    }else{
-      window._iolLastError="Error de conexión: "+e.message;
-    }
+    window._iolLastError="Error parseando respuesta de login";
     return null;
   }
 }
@@ -716,22 +742,23 @@ async function iolFetchCaucionRate(){
   const base="https://api.invertironline.com/api/v2";
   const hdrs={"Authorization":"Bearer "+token};
 
-  /* Helper: intenta un endpoint y loguea resultado */
+  /* Helper: intenta un endpoint vía iolFetch (con fallback proxy) */
   async function tryEndpoint(url,label){
+    console.log("[IOL]",label,"→",url);
+    const res=await iolFetch(url,{headers:hdrs});
+    if(!res){console.log("[IOL]",label,"→ sin respuesta");return null;}
+    console.log("[IOL]",label,"status:",res.status);
+    if(!res.ok){
+      let body="";try{body=await res.text()}catch(x){}
+      console.log("[IOL]",label,"error:",body.substring(0,200));
+      return null;
+    }
     try{
-      console.log("[IOL]",label,"→",url);
-      const res=await fetch(url,{headers:hdrs});
-      console.log("[IOL]",label,"status:",res.status);
-      if(!res.ok){
-        let body="";try{body=await res.text()}catch(x){}
-        console.log("[IOL]",label,"error body:",body.substring(0,200));
-        return null;
-      }
       const d=await res.json();
-      console.log("[IOL]",label,"response:",JSON.stringify(d).substring(0,300));
+      console.log("[IOL]",label,"OK:",JSON.stringify(d).substring(0,300));
       return d;
     }catch(e){
-      console.log("[IOL]",label,"exception:",e.message);
+      console.log("[IOL]",label,"JSON parse error");
       return null;
     }
   }
@@ -782,13 +809,13 @@ async function iolFetchCaucionRate(){
     }
   }
 
-  /* ── Strategy 4: Test simple — portafolio (para verificar que el token funciona) ── */
+  /* ── Strategy 4: Test — portafolio (verificar que el token funciona) ── */
   const dTest=await tryEndpoint(base+"/portafolio/argentina","Test portafolio");
   if(dTest){
-    console.log("[IOL] Token funciona pero no se encontró endpoint de caución. Portafolio:",JSON.stringify(dTest).substring(0,500));
-    window._iolLastError="Token OK pero no se encontró tasa de caución en los endpoints disponibles";
+    console.log("[IOL] Token OK pero no se encontró caución. Portafolio:",JSON.stringify(dTest).substring(0,500));
+    window._iolLastError="Token OK pero sin datos de caución en los endpoints";
   }else{
-    window._iolLastError=window._iolLastError||"No se pudo conectar a ningún endpoint de IOL";
+    window._iolLastError=window._iolLastError||"No se pudo conectar a IOL";
   }
 
   return null;
