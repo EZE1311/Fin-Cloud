@@ -618,34 +618,6 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
     enriched.forEach(p=>{if(p.broker==="CS")usa+=p.montoActual;else arg+=p.montoActual;});
     return[{name:"USA (CS)",value:usa,flag:"usa"},{name:"Argentina (BM)",value:arg,flag:"arg"}].filter(d=>d.value>0);
   },[enriched]);
-  const movers=useMemo(()=>{
-    const top=[...enriched].sort((a,b)=>Math.abs(b.variacion)-Math.abs(a.variacion)).slice(0,5);
-    /* Clasificar cada movimiento: mercado, sector, o propio */
-    return top.map(p=>{
-      const v=p.variacion;
-      const bench=p.broker==="BM"?macro.mervalChg:macro.sp500Chg;
-      const benchName=p.broker==="BM"?"Merval":"S&P 500";
-      /* Buscar noticia asociada */
-      const kws=getTickerKW(p.ticker);
-      const matchedNews=news.find(n=>n.ticker===p.ticker)||(kws?news.find(n=>{const t=(n.title+" "+(n.summary||"")).toUpperCase();return kws.some(kw=>{const escaped=kw.toUpperCase().replace(/[.*+?^${}()|[\]\\]/g,"\\$&");return new RegExp("\\b"+escaped+"\\b").test(t);});}):null);
-      /* Clasificación: si va en la misma dirección y dentro del 50% del benchmark, es arrastre de mercado */
-      let context="",contextColor="#64748b";
-      if(Math.abs(v)<0.5){context="Sin cambio significativo";}
-      else if(bench!==0&&Math.sign(v)===Math.sign(bench)&&Math.abs(v)<=Math.abs(bench)*1.5){
-        context=`En línea con ${benchName} (${bench>=0?"+":""}${bench.toFixed(1)}%)`;
-        contextColor="#64748b";
-      }else if(matchedNews){
-        context=matchedNews.title.length>80?matchedNews.title.slice(0,77)+"...":matchedNews.title;
-        contextColor=matchedNews.sentiment==="positive"?"#34d399":matchedNews.sentiment==="negative"?"#f87171":"#94a3b8";
-      }else if(bench!==0&&Math.sign(v)!==Math.sign(bench)){
-        context=`Movimiento propio (${benchName}: ${bench>=0?"+":""}${bench.toFixed(1)}%)`;
-        contextColor="#fbbf24";
-      }else{
-        context=`${benchName}: ${bench>=0?"+":""}${bench.toFixed(1)}%`;
-      }
-      return{...p,context,contextColor,matchedNews};
-    });
-  },[enriched,macro,news]);
   /* Portfolio sort */
   const [sortBy,setSortBy]=useState("montoActual");
   const [sortDir,setSortDir]=useState("desc");
@@ -769,15 +741,54 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,c
 
     {/* ── Movers + News Feed (Bloomberg-style) ── */}
     <div className="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-      <Card title="Mayores Movimientos Hoy" right={<span style={{fontSize:10,color:"#475569",fontWeight:400}}>S&P {macro.sp500Chg>=0?"+":""}{macro.sp500Chg.toFixed(1)}% · Merval {macro.mervalChg>=0?"+":""}{macro.mervalChg.toFixed(1)}%</span>}>
-        {movers.map((p,i)=><div key={p.ticker} style={{padding:"10px 0",borderBottom:i<movers.length-1?"1px solid #252d3d":"none"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div><div style={{fontWeight:600,fontSize:14}}>{p.ticker}</div><div style={{fontSize:11,color:"#64748b"}}>{p.sector} · {p.mercado}</div></div>
-            <div style={{textAlign:"right"}}><div style={{fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fU(p.precioActual)}</div><div style={{fontSize:12,fontWeight:500,color:p.variacion>=0?"#34d399":"#f87171"}}>{fP(p.variacion)} ({(()=>{const dm=p.montoActual*(p.variacion/100);return(dm>=0?"+":"")+fU(dm);})()})</div></div>
-          </div>
-          {p.context&&<div style={{fontSize:10,color:p.contextColor,marginTop:4,lineHeight:1.3,fontStyle:p.matchedNews?"normal":"italic"}}>{p.matchedNews&&<span style={{fontSize:9,color:"#475569",marginRight:4}}>{p.matchedNews.source} ·</span>}{p.context}</div>}
-        </div>)}
-      </Card>
+      {(()=>{
+        /* Evolución histórica del portfolio — datos hardcoded + año actual dinámico */
+        const hist=[
+          {year:2023,capital:152951,pl:21924,rend:16.73},
+          {year:2024,capital:429639,pl:276688,rend:180.90},
+          {year:2025,capital:371436,pl:-58203,rend:-13.55},
+        ];
+        const curYear=new Date().getFullYear();
+        const prevYearCap=hist.length>0?hist[hist.length-1].capital:0;
+        const curPL=patrimonioNeto-prevYearCap;
+        const curRend=prevYearCap>0?((patrimonioNeto-prevYearCap)/prevYearCap*100):0;
+        const curEntry={year:curYear,capital:patrimonioNeto,pl:curPL,rend:curRend};
+        /* Auto-snapshot: si estamos en enero y el año anterior no está en hist, guardarlo */
+        const all=[...hist,curEntry];
+        const maxCap=Math.max(...all.map(d=>d.capital));
+        const barW=260;
+        return <Card title="Evolución del Portfolio" right={<span style={{fontSize:10,color:"#475569",fontWeight:400}}>Cierre anual en USD</span>}>
+          {/* Gráfico de barras */}
+          <svg width="100%" height={all.length*44+10} viewBox={`0 0 440 ${all.length*44+10}`} preserveAspectRatio="xMidYMid meet">
+            {all.map((d,i)=>{
+              const y=i*44+5;const w=maxCap>0?(d.capital/maxCap)*barW:0;
+              const isNeg=d.rend<0;const isCur=d.year===curYear;
+              return <g key={d.year}>
+                <text x={40} y={y+18} textAnchor="end" fill={isCur?"#60a5fa":"#e2e8f0"} fontSize="13" fontWeight="700">{d.year}</text>
+                <rect x={48} y={y} width={w} height={28} rx={4} fill={isCur?"#2563eb":isNeg?"#dc2626":"#059669"} opacity={isCur?.9:.7}/>
+                <text x={54+w} y={y+12} fill="#e2e8f0" fontSize="11" fontWeight="600">{fU(d.capital)}</text>
+                <text x={54+w} y={y+24} fill={d.pl>=0?"#34d399":"#f87171"} fontSize="10" fontWeight="500">{d.pl>=0?"+":""}{fU(d.pl)} ({d.rend>=0?"+":""}{d.rend.toFixed(1)}%)</text>
+              </g>;
+            })}
+          </svg>
+          {/* Tabla resumen */}
+          <table style={{width:"100%",borderCollapse:"collapse",marginTop:12,borderTop:"1px solid #252d3d"}}>
+            <thead><tr>
+              {["Año","Capital","P&L","Rend%"].map(h=><th key={h} style={{padding:"8px 6px",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",textAlign:h==="Año"?"left":"right",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
+            </tr></thead>
+            <tbody>{all.map(d=>{
+              const isCur=d.year===curYear;
+              return <tr key={d.year} style={{borderBottom:"1px solid #1e293b",background:isCur?"#1e293b44":"transparent"}}>
+                <td style={{padding:"6px",fontSize:12,fontWeight:isCur?700:500,color:isCur?"#60a5fa":"#e2e8f0"}}>{d.year}{isCur?" *":""}</td>
+                <td style={{padding:"6px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums",fontWeight:600}}>{fU(d.capital)}</td>
+                <td style={{padding:"6px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums",fontWeight:600,color:d.pl>=0?"#34d399":"#f87171"}}>{d.pl>=0?"+":""}{fU(d.pl)}</td>
+                <td style={{padding:"6px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums",fontWeight:600,color:d.rend>=0?"#34d399":"#f87171"}}>{d.rend>=0?"+":""}{d.rend.toFixed(2)}%</td>
+              </tr>;
+            })}</tbody>
+          </table>
+          <div style={{fontSize:9,color:"#475569",marginTop:6,fontStyle:"italic"}}>* {curYear} en curso — actualizado en tiempo real</div>
+        </Card>;
+      })()}
       <Card title="Noticias Relevantes" right={<span style={{fontSize:10,color:"#475569",fontWeight:400}}>LIVE FEED</span>}>
         <div style={{display:"flex",flexDirection:"column",gap:0}}>
           {relevantNews.map((n,i)=><div key={n.id}>
