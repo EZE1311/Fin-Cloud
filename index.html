@@ -759,114 +759,127 @@ async function iolFetchCaucionRate(){
     }
   }
 
-  /* ── Helper: extract rate from titulos array ── */
-  function findRate(titulos,moneda,plazo){
-    if(!Array.isArray(titulos)||titulos.length===0)return null;
-    const isPesos=moneda==="ARS";
-    const isDollar=moneda==="USD";
-    /* Filter by moneda: "Pesos" or "Dólares"/"Dolares"/"USD" in simbolo/descripcion */
-    const byMoneda=titulos.filter(t=>{
-      const s=((t.simbolo||"")+" "+(t.descripcion||"")).toLowerCase();
-      if(isPesos)return s.includes("peso")||(!s.includes("dólar")&&!s.includes("dolar")&&!s.includes("usd")&&!s.includes("dollar"));
-      if(isDollar)return s.includes("dólar")||s.includes("dolar")||s.includes("usd")||s.includes("dollar");
-      return true;
-    });
-    const pool=byMoneda.length>0?byMoneda:titulos;
-    /* If plazo specified, try to match by plazo/duracion/dias */
-    if(plazo){
-      const regex=new RegExp(plazo+"\\s*d","i");
-      const byPlazo=pool.filter(t=>{
-        const s=((t.simbolo||"")+" "+(t.descripcion||"")).toLowerCase();
-        return regex.test(s)||(t.plazo===plazo)||(t.dias===plazo)||(t.duracion===plazo);
-      });
-      if(byPlazo.length>0){
-        const best=byPlazo[0];
-        return best.ultimoPrecio||best.puntas?.precioCompra||0;
-      }
+  /* ── Helper: classify a titulo by moneda and plazo ── */
+  function classifyTitulo(t){
+    const s=((t.simbolo||"")+" "+(t.descripcion||"")).toLowerCase();
+    const isDollar=s.includes("dólar")||s.includes("dolar")||s.includes("usd")||s.includes("dollar");
+    const moneda=isDollar?"USD":"ARS";
+    /* Try to extract plazo from text or fields */
+    let plazo=t.plazo||t.dias||t.duracion||null;
+    if(!plazo){
+      const m30=s.match(/30\s*d/i);if(m30)plazo=30;
+      const m7=s.match(/7\s*d/i);if(m7)plazo=7;
+      const m1=s.match(/1\s*d/i);if(m1)plazo=1;
     }
-    /* Fallback: first item in pool */
-    const best=pool[0];
-    return best?best.ultimoPrecio||best.puntas?.precioCompra||0:null;
+    const tna=t.ultimoPrecio||t.puntas?.precioCompra||0;
+    return{moneda,plazo,tna,sym:t.simbolo};
   }
 
   const result={pesos1d:null,pesos30d:null,usd1d:null,usd30d:null};
 
-  /* ── Strategy 1: Cotizaciones de cauciones (pesos) ── */
-  const d1=await tryEndpoint(base+"/Cotizaciones/cauciones/argentina/Todos","Cauciones ARS");
+  /* ── Strategy 1: Cotizaciones de cauciones — parse ALL titulos ── */
+  const d1=await tryEndpoint(base+"/Cotizaciones/cauciones/argentina/Todos","Cauciones Todos");
   if(d1){
     const titulos=d1.titulos||d1;
     if(Array.isArray(titulos)&&titulos.length>0){
-      console.log("[IOL] Cauciones encontradas:",titulos.map(t=>t.simbolo+" ("+t.ultimoPrecio+"%)").join(", "));
-      result.pesos1d=findRate(titulos,"ARS",1);
-      result.pesos30d=findRate(titulos,"ARS",30);
-      /* Also try to get USD from same response */
-      result.usd1d=findRate(titulos,"USD",1);
-      result.usd30d=findRate(titulos,"USD",30);
+      console.log("[IOL] Cauciones encontradas ("+titulos.length+"):",JSON.stringify(titulos.map(t=>({s:t.simbolo,d:t.descripcion,p:t.ultimoPrecio,plazo:t.plazo,dias:t.dias,dur:t.duracion}))));
+      const classified=titulos.map(classifyTitulo);
+      console.log("[IOL] Clasificadas:",classified.map(c=>c.sym+"|"+c.moneda+"|plazo:"+c.plazo+"|"+c.tna+"%").join(" · "));
+      /* Assign by exact match */
+      for(const c of classified){
+        if(c.tna<=0)continue;
+        if(c.moneda==="ARS"&&c.plazo===1&&result.pesos1d==null)result.pesos1d=c.tna;
+        if(c.moneda==="ARS"&&c.plazo===30&&result.pesos30d==null)result.pesos30d=c.tna;
+        if(c.moneda==="USD"&&c.plazo===1&&result.usd1d==null)result.usd1d=c.tna;
+        if(c.moneda==="USD"&&c.plazo===30&&result.usd30d==null)result.usd30d=c.tna;
+      }
+      /* If only 1 ARS titulo with no plazo info, it's the default 1D rate */
+      const arsTitulos=classified.filter(c=>c.moneda==="ARS"&&c.tna>0);
+      if(result.pesos1d==null&&arsTitulos.length===1)result.pesos1d=arsTitulos[0].tna;
+      if(result.pesos1d==null&&arsTitulos.length>0){
+        /* Shortest plazo or first = 1D */
+        const sorted=[...arsTitulos].sort((a,b)=>(a.plazo||1)-(b.plazo||1));
+        result.pesos1d=sorted[0].tna;
+        if(sorted.length>1)result.pesos30d=sorted[sorted.length-1].tna;
+      }
+      const usdTitulos=classified.filter(c=>c.moneda==="USD"&&c.tna>0);
+      if(result.usd1d==null&&usdTitulos.length===1)result.usd1d=usdTitulos[0].tna;
+      if(result.usd1d==null&&usdTitulos.length>0){
+        const sorted=[...usdTitulos].sort((a,b)=>(a.plazo||1)-(b.plazo||1));
+        result.usd1d=sorted[0].tna;
+        if(sorted.length>1)result.usd30d=sorted[sorted.length-1].tna;
+      }
     }
   }
 
-  /* ── Strategy 2: Cotizaciones de cauciones en dólares (separate call) ── */
+  /* ── Strategy 2: Cotizaciones de cauciones en dólares (separate endpoint) ── */
   if(result.usd1d==null){
-    const d2=await tryEndpoint(base+"/Cotizaciones/cauciones/argentina/Dolares","Cauciones USD");
-    if(d2){
-      const titulos=d2.titulos||d2;
-      if(Array.isArray(titulos)&&titulos.length>0){
-        console.log("[IOL] Cauciones USD encontradas:",titulos.map(t=>t.simbolo+" ("+t.ultimoPrecio+"%)").join(", "));
-        result.usd1d=findRate(titulos,"USD",1);
-        result.usd30d=findRate(titulos,"USD",30);
-        /* If only one result, assign as 1d */
-        if(result.usd1d==null&&titulos.length>0){
-          result.usd1d=titulos[0].ultimoPrecio||0;
+    for(const seg of ["Dolares","DolarEstadounidense"]){
+      const d2=await tryEndpoint(base+"/Cotizaciones/cauciones/argentina/"+seg,"Cauciones "+seg);
+      if(d2){
+        const titulos=d2.titulos||d2;
+        if(Array.isArray(titulos)&&titulos.length>0){
+          console.log("[IOL] Cauciones USD ("+seg+") encontradas:",titulos.map(t=>t.simbolo+" ("+t.ultimoPrecio+"%)").join(", "));
+          const classified=titulos.map(classifyTitulo);
+          for(const c of classified){
+            if(c.tna<=0)continue;
+            /* Everything from this endpoint is USD regardless of name */
+            if((c.plazo===1||c.plazo==null)&&result.usd1d==null)result.usd1d=c.tna;
+            if(c.plazo===30&&result.usd30d==null)result.usd30d=c.tna;
+          }
+          if(result.usd1d==null&&titulos.length>0)result.usd1d=titulos[0].ultimoPrecio||0;
+          if(result.usd1d)break;
         }
       }
     }
   }
 
-  /* ── Strategy 3: Try Pesos with specific plazo filters ── */
-  if(result.pesos30d==null&&result.pesos1d!=null){
-    /* Try 30-day specific endpoint */
-    const d3=await tryEndpoint(base+"/Cotizaciones/cauciones/argentina/30dias","Cauciones 30D");
-    if(d3){
-      const titulos=d3.titulos||d3;
-      if(Array.isArray(titulos)&&titulos.length>0){
-        result.pesos30d=findRate(titulos,"ARS",30);
+  /* ── Strategy 3: CPD subastas for pesos (different plazos) ── */
+  if(result.pesos1d==null||result.pesos30d==null){
+    for(const seg of ["Pesos","pesos_Prioridad_Precio"]){
+      const d3=await tryEndpoint(base+"/operar/CPD/activas/"+encodeURIComponent(seg),"CPD/"+seg);
+      if(d3){
+        const subs=d3.subasta||d3;
+        if(Array.isArray(subs)&&subs.length>0){
+          console.log("[IOL] CPD "+seg+":",subs.map(s=>s.duracion+"d@"+s.tasaCompra+"%").join(", "));
+          const sorted=[...subs].sort((a,b)=>(a.duracion||999)-(b.duracion||999));
+          for(const s of sorted){
+            const tna=s.tasaCompra||s.tasa||0;
+            if(tna<=0)continue;
+            const dur=s.duracion||s.dias||s.plazo||1;
+            if(dur<=7&&result.pesos1d==null)result.pesos1d=tna;
+            if(dur>=28&&dur<=35&&result.pesos30d==null)result.pesos30d=tna;
+          }
+          if(result.pesos1d&&result.pesos30d)break;
+        }
       }
     }
   }
 
-  /* ── Strategy 4: CPD subastas as fallback for pesos 1D ── */
-  if(result.pesos1d==null){
-    for(const seg of ["Pesos","pesos_Prioridad_Precio"]){
-      const d4=await tryEndpoint(base+"/operar/CPD/activas/"+encodeURIComponent(seg),"CPD/"+seg);
+  /* ── Strategy 4: CPD subastas for dollars ── */
+  if(result.usd1d==null||result.usd30d==null){
+    for(const seg of ["Dolares","dolares_Prioridad_Precio","DolarEstadounidense"]){
+      const d4=await tryEndpoint(base+"/operar/CPD/activas/"+encodeURIComponent(seg),"CPD USD/"+seg);
       if(d4){
         const subs=d4.subasta||d4;
         if(Array.isArray(subs)&&subs.length>0){
+          console.log("[IOL] CPD USD "+seg+":",subs.map(s=>s.duracion+"d@"+s.tasaCompra+"%").join(", "));
           const sorted=[...subs].sort((a,b)=>(a.duracion||999)-(b.duracion||999));
-          const best=sorted[0];
-          const tna=best.tasaCompra||best.tasa||0;
-          if(tna>0){result.pesos1d=tna;break;}
-        }
-      }
-    }
-  }
-
-  /* ── Strategy 5: CPD subastas for dollars ── */
-  if(result.usd1d==null){
-    for(const seg of ["Dolares","dolares_Prioridad_Precio"]){
-      const d5=await tryEndpoint(base+"/operar/CPD/activas/"+encodeURIComponent(seg),"CPD USD/"+seg);
-      if(d5){
-        const subs=d5.subasta||d5;
-        if(Array.isArray(subs)&&subs.length>0){
-          const sorted=[...subs].sort((a,b)=>(a.duracion||999)-(b.duracion||999));
-          const best=sorted[0];
-          const tna=best.tasaCompra||best.tasa||0;
-          if(tna>0){result.usd1d=tna;break;}
+          for(const s of sorted){
+            const tna=s.tasaCompra||s.tasa||0;
+            if(tna<=0)continue;
+            const dur=s.duracion||s.dias||s.plazo||1;
+            if(dur<=7&&result.usd1d==null)result.usd1d=tna;
+            if(dur>=28&&dur<=35&&result.usd30d==null)result.usd30d=tna;
+          }
+          if(result.usd1d)break;
         }
       }
     }
   }
 
   /* ── Save all rates ── */
+  console.log("[IOL] Resultado final:",JSON.stringify(result));
   if(result.pesos1d!=null||result.usd1d!=null){
     saveLS("iol_caucion",{...result,ts:Date.now(),src:"cotizaciones"});
     return result;
