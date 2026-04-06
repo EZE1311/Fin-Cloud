@@ -1434,44 +1434,77 @@ function Trading({macro,prices,pos}){
   const fARS=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:0,maximumFractionDigits:0}).format(n)}`;
   const fARS2=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
   const fPct=(n,d=2)=>n==null||isNaN(n)?"—":`${n.toFixed(d)}%`;
-  const fUSD=n=>n==null||isNaN(n)?"—":`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:0,maximumFractionDigits:0}).format(n)}`;
+  const fUSD=n=>{if(n==null||isNaN(n))return"—";const abs=Math.abs(n);if(abs<1&&abs>0)return`USD ${n.toFixed(2)}`;return`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:0,maximumFractionDigits:0}).format(n)}`;};
 
-  /* Comisiones fijas — BM Active Trader Plus */
-  const comPct=0.0010;   /* 0.10% broker */
-  const derPct=0.0007;   /* 0.07% der mercado */
-  const intraPct=0.0005; /* 0.05% intra venta */
+  /* Helper: parsear input numérico (soporta 34.800 y 34,50) */
+  const parseNum=s=>{if(!s)return 0;const clean=s.replace(/\./g,"").replace(",",".");return parseFloat(clean)||0;};
+  /* Helper: formatear número para mostrar en input */
+  const fmtInput=(s,decimals)=>{const n=parseNum(s);if(!s||n===0&&s!=="0")return s;return n.toLocaleString("es-AR",{maximumFractionDigits:decimals,minimumFractionDigits:0});};
 
   /* Operación */
-  const [ticker,setTicker]=useState("");
   const [tickerInput,setTickerInput]=useState("");
   const [cantidad,setCantidad]=useState("");
   const [precioCompra,setPrecioCompra]=useState("");
+  const [precioVentaManual,setPrecioVentaManual]=useState("");
+  const [mercado,setMercado]=useState("BYMA"); /* BYMA (ARS) | NYSE (USD) */
+
+  /* Ticker: acepta cualquier texto, uppercase */
+  const ticker=tickerInput.trim().toUpperCase();
+
+  /* Auto-detect mercado from portfolio if ticker found */
+  const posInfo=pos.find(p=>p.ticker===ticker);
+  const detectedMercado=posInfo?.mercado||(pos.find(p=>p.ticker===ticker)?"BYMA":null);
+  React.useEffect(()=>{if(detectedMercado)setMercado(detectedMercado);},[ticker,detectedMercado]);
 
   /* Derive tipo from pos metadata */
-  const posInfo=pos.find(p=>p.ticker===ticker);
   const tipoActivo=posInfo?.tipo||"";
   const exento=tipoActivo==="Bono"||tipoActivo==="Letra"||tipoActivo==="ON";
-  const ivaMult=exento?1:1.21;
 
-  /* Auto precio venta from live prices (ARS for BYMA tickers) */
+  /* Comisiones según mercado */
+  const isBYMA=mercado==="BYMA";
+  /* BM Active Trader Plus (BYMA) */
+  const comPctBM=0.0010;   /* 0.10% broker */
+  const derPctBM=0.0007;   /* 0.07% der mercado */
+  const intraPctBM=0.0005; /* 0.05% intra venta */
+  /* Allaria/CS (NYSE) — comisiones más bajas, sin der mercado local ni intra */
+  const comPctAT=0.0060;   /* 0.60% all-in approx */
+  const derPctAT=0;
+  const intraPctAT=0;
+
+  const comPct=isBYMA?comPctBM:comPctAT;
+  const derPct=isBYMA?derPctBM:derPctAT;
+  const intraPct=isBYMA?intraPctBM:intraPctAT;
+  const ivaMult=(isBYMA&&!exento)?1.21:1; /* NYSE no paga IVA; BYMA bonos/letras/ONs exentos */
+  const moneda=isBYMA?"ARS":"USD";
+  const monedaSym=isBYMA?"$":"USD ";
+
+  /* Auto precio venta from live prices */
   const priceData=prices[ticker];
-  const precioVentaAuto=priceData?.priceARS||0;
+  const precioVentaAuto=isBYMA?(priceData?.priceARS||0):(priceData?.price||0);
 
-  /* All available tickers: from portfolio + can type any */
+  /* Precio venta: usa manual si lo escribió, sino auto */
+  const pvManual=parseNum(precioVentaManual);
+  const pv=pvManual>0?pvManual:precioVentaAuto;
+  const pvIsAuto=pvManual===0&&precioVentaAuto>0;
+
+  /* Auto-fill precio venta cuando cambia el ticker y no hay manual */
+  const prevTickerRef=React.useRef("");
+  React.useEffect(()=>{
+    if(ticker!==prevTickerRef.current){
+      prevTickerRef.current=ticker;
+      setPrecioVentaManual("");
+    }
+  },[ticker]);
+
+  /* All available tickers for datalist suggestions */
   const allTickers=useMemo(()=>{
     const set=new Set(pos.map(p=>p.ticker));
     Object.keys(prices).forEach(t=>set.add(t));
     return[...set].sort();
   },[pos,prices]);
 
-  const handleTickerSelect=(t)=>{
-    setTicker(t);
-    setTickerInput(t);
-  };
-
-  const cant=parseFloat(cantidad)||0;
-  const pc=parseFloat(precioCompra)||0;
-  const pv=precioVentaAuto;
+  const cant=parseNum(cantidad);
+  const pc=parseNum(precioCompra);
   const montoCompra=cant*pc;
   const montoVenta=cant*pv;
   const mep=macro.dolarMEP||1;
@@ -1501,26 +1534,41 @@ function Trading({macro,prices,pos}){
   const inputSt={background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"8px 12px",color:"#e2e8f0",fontSize:15,fontWeight:600,width:"100%",fontVariantNumeric:"tabular-nums"};
   const labelSt={fontSize:11,color:"#64748b",display:"block",marginBottom:4,textTransform:"uppercase",letterSpacing:".04em"};
 
+  /* Formatear montos en la moneda del mercado */
+  const fM=n=>n==null||isNaN(n)?"—":isBYMA?fARS(n):`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
+  const fM2=n=>n==null||isNaN(n)?"—":isBYMA?fARS2(n):`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:2,maximumFractionDigits:4}).format(n)}`;
+  /* Equivalente en la otra moneda */
+  const fAlt=n=>n==null||isNaN(n)?"—":isBYMA?fUSD(n/mep):fARS(n*mep);
+  const fAltLabel=isBYMA?"MEP":"ARS";
+
+  const mercadoBtnSt=(active)=>({background:active?"#2563eb":"#1e293b",border:`1px solid ${active?"#2563eb":"#334155"}`,color:active?"#fff":"#94a3b8",borderRadius:6,padding:"4px 12px",fontSize:11,cursor:"pointer",fontWeight:600});
+
   return <div style={{display:"flex",flexDirection:"column",gap:18}}>
-    <div>
-      <h2 style={{margin:0,fontSize:18,fontWeight:700}}>Simulador de Trading Intraday</h2>
-      <p style={{margin:"4px 0 0",fontSize:13,color:"#64748b"}}>Simulá compra y venta en el día con comisiones reales. BYMA · Bull Market Active Trader Plus.</p>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
+      <div>
+        <h2 style={{margin:0,fontSize:18,fontWeight:700}}>Simulador de Trading Intraday</h2>
+        <p style={{margin:"4px 0 0",fontSize:13,color:"#64748b"}}>Simulá compra y venta en el día con comisiones reales. {isBYMA?"BYMA · Bull Market Active Trader Plus":"NYSE · Allaria (CS)"}.</p>
+      </div>
+      <div style={{display:"flex",gap:4,alignItems:"center"}}>
+        <button onClick={()=>setMercado("BYMA")} style={mercadoBtnSt(isBYMA)}>🇦🇷 BYMA</button>
+        <button onClick={()=>setMercado("NYSE")} style={mercadoBtnSt(!isBYMA)}>🇺🇸 NYSE</button>
+      </div>
     </div>
 
     {/* Operación */}
-    <Card title="Operación" right={tipoActivo?<span style={{fontSize:10,color:exento?"#34d399":"#64748b"}}>{tipoActivo}{exento?" · IVA Exento":" · IVA 21%"}</span>:null}>
+    <Card title="Operación" right={<span style={{fontSize:10,color:exento?"#34d399":"#64748b"}}>{tipoActivo?`${tipoActivo} · `:""}{moneda}{exento?" · IVA Exento":isBYMA?" · IVA 21%":" · Sin IVA"}</span>}>
       <div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 1fr 1fr",gap:14,alignItems:"end"}}>
         <div><label style={labelSt}>Ticker</label>
           <div style={{position:"relative"}}>
-            <input type="text" value={tickerInput} onChange={e=>{const v=e.target.value.toUpperCase();setTickerInput(v);if(allTickers.includes(v)){setTicker(v);}else{setTicker("");}}} style={inputSt} placeholder="Ej: GGAL, YPF, AAPL" list="ticker-list"/>
+            <input type="text" value={tickerInput} onChange={e=>setTickerInput(e.target.value.toUpperCase())} style={inputSt} placeholder={isBYMA?"Ej: GGAL, VIST, MELI":"Ej: IBM, AAPL, TSLA"} list="ticker-list"/>
             <datalist id="ticker-list">{allTickers.map(t=><option key={t} value={t}/>)}</datalist>
           </div>
-          {ticker&&priceData&&<div style={{fontSize:10,color:"#34d399",marginTop:4}}>Cotización: ${priceData.priceARS?new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(priceData.priceARS):priceData.price?new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(priceData.price):"—"}</div>}
+          {ticker&&priceData&&<div style={{fontSize:10,color:"#34d399",marginTop:4}}>Cotización: {isBYMA?(priceData.priceARS?`$ ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(priceData.priceARS)}`:"—"):(priceData.price?`USD ${new Intl.NumberFormat("en-US",{maximumFractionDigits:2}).format(priceData.price)}`:"—")}</div>}
         </div>
-        <div><label style={labelSt}>Cantidad</label><input type="text" value={cantidad?parseInt(cantidad).toLocaleString("es-AR"):""} onChange={e=>setCantidad(e.target.value.replace(/[^\d]/g,""))} style={inputSt} placeholder="Nominales"/></div>
-        <div><label style={labelSt}>Precio Compra ($)</label><input type="text" value={precioCompra?parseFloat(precioCompra).toLocaleString("es-AR",{maximumFractionDigits:2}):""} onChange={e=>setPrecioCompra(e.target.value.replace(/[^\d.,]/g,"").replace(",","."))} style={inputSt} placeholder="Tu precio de entrada"/></div>
-        <div><label style={labelSt}>Precio Venta ($) <span style={{color:"#34d399",fontWeight:400,textTransform:"none"}}>— auto</span></label>
-          <div style={{...inputSt,background:"#0f172a",color:pv>0?"#34d399":"#475569"}}>{pv>0?new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(pv):"Seleccioná ticker"}</div>
+        <div><label style={labelSt}>Cantidad</label><input type="text" value={cantidad} onChange={e=>setCantidad(e.target.value.replace(/[^\d]/g,""))} style={inputSt} placeholder="Nominales"/></div>
+        <div><label style={labelSt}>Precio Compra ({monedaSym.trim()})</label><input type="text" value={precioCompra} onChange={e=>setPrecioCompra(e.target.value.replace(/[^\d.,]/g,""))} style={inputSt} placeholder={isBYMA?"34.800 ó 34800":"232.50"}/></div>
+        <div><label style={labelSt}>Precio Venta ({monedaSym.trim()}) {pvIsAuto?<span style={{color:"#34d399",fontWeight:400,textTransform:"none"}}>— auto</span>:pv>0?<span style={{color:"#60a5fa",fontWeight:400,textTransform:"none"}}>— manual</span>:null}</label>
+          <input type="text" value={precioVentaManual||(precioVentaAuto>0?(isBYMA?new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(precioVentaAuto):precioVentaAuto.toFixed(2)):"")} onChange={e=>setPrecioVentaManual(e.target.value.replace(/[^\d.,]/g,""))} style={{...inputSt,background:pvIsAuto?"#0f172a":"#111827",color:pv>0?"#34d399":"#e2e8f0"}} placeholder="Dejá vacío p/auto"/>
         </div>
       </div>
     </Card>
@@ -1529,20 +1577,20 @@ function Trading({macro,prices,pos}){
     {pc>0&&cant>0&&<div style={{background:"linear-gradient(135deg,#1a1f2e 0%,#0f172a 100%)",border:"1px solid #334155",borderRadius:12,padding:"20px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:14}}>
       <div style={{display:"flex",alignItems:"center",gap:16}}>
         <div style={{background:"#111827",borderRadius:10,padding:"12px 16px",border:"1px solid #252d3d",textAlign:"center",minWidth:150}}>
-          <div style={{fontSize:28,fontWeight:800,color:"#fbbf24",fontVariantNumeric:"tabular-nums",lineHeight:1}}>{fARS2(breakeven)}</div>
+          <div style={{fontSize:28,fontWeight:800,color:"#fbbf24",fontVariantNumeric:"tabular-nums",lineHeight:1}}>{fM2(breakeven)}</div>
           <div style={{fontSize:10,color:"#64748b",marginTop:4}}>por acción</div>
         </div>
         <div>
           <h3 style={{margin:0,fontSize:15,fontWeight:700,color:"#e2e8f0"}}>Precio Breakeven</h3>
           <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>Vendé a este precio o más para no perder plata</div>
-          <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Spread: {fARS2(breakeven-pc)} ({fPct((breakeven-pc)/pc*100,3)}) sobre compra</div>
+          <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Spread: {fM2(breakeven-pc)} ({fPct((breakeven-pc)/pc*100,3)}) sobre compra</div>
         </div>
       </div>
       <div style={{textAlign:"right"}}>
         <div style={{fontSize:11,color:"#64748b"}}>Monto Compra</div>
-        <div style={{fontSize:16,fontWeight:700,color:"#e2e8f0",fontVariantNumeric:"tabular-nums"}}>{fARS(montoCompra)}</div>
-        <div style={{fontSize:10,color:"#fbbf24",marginTop:2}}>+ {fARS2(comCompra)} gastos</div>
-        <div style={{fontSize:10,color:"#60a5fa",marginTop:2}}>{fUSD(montoCompra/mep)} (MEP)</div>
+        <div style={{fontSize:16,fontWeight:700,color:"#e2e8f0",fontVariantNumeric:"tabular-nums"}}>{fM(montoCompra)}</div>
+        <div style={{fontSize:10,color:"#fbbf24",marginTop:2}}>+ {fM2(comCompra)} gastos</div>
+        <div style={{fontSize:10,color:"#60a5fa",marginTop:2}}>{fAlt(montoCompra)} ({fAltLabel})</div>
       </div>
     </div>}
 
@@ -1551,18 +1599,18 @@ function Trading({macro,prices,pos}){
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,textAlign:"center"}}>
         <div>
           <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Bruto</div>
-          <div style={{fontSize:20,fontWeight:800,color:bruto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fARS(bruto)}</div>
-          <div style={{fontSize:10,color:"#60a5fa",marginTop:2}}>{fUSD(bruto/mep)}</div>
+          <div style={{fontSize:20,fontWeight:800,color:bruto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fM(bruto)}</div>
+          <div style={{fontSize:10,color:"#60a5fa",marginTop:2}}>{fAlt(bruto)}</div>
         </div>
         <div>
           <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Total Gastos</div>
-          <div style={{fontSize:20,fontWeight:800,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fARS2(totalGastos)}</div>
-          <div style={{fontSize:10,color:"#60a5fa",marginTop:2}}>{fUSD(totalGastos/mep)}</div>
+          <div style={{fontSize:20,fontWeight:800,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fM2(totalGastos)}</div>
+          <div style={{fontSize:10,color:"#60a5fa",marginTop:2}}>{fAlt(totalGastos)}</div>
         </div>
         <div>
           <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>P&L Neto</div>
-          <div style={{fontSize:24,fontWeight:800,color:neto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fARS(neto)}</div>
-          <div style={{fontSize:11,color:"#60a5fa",fontWeight:600,marginTop:2}}>{fUSD(neto/mep)}</div>
+          <div style={{fontSize:24,fontWeight:800,color:neto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fM(neto)}</div>
+          <div style={{fontSize:11,color:"#60a5fa",fontWeight:600,marginTop:2}}>{fAlt(neto)}</div>
         </div>
         <div>
           <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Rendimiento</div>
@@ -1575,7 +1623,7 @@ function Trading({macro,prices,pos}){
     {scenarios.length>0&&<Card title="Cuadro de Sensibilidad" right={<span style={{fontSize:10,color:"#475569"}}>P&L neto según variación · MEP ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(mep)}</span>}>
       <table style={{width:"100%",borderCollapse:"collapse"}}>
         <thead><tr>
-          {["Variación","Precio Venta","Monto Venta","Gastos Totales","P&L Neto","P&L USD"].map(h=><th key={h} style={{padding:"8px 10px",textAlign:h==="Variación"?"left":"right",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
+          {["Variación","Precio Venta","Monto Venta","Gastos Totales","P&L Neto",isBYMA?"P&L USD":"P&L ARS"].map(h=><th key={h} style={{padding:"8px 10px",textAlign:h==="Variación"?"left":"right",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
         </tr></thead>
         <tbody>{scenarios.map(s=>{
           const mvS=cant*s.pv;
@@ -1583,17 +1631,17 @@ function Trading({macro,prices,pos}){
           const gastosTotal=comCompra+cvS;
           return<tr key={s.pct} style={{borderBottom:"1px solid #1e293b",background:s.neto>=0?"#065f4608":"#7f1d1d08"}}>
             <td style={{padding:"8px 10px",fontWeight:700,fontSize:13,color:s.pct>=0?"#34d399":"#f87171"}}>{s.pct>0?"+":""}{s.pct}%</td>
-            <td style={{padding:"8px 10px",textAlign:"right",fontSize:13,fontVariantNumeric:"tabular-nums"}}>{fARS2(s.pv)}</td>
-            <td style={{padding:"8px 10px",textAlign:"right",fontSize:13,fontVariantNumeric:"tabular-nums"}}>{fARS(mvS)}</td>
-            <td style={{padding:"8px 10px",textAlign:"right",fontSize:12,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fARS2(gastosTotal)}</td>
-            <td style={{padding:"8px 10px",textAlign:"right",fontSize:13,fontWeight:700,color:s.neto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fARS(s.neto)}</td>
-            <td style={{padding:"8px 10px",textAlign:"right",fontSize:12,color:"#60a5fa",fontVariantNumeric:"tabular-nums"}}>{fUSD(s.neto/mep)}</td>
+            <td style={{padding:"8px 10px",textAlign:"right",fontSize:13,fontVariantNumeric:"tabular-nums"}}>{fM2(s.pv)}</td>
+            <td style={{padding:"8px 10px",textAlign:"right",fontSize:13,fontVariantNumeric:"tabular-nums"}}>{fM(mvS)}</td>
+            <td style={{padding:"8px 10px",textAlign:"right",fontSize:12,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fM2(gastosTotal)}</td>
+            <td style={{padding:"8px 10px",textAlign:"right",fontSize:13,fontWeight:700,color:s.neto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fM(s.neto)}</td>
+            <td style={{padding:"8px 10px",textAlign:"right",fontSize:12,color:"#60a5fa",fontVariantNumeric:"tabular-nums"}}>{fAlt(s.neto)}</td>
           </tr>;
         })}</tbody>
       </table>
     </Card>}
 
-    <div style={{fontSize:9,color:"#475569",fontStyle:"italic",textAlign:"center"}}>Comisión 0,10% + Der. Mercado 0,07% + Intra Venta 0,05% · IVA 21% (Bonos/Letras/ONs exentos) · USD valuado a MEP · Fuente: Tarifario BM Marzo 2025 + BYMA</div>
+    <div style={{fontSize:9,color:"#475569",fontStyle:"italic",textAlign:"center"}}>{isBYMA?"Comisión 0,10% + Der. Mercado 0,07% + Intra Venta 0,05% · IVA 21% (Bonos/Letras/ONs exentos) · Fuente: Tarifario BM Marzo 2025 + BYMA":"Comisión 0,60% all-in · Sin IVA · Fuente: Allaria (CS)"} · Equivalencias a MEP ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(mep)}</div>
   </div>;
 }
 
