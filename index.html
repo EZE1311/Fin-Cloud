@@ -1478,23 +1478,56 @@ function Trading({macro,prices,pos}){
   const moneda=isBYMA?"ARS":"USD";
   const monedaSym=isBYMA?"$":"USD ";
 
-  /* Auto precio venta from live prices */
-  const priceData=prices[ticker];
+  /* On-demand price fetch for tickers not in portfolio */
+  const [tradingPrice,setTradingPrice]=useState(null);
+  const [tradingPriceLoading,setTradingPriceLoading]=useState(false);
+  const fetchTimerRef=React.useRef(null);
+
+  React.useEffect(()=>{
+    /* Reset on ticker change */
+    setPrecioVentaManual("");
+    setTradingPrice(null);
+    if(fetchTimerRef.current)clearTimeout(fetchTimerRef.current);
+    if(!ticker||ticker.length<2)return;
+    /* If already in portfolio prices, no need to fetch */
+    if(prices[ticker])return;
+    /* Debounce 600ms then fetch from data912 + Yahoo */
+    setTradingPriceLoading(true);
+    fetchTimerRef.current=setTimeout(async()=>{
+      try{
+        const fetchD912=async(ep)=>{try{let r;try{r=await fetch(DATA912_BASE+"/"+ep)}catch(e){r=await fetch(PROXY+encodeURIComponent(DATA912_BASE+"/"+ep))}return await r.json()}catch(e){return[]}};
+        const [cedears,argStocks,argBonds,usaStocks]=await Promise.all([fetchD912("arg_cedears"),fetchD912("arg_stocks"),fetchD912("arg_bonds"),fetchD912("usa_stocks")]);
+        const find=(arr)=>(arr||[]).find(x=>(x.symbol||"").toUpperCase()===ticker);
+        const hit=find(cedears)||find(argStocks)||find(argBonds)||find(usaStocks);
+        if(hit&&hit.c){
+          const isArg=!!(find(cedears)||find(argStocks)||find(argBonds));
+          setTradingPrice({priceARS:isArg?hit.c:null,price:isArg?0:hit.c,changeARS:isArg?(hit.pct_change||0):null,change:isArg?0:(hit.pct_change||0)});
+          setTradingPriceLoading(false);return;
+        }
+        /* Yahoo fallback */
+        try{
+          const yfUrl=PROXY+encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${ticker}&fields=regularMarketPrice,regularMarketChangePercent`);
+          const yfRes=await fetch(yfUrl);const yfData=await yfRes.json();
+          const q=(yfData.quoteResponse?.result||[])[0];
+          if(q&&q.regularMarketPrice){
+            const isArg=q.exchange==="BUE"||q.currency==="ARS";
+            setTradingPrice({priceARS:isArg?q.regularMarketPrice:null,price:isArg?0:q.regularMarketPrice,changeARS:isArg?(q.regularMarketChangePercent||0):null,change:isArg?0:(q.regularMarketChangePercent||0)});
+          }
+        }catch(e){}
+      }catch(e){console.warn("Trading price fetch error:",e);}
+      setTradingPriceLoading(false);
+    },600);
+    return()=>{if(fetchTimerRef.current)clearTimeout(fetchTimerRef.current)};
+  },[ticker]);
+
+  /* Merge portfolio prices with on-demand trading price */
+  const priceData=prices[ticker]||tradingPrice;
   const precioVentaAuto=isBYMA?(priceData?.priceARS||0):(priceData?.price||0);
 
   /* Precio venta: usa manual si lo escribió, sino auto */
   const pvManual=parseNum(precioVentaManual);
   const pv=pvManual>0?pvManual:precioVentaAuto;
   const pvIsAuto=pvManual===0&&precioVentaAuto>0;
-
-  /* Auto-fill precio venta cuando cambia el ticker y no hay manual */
-  const prevTickerRef=React.useRef("");
-  React.useEffect(()=>{
-    if(ticker!==prevTickerRef.current){
-      prevTickerRef.current=ticker;
-      setPrecioVentaManual("");
-    }
-  },[ticker]);
 
   /* All available tickers for datalist suggestions */
   const allTickers=useMemo(()=>{
@@ -1563,12 +1596,14 @@ function Trading({macro,prices,pos}){
             <input type="text" value={tickerInput} onChange={e=>setTickerInput(e.target.value.toUpperCase())} style={inputSt} placeholder={isBYMA?"Ej: GGAL, VIST, MELI":"Ej: IBM, AAPL, TSLA"} list="ticker-list"/>
             <datalist id="ticker-list">{allTickers.map(t=><option key={t} value={t}/>)}</datalist>
           </div>
-          {ticker&&priceData&&<div style={{fontSize:10,color:"#34d399",marginTop:4}}>Cotización: {isBYMA?(priceData.priceARS?`$ ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(priceData.priceARS)}`:"—"):(priceData.price?`USD ${new Intl.NumberFormat("en-US",{maximumFractionDigits:2}).format(priceData.price)}`:"—")}</div>}
+          {ticker&&tradingPriceLoading&&<div style={{fontSize:10,color:"#fbbf24",marginTop:4}}>Buscando cotización...</div>}
+          {ticker&&priceData&&!tradingPriceLoading&&<div style={{fontSize:10,color:"#34d399",marginTop:4}}>Cotización: {isBYMA?(priceData.priceARS?`$ ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(priceData.priceARS)}`:"—"):(priceData.price?`USD ${new Intl.NumberFormat("en-US",{maximumFractionDigits:2}).format(priceData.price)}`:"—")}</div>}
+          {ticker&&!priceData&&!tradingPriceLoading&&<div style={{fontSize:10,color:"#64748b",marginTop:4}}>Sin cotización — ingresá precio manual</div>}
         </div>
         <div><label style={labelSt}>Cantidad</label><input type="text" value={cantidad} onChange={e=>setCantidad(e.target.value.replace(/[^\d]/g,""))} style={inputSt} placeholder="Nominales"/></div>
         <div><label style={labelSt}>Precio Compra ({monedaSym.trim()})</label><input type="text" value={precioCompra} onChange={e=>setPrecioCompra(e.target.value.replace(/[^\d.,]/g,""))} style={inputSt} placeholder={isBYMA?"34.800 ó 34800":"232.50"}/></div>
         <div><label style={labelSt}>Precio Venta ({monedaSym.trim()}) {pvIsAuto?<span style={{color:"#34d399",fontWeight:400,textTransform:"none"}}>— auto</span>:pv>0?<span style={{color:"#60a5fa",fontWeight:400,textTransform:"none"}}>— manual</span>:null}</label>
-          <input type="text" value={precioVentaManual||(precioVentaAuto>0?(isBYMA?new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(precioVentaAuto):precioVentaAuto.toFixed(2)):"")} onChange={e=>setPrecioVentaManual(e.target.value.replace(/[^\d.,]/g,""))} style={{...inputSt,background:pvIsAuto?"#0f172a":"#111827",color:pv>0?"#34d399":"#e2e8f0"}} placeholder="Dejá vacío p/auto"/>
+          <input type="text" value={precioVentaManual||(precioVentaAuto>0?(isBYMA?new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(precioVentaAuto):precioVentaAuto.toFixed(2)):"")} onChange={e=>setPrecioVentaManual(e.target.value.replace(/[^\d.,]/g,""))} style={{...inputSt,background:pvIsAuto?"#0f172a":"#111827",color:pv>0?"#34d399":tradingPriceLoading?"#fbbf24":"#e2e8f0"}} placeholder={tradingPriceLoading?"Buscando precio...":"Dejá vacío p/auto"}/>
         </div>
       </div>
     </Card>
