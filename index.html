@@ -1564,6 +1564,32 @@ function Trading({macro,prices,pos}){
     return{pct,pv:pvS,neto:netoS};
   }):[];
 
+  /* ── Intraday Trades List (persisted) ── */
+  const [trades,setTrades]=useState(()=>loadLS("intraday_trades",[]));
+  useEffect(()=>{saveLS("intraday_trades",trades)},[trades]);
+
+  const canAdd=ticker&&cant>0&&pc>0&&pv>0;
+  const addTrade=()=>{
+    if(!canAdd)return;
+    const trade={id:Date.now(),fecha:new Date().toISOString().slice(0,10),ticker,mercado,cantidad:cant,precioCompra:pc,precioVenta:pv,montoCompra,montoVenta,comCompra,comVenta,totalGastos,bruto,neto,breakeven,exento,moneda,mep};
+    setTrades(prev=>[trade,...prev]);
+    setTickerInput("");setCantidad("");setPrecioCompra("");setPrecioVentaManual("");
+  };
+
+  const removeTrade=(id)=>setTrades(prev=>prev.filter(t=>t.id!==id));
+  const clearTrades=()=>{if(confirm("Borrar todas las operaciones intraday?"))setTrades([]);};
+
+  /* Totals across all trades */
+  const tradesTotals=useMemo(()=>{
+    let netoARS=0,netoUSD=0,gastosARS=0,gastosUSD=0,montoARS=0,montoUSD=0;
+    trades.forEach(t=>{
+      const m=t.mep||mep;
+      if(t.mercado==="BYMA"){netoARS+=t.neto;gastosARS+=t.totalGastos;netoUSD+=t.neto/m;montoARS+=t.montoCompra;montoUSD+=t.montoCompra/m;}
+      else{netoUSD+=t.neto;gastosUSD+=t.totalGastos;netoARS+=t.neto*m;montoUSD+=t.montoCompra;montoARS+=t.montoCompra*m;}
+    });
+    return{netoARS,netoUSD,gastosARS,gastosUSD,montoARS,montoUSD,count:trades.length};
+  },[trades,mep]);
+
   const inputSt={background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"8px 12px",color:"#e2e8f0",fontSize:15,fontWeight:600,width:"100%",fontVariantNumeric:"tabular-nums"};
   const labelSt={fontSize:11,color:"#64748b",display:"block",marginBottom:4,textTransform:"uppercase",letterSpacing:".04em"};
 
@@ -1673,6 +1699,52 @@ function Trading({macro,prices,pos}){
             <td style={{padding:"8px 10px",textAlign:"right",fontSize:12,color:"#60a5fa",fontVariantNumeric:"tabular-nums"}}>{fAlt(s.neto)}</td>
           </tr>;
         })}</tbody>
+      </table>
+    </Card>}
+
+    {/* Botón Agregar */}
+    {canAdd&&<button onClick={addTrade} style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:8,padding:"12px 24px",fontSize:14,fontWeight:700,cursor:"pointer",alignSelf:"center",transition:"background .15s"}} onMouseOver={e=>e.target.style.background="#1d4ed8"} onMouseOut={e=>e.target.style.background="#2563eb"}>+ Agregar Operación</button>}
+
+    {/* ── Operaciones Intraday Guardadas ── */}
+    {trades.length>0&&<Card title={`Operaciones Intraday (${trades.length})`} right={<div style={{display:"flex",gap:8,alignItems:"center"}}>
+      <span style={{fontSize:11,color:tradesTotals.netoARS>=0?"#34d399":"#f87171",fontWeight:700}}>P&L: {fARS(tradesTotals.netoARS)} / {fUSD(tradesTotals.netoUSD)}</span>
+      <button onClick={clearTrades} style={{background:"#7f1d1d33",border:"1px solid #7f1d1d55",color:"#f87171",borderRadius:6,padding:"3px 8px",fontSize:10,cursor:"pointer"}} title="Borrar todo">🗑</button>
+    </div>}>
+      <table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead><tr>
+          {["Fecha","Ticker","Mdo","Cant","P.Compra","P.Venta","Gastos","P&L Neto","Rend",""].map(h=><th key={h} style={{padding:"6px 8px",textAlign:h===""||h==="Fecha"||h==="Ticker"||h==="Mdo"?"left":"right",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
+        </tr></thead>
+        <tbody>{trades.map(t=>{
+          const isBM=t.mercado==="BYMA";
+          const fT=n=>isBM?fARS(n):`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
+          const fT2=n=>isBM?fARS2(n):`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:2,maximumFractionDigits:4}).format(n)}`;
+          const fTalt=n=>isBM?fUSD(n/(t.mep||mep)):fARS(n*(t.mep||mep));
+          const rendPct=t.montoCompra>0?(t.neto/t.montoCompra*100):0;
+          return<tr key={t.id} style={{borderBottom:"1px solid #1e293b",background:t.neto>=0?"#065f4608":"#7f1d1d08"}}>
+            <td style={{padding:"6px 8px",fontSize:11,color:"#94a3b8"}}>{t.fecha}</td>
+            <td style={{padding:"6px 8px",fontSize:13,fontWeight:700}}>{t.ticker}</td>
+            <td style={{padding:"6px 8px",fontSize:10,color:"#64748b"}}>{isBM?"🇦🇷":"🇺🇸"}</td>
+            <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums"}}>{t.cantidad.toLocaleString("es-AR")}</td>
+            <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums"}}>{fT2(t.precioCompra)}</td>
+            <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums"}}>{fT2(t.precioVenta)}</td>
+            <td style={{padding:"6px 8px",textAlign:"right",fontSize:11,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fT2(t.totalGastos)}</td>
+            <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
+              <div style={{fontSize:13,fontWeight:700,color:t.neto>=0?"#34d399":"#f87171"}}>{fT(t.neto)}</div>
+              <div style={{fontSize:10,color:"#60a5fa"}}>{fTalt(t.neto)}</div>
+            </td>
+            <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontWeight:600,color:rendPct>=0?"#34d399":"#f87171"}}>{rendPct.toFixed(2)}%</td>
+            <td style={{padding:"6px 8px",textAlign:"right"}}><button onClick={()=>removeTrade(t.id)} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:12,padding:2}} title="Eliminar">✕</button></td>
+          </tr>;
+        })}</tbody>
+        {trades.length>1&&<tfoot><tr style={{borderTop:"2px solid #334155"}}>
+          <td colSpan={7} style={{padding:"8px",fontSize:12,fontWeight:700,color:"#94a3b8"}}>TOTAL ({trades.length} ops)</td>
+          <td style={{padding:"8px",textAlign:"right"}}>
+            <div style={{fontSize:14,fontWeight:800,color:tradesTotals.netoARS>=0?"#34d399":"#f87171"}}>{fARS(tradesTotals.netoARS)}</div>
+            <div style={{fontSize:11,color:"#60a5fa",fontWeight:600}}>{fUSD(tradesTotals.netoUSD)}</div>
+          </td>
+          <td style={{padding:"8px",textAlign:"right",fontSize:12,fontWeight:600,color:tradesTotals.netoARS>=0?"#34d399":"#f87171"}}>{tradesTotals.montoARS>0?(tradesTotals.netoARS/tradesTotals.montoARS*100).toFixed(2)+"%":"—"}</td>
+          <td></td>
+        </tr></tfoot>}
       </table>
     </Card>}
 
