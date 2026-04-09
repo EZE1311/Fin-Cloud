@@ -1752,6 +1752,209 @@ function Trading({macro,prices,pos}){
   </div>;
 }
 
+/* ── POTENCIAL ──────────────────────────── */
+/* Yahoo Finance symbol mapping: BYMA ticker → NYSE/NASDAQ USD equivalent */
+const YF_SYM_MAP={YPFD:"YPF",GGAL:"GGAL",EDN:"EDN",MELI:"MELI",ORCL:"ORCL",IBM:"IBM",BKUCF:"BKUCF",TSLA:"TSLA",AAPL:"AAPL",MSFT:"MSFT",AMZN:"AMZN",GOOGL:"GOOGL",META:"META",NVDA:"NVDA",UNH:"UNH",FISV:"FISV",JNJ:"JNJ",KO:"KO",DIS:"DIS",GLOB:"GLOB",SUPV:"SUPV",PAMP:"PAM",BMA:"BMA",CEPU:"CEPU",LOMA:"LOMA",TEO:"TEO",CRESY:"CRESY",TGS:"TGS",IRCP:"IRS",DESP:"DESP",CAAP:"CAAP",BIOX:"BIOX",AGRO:"AGRO",VISTA:"VIST"};
+const yfSym=t=>{const u=t.toUpperCase();return YF_SYM_MAP[u]||u;};
+
+async function fetchHistorical(ticker,range){
+  const sym=yfSym(ticker);
+  /* interval: 1wk for 1y/5y, 1mo for 10y to keep data manageable */
+  const interval=range==="10y"?"1mo":"1wk";
+  const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=${interval}&includePrePost=false`;
+  try{
+    let res;
+    try{res=await fetch(PROXY+encodeURIComponent(url));}catch(e){
+      try{res=await fetch("https://corsproxy.io/?"+encodeURIComponent(url));}catch(e2){return null;}
+    }
+    const data=await res.json();
+    const result=data?.chart?.result?.[0];
+    if(!result)return null;
+    const ts=result.timestamp||[];
+    const closes=result.indicators?.quote?.[0]?.close||[];
+    const currency=result.meta?.currency||"USD";
+    const currentPrice=result.meta?.regularMarketPrice||0;
+    /* Build array of {date, close} filtering nulls */
+    const points=[];
+    for(let i=0;i<ts.length;i++){
+      if(closes[i]!=null&&closes[i]>0){
+        points.push({date:new Date(ts[i]*1000).toISOString().slice(0,10),close:closes[i]});
+      }
+    }
+    return{sym,ticker,currency,currentPrice,points};
+  }catch(e){console.warn("fetchHistorical error:",ticker,e);return null;}
+}
+
+function Potencial({pos,prices,macro}){
+  const [range,setRange]=useState("1y");
+  const [histData,setHistData]=useState({});
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState(null);
+  const mep=macro.dolarMEP||1;
+
+  const fARS=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:0,maximumFractionDigits:0}).format(n)}`;
+  const fUSD=n=>n==null||isNaN(n)?"—":`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
+  const fPct=(n)=>n==null||isNaN(n)?"—":`${n>=0?"+":""}${n.toFixed(1)}%`;
+
+  /* Tickers from portfolio (only those with open positions) */
+  const tickers=useMemo(()=>pos.filter(p=>p.cantidad>0).map(p=>p.ticker),[pos]);
+
+  /* Fetch on range or tickers change */
+  useEffect(()=>{
+    if(tickers.length===0)return;
+    let cancelled=false;
+    setLoading(true);setError(null);
+    Promise.all(tickers.map(t=>fetchHistorical(t,range))).then(results=>{
+      if(cancelled)return;
+      const map={};
+      results.forEach((r,i)=>{if(r)map[tickers[i]]=r;});
+      setHistData(map);
+      if(Object.keys(map).length===0)setError("No se pudieron obtener datos históricos");
+      setLoading(false);
+    }).catch(e=>{if(!cancelled){setError("Error al cargar datos");setLoading(false);}});
+    return()=>{cancelled=true;};
+  },[tickers.join(","),range]);
+
+  /* Analyze each ticker */
+  const analysis=useMemo(()=>{
+    return tickers.map(t=>{
+      const hist=histData[t];
+      const posInfo=pos.find(p=>p.ticker===t);
+      if(!hist||!posInfo||hist.points.length===0)return null;
+
+      const closes=hist.points.map(p=>p.close);
+      const maxPrice=Math.max(...closes);
+      const minPrice=Math.min(...closes);
+      const currentUSD=hist.currentPrice;
+      const maxDate=hist.points.find(p=>p.close===maxPrice)?.date||"";
+      const minDate=hist.points.find(p=>p.close===minPrice)?.date||"";
+
+      /* % from current to max/min */
+      const upsidePct=currentUSD>0?((maxPrice-currentUSD)/currentUSD)*100:0;
+      const downsidePct=currentUSD>0?((minPrice-currentUSD)/currentUSD)*100:0;
+
+      /* Current position value in USD */
+      const isBYMA=posInfo.mercado==="BYMA";
+      const priceData=prices[t];
+      let posValueUSD=0;
+      if(isBYMA){
+        posValueUSD=(priceData?.priceARS||0)*posInfo.cantidad/mep;
+      }else{
+        posValueUSD=(priceData?.price||currentUSD)*posInfo.cantidad;
+      }
+
+      /* Projected values at max/min */
+      const valueAtMax=posValueUSD*(1+upsidePct/100);
+      const valueAtMin=posValueUSD*(1+downsidePct/100);
+
+      return{ticker:t,mercado:posInfo.mercado,cantidad:posInfo.cantidad,currentUSD,maxPrice,minPrice,maxDate,minDate,upsidePct,downsidePct,posValueUSD,valueAtMax,valueAtMin,yfSym:hist.sym};
+    }).filter(Boolean);
+  },[tickers,histData,pos,prices,mep]);
+
+  /* Portfolio totals */
+  const totals=useMemo(()=>{
+    let currentTotal=0,maxTotal=0,minTotal=0;
+    analysis.forEach(a=>{currentTotal+=a.posValueUSD;maxTotal+=a.valueAtMax;minTotal+=a.valueAtMin;});
+    const upsidePct=currentTotal>0?((maxTotal-currentTotal)/currentTotal)*100:0;
+    const downsidePct=currentTotal>0?((minTotal-currentTotal)/currentTotal)*100:0;
+    return{currentTotal,maxTotal,minTotal,upsidePct,downsidePct};
+  },[analysis]);
+
+  const rangeBtnSt=(r)=>({background:range===r?"#2563eb":"#1e293b",border:`1px solid ${range===r?"#2563eb":"#334155"}`,color:range===r?"#fff":"#94a3b8",borderRadius:6,padding:"5px 14px",fontSize:12,cursor:"pointer",fontWeight:600});
+  const rangeLabel={"1y":"1 Año","5y":"5 Años","10y":"10 Años"};
+
+  return <div style={{display:"flex",flexDirection:"column",gap:18}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
+      <div>
+        <h2 style={{margin:0,fontSize:18,fontWeight:700}}>Potencial del Portfolio</h2>
+        <p style={{margin:"4px 0 0",fontSize:13,color:"#64748b"}}>Máximos y mínimos históricos de tus activos ({rangeLabel[range]}). Precios en USD vía NYSE/NASDAQ.</p>
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        {["1y","5y","10y"].map(r=><button key={r} onClick={()=>setRange(r)} style={rangeBtnSt(r)}>{rangeLabel[r]}</button>)}
+      </div>
+    </div>
+
+    {loading&&<div style={{textAlign:"center",padding:40,color:"#fbbf24",fontSize:14}}>Cargando datos históricos de {tickers.length} activos...</div>}
+    {error&&!loading&&<div style={{textAlign:"center",padding:40,color:"#f87171",fontSize:14}}>{error}</div>}
+
+    {/* Portfolio Summary Cards */}
+    {!loading&&analysis.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
+      <div style={{background:"#0f172a",border:"1px solid #334155",borderRadius:12,padding:20,textAlign:"center"}}>
+        <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:6}}>Valor Actual</div>
+        <div style={{fontSize:22,fontWeight:800,color:"#e2e8f0"}}>{fUSD(totals.currentTotal)}</div>
+        <div style={{fontSize:11,color:"#64748b",marginTop:4}}>{fARS(totals.currentTotal*mep)}</div>
+      </div>
+      <div style={{background:"linear-gradient(135deg,#065f4611,#0f172a)",border:"1px solid #34d39933",borderRadius:12,padding:20,textAlign:"center"}}>
+        <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:6}}>Si llega a Máximos ({rangeLabel[range]})</div>
+        <div style={{fontSize:22,fontWeight:800,color:"#34d399"}}>{fUSD(totals.maxTotal)}</div>
+        <div style={{fontSize:14,fontWeight:700,color:"#34d399",marginTop:4}}>{fPct(totals.upsidePct)}</div>
+        <div style={{fontSize:11,color:"#64748b",marginTop:2}}>+{fUSD(totals.maxTotal-totals.currentTotal)}</div>
+      </div>
+      <div style={{background:"linear-gradient(135deg,#7f1d1d11,#0f172a)",border:"1px solid #f8717133",borderRadius:12,padding:20,textAlign:"center"}}>
+        <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:6}}>Si cae a Mínimos ({rangeLabel[range]})</div>
+        <div style={{fontSize:22,fontWeight:800,color:"#f87171"}}>{fUSD(totals.minTotal)}</div>
+        <div style={{fontSize:14,fontWeight:700,color:"#f87171",marginTop:4}}>{fPct(totals.downsidePct)}</div>
+        <div style={{fontSize:11,color:"#64748b",marginTop:2}}>{fUSD(totals.minTotal-totals.currentTotal)}</div>
+      </div>
+    </div>}
+
+    {/* Per-ticker analysis table */}
+    {!loading&&analysis.length>0&&<Card title="Detalle por Activo" right={<span style={{fontSize:10,color:"#475569"}}>{rangeLabel[range]} · USD · Yahoo Finance</span>}>
+      <table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead><tr>
+          {["Ticker","Precio Actual","Máx Período","Upside","Mín Período","Downside","Valor Actual","→ Máx","→ Mín"].map(h=><th key={h} style={{padding:"8px 8px",textAlign:h==="Ticker"?"left":"right",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
+        </tr></thead>
+        <tbody>{analysis.map(a=>{
+          return<tr key={a.ticker} style={{borderBottom:"1px solid #1e293b"}}>
+            <td style={{padding:"8px",fontWeight:700,fontSize:13}}>
+              <div>{a.ticker}</div>
+              <div style={{fontSize:10,color:"#64748b"}}>{a.yfSym!==a.ticker?`(${a.yfSym}) `:""}{a.mercado==="BYMA"?"🇦🇷":"🇺🇸"} ×{a.cantidad.toLocaleString("es-AR")}</div>
+            </td>
+            <td style={{padding:"8px",textAlign:"right",fontSize:13,fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fUSD(a.currentUSD)}</td>
+            <td style={{padding:"8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
+              <div style={{fontSize:13,fontWeight:600}}>{fUSD(a.maxPrice)}</div>
+              <div style={{fontSize:9,color:"#64748b"}}>{a.maxDate}</div>
+            </td>
+            <td style={{padding:"8px",textAlign:"right",fontSize:14,fontWeight:800,color:"#34d399"}}>{fPct(a.upsidePct)}</td>
+            <td style={{padding:"8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
+              <div style={{fontSize:13,fontWeight:600}}>{fUSD(a.minPrice)}</div>
+              <div style={{fontSize:9,color:"#64748b"}}>{a.minDate}</div>
+            </td>
+            <td style={{padding:"8px",textAlign:"right",fontSize:14,fontWeight:800,color:"#f87171"}}>{fPct(a.downsidePct)}</td>
+            <td style={{padding:"8px",textAlign:"right",fontSize:12,fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fUSD(a.posValueUSD)}</td>
+            <td style={{padding:"8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#34d399"}}>{fUSD(a.valueAtMax)}</div>
+              <div style={{fontSize:10,color:"#34d399"}}>+{fUSD(a.valueAtMax-a.posValueUSD)}</div>
+            </td>
+            <td style={{padding:"8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#f87171"}}>{fUSD(a.valueAtMin)}</div>
+              <div style={{fontSize:10,color:"#f87171"}}>{fUSD(a.valueAtMin-a.posValueUSD)}</div>
+            </td>
+          </tr>;
+        })}</tbody>
+        <tfoot><tr style={{borderTop:"2px solid #334155",background:"#111827"}}>
+          <td style={{padding:"10px 8px",fontWeight:800,fontSize:13}}>TOTAL</td>
+          <td></td><td></td>
+          <td style={{padding:"10px 8px",textAlign:"right",fontSize:15,fontWeight:800,color:"#34d399"}}>{fPct(totals.upsidePct)}</td>
+          <td></td>
+          <td style={{padding:"10px 8px",textAlign:"right",fontSize:15,fontWeight:800,color:"#f87171"}}>{fPct(totals.downsidePct)}</td>
+          <td style={{padding:"10px 8px",textAlign:"right",fontSize:13,fontWeight:800}}>{fUSD(totals.currentTotal)}</td>
+          <td style={{padding:"10px 8px",textAlign:"right"}}>
+            <div style={{fontSize:13,fontWeight:800,color:"#34d399"}}>{fUSD(totals.maxTotal)}</div>
+            <div style={{fontSize:10,color:"#34d399"}}>+{fUSD(totals.maxTotal-totals.currentTotal)}</div>
+          </td>
+          <td style={{padding:"10px 8px",textAlign:"right"}}>
+            <div style={{fontSize:13,fontWeight:800,color:"#f87171"}}>{fUSD(totals.minTotal)}</div>
+            <div style={{fontSize:10,color:"#f87171"}}>{fUSD(totals.minTotal-totals.currentTotal)}</div>
+          </td>
+        </tr></tfoot>
+      </table>
+    </Card>}
+
+    {!loading&&analysis.length>0&&<div style={{fontSize:9,color:"#475569",fontStyle:"italic",textAlign:"center"}}>Datos históricos vía Yahoo Finance (v8 chart). Tickers BYMA mapeados a su equivalente NYSE/NASDAQ en USD. El potencial asume que el % de variación del subyacente aplica proporcionalmente a la posición. MEP ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(mep)}.</div>}
+  </div>;
+}
+
 /* ── NOTICIAS ────────────────────────────── */
 function Noticias({pos,news}){
   const [sel,setSel]=useState("Todos");
@@ -2123,7 +2326,7 @@ function App(){
   /* Patrimonio total incluyendo inmueble neto - caución */
   const patrimonioNeto=portfolioTotal+casaActual.valor-deudaUSD-caucionUSD;
 
-  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"noticias",label:"Noticias",emoji:"📰"},{id:"caucion",label:"Caución",emoji:"🏦"},{id:"trading",label:"Trading",emoji:"⚡"}];
+  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"noticias",label:"Noticias",emoji:"📰"},{id:"caucion",label:"Caución",emoji:"🏦"},{id:"trading",label:"Trading",emoji:"⚡"},{id:"potencial",label:"Potencial",emoji:"🎯"}];
 
   return <div style={{minHeight:"100vh"}}>
     <header style={{background:"linear-gradient(90deg,#111827,#1e293b)",borderBottom:"1px solid #1e293b",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
@@ -2191,6 +2394,7 @@ function App(){
       {tab==="resumen"&&<Resumen enriched={enriched} total={portfolioTotal} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news} portfolioNeto={portfolioNeto} totalComVenta={totalComVenta}/>}
       {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro} enriched={enriched}/>}
       {tab==="trading"&&<Trading macro={macro} prices={prices} pos={pos}/>}
+      {tab==="potencial"&&<Potencial pos={pos} prices={prices} macro={macro}/>}
       {tab==="noticias"&&<Noticias pos={pos} news={news}/>}
       {tab==="caucion"&&<Caucion caucion={caucion} setCaucion={setCaucion} iolStatus={iolStatus} fetchCaucionRate={fetchCaucionRate}/>}
     </main>
