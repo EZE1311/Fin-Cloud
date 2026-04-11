@@ -1430,7 +1430,7 @@ function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetc
 }
 
 /* ── TRADING — Simulador Intraday ────────── */
-function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert,togglePriceAlert}){
+function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert,togglePriceAlert,onOpenConfig}){
   const fARS=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:0,maximumFractionDigits:0}).format(n)}`;
   const fARS2=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
   const fPct=(n,d=2)=>n==null||isNaN(n)?"—":`${n.toFixed(d)}%`;
@@ -1749,7 +1749,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
     </Card>}
 
     {/* ── Alertas de Precio ── */}
-    <Card title="🔔 Alertas de Precio" right={<span style={{fontSize:10,color:loadLS("wa_phone","")?"#34d399":"#64748b"}}>{loadLS("wa_phone","")?"📱 WhatsApp activo":"⚙️ Configurar WhatsApp"}</span>}>
+    <Card title="🔔 Alertas de Precio" right={loadLS("wa_phone","")?<span style={{fontSize:10,color:"#34d399"}}>📱 WhatsApp activo</span>:<button onClick={onOpenConfig} style={{fontSize:10,color:"#60a5fa",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>⚙️ Configurar WhatsApp</button>}>
       {/* Create alert form */}
       {(()=>{
         const [alertTicker,setAlertTicker]=useState("");
@@ -2597,7 +2597,7 @@ function App(){
     <main className="main-content" style={{padding:24,maxWidth:1400,margin:"0 auto"}}>
       {tab==="resumen"&&<Resumen enriched={enriched} total={portfolioTotal} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news} portfolioNeto={portfolioNeto} totalComVenta={totalComVenta}/>}
       {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro} enriched={enriched}/>}
-      {tab==="trading"&&<Trading macro={macro} prices={prices} pos={pos} priceAlerts={priceAlerts} addPriceAlert={addPriceAlert} removePriceAlert={removePriceAlert} togglePriceAlert={togglePriceAlert}/>}
+      {tab==="trading"&&<Trading macro={macro} prices={prices} pos={pos} priceAlerts={priceAlerts} addPriceAlert={addPriceAlert} removePriceAlert={removePriceAlert} togglePriceAlert={togglePriceAlert} onOpenConfig={()=>setShowConfig(true)}/>}
       {tab==="potencial"&&<Potencial pos={pos} prices={prices} macro={macro}/>}
       {tab==="noticias"&&<Noticias pos={pos} news={news}/>}
       {tab==="caucion"&&<Caucion caucion={caucion} setCaucion={setCaucion} iolStatus={iolStatus} fetchCaucionRate={fetchCaucionRate}/>}
