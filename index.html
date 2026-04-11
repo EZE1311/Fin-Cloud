@@ -1565,6 +1565,10 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
   const setPrecioVentaManual=v=>setTradingForm(f=>({...f,precioVentaManual:v}));
   const setMercado=v=>setTradingForm(f=>({...f,mercado:v}));
 
+  /* Inline alert inputs */
+  const [inlineTarget,setInlineTarget]=useState("");
+  const [inlineStop,setInlineStop]=useState("");
+
   /* Ticker: acepta cualquier texto, uppercase */
   const ticker=tickerInput.trim().toUpperCase();
 
@@ -1750,8 +1754,6 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
       </div>
       {/* Inline Alert: Target / Stop Loss */}
       {ticker&&(()=>{
-        const [inlineTarget,setInlineTarget]=useState("");
-        const [inlineStop,setInlineStop]=useState("");
         const curPrice=isBYMA?(priceData?.priceARS||0):(priceData?.price||0);
         const alertMercado=isBYMA?"BYMA":"NYSE";
         const tParsed=parseNum(inlineTarget);
@@ -1763,7 +1765,6 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
           if(sParsed>0)addPriceAlert({ticker,mercado:alertMercado,condition:"below",price:sParsed,label:"Stop Loss",groupId});
           setInlineTarget("");setInlineStop("");
         };
-        /* Check if alerts already exist for this ticker */
         const existing=priceAlerts.filter(a=>a.ticker===ticker&&a.active);
         const hasTarget=existing.some(a=>a.condition==="above");
         const hasStop=existing.some(a=>a.condition==="below");
