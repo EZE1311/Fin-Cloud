@@ -973,7 +973,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
     </div>
     {/* ── Caución metrics strip ── */}
     {(()=>{
-      const tnaRes=caucion.tna||21;
+      const tnaRes=caucion.tna??0;
       const c30=caucion.montoARS>0&&tnaRes>0?calcCaucion(caucion.montoARS,tnaRes,30,false):null;
       if(!c30)return null;
       return <div style={{display:"flex",gap:20,justifyContent:"flex-end",marginTop:-2,padding:"0 4px"}}>
@@ -1354,9 +1354,12 @@ function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetc
   const [iolUser,setIolUser]=useState(()=>{const c=loadLS("iol_creds",null);return c?c.user:""});
   const [iolPass,setIolPass]=useState(()=>{const c=loadLS("iol_creds",null);return c?c.pass:""});
 
-  /* TNA Tomadora is shared with Resumen via caucion state */
-  const tnaTom=caucionState.tna||21;
-  const setTnaTom=v=>setCaucionState({...caucionState,tna:parseFloat(v)||0});
+  /* TNA Tomadora is shared with Resumen via caucion state — local string para edición libre */
+  const [tnaTomStr,setTnaTomStr]=useState(String(caucionState.tna??""));
+  const tnaTom=parseFloat(tnaTomStr)||0;
+  const setTnaTom=v=>{setTnaTomStr(v);const n=parseFloat(v);if(!isNaN(n))setCaucionState({...caucionState,tna:n});};
+  /* Sincronizar si cambia desde fuera (IOL auto-fetch) */
+  React.useEffect(()=>{if(caucionState.tna!=null&&caucionState.tna!==parseFloat(tnaTomStr))setTnaTomStr(String(caucionState.tna));},[caucionState.tna]);
 
   const tom=calcCaucion(parseFloat(monto)||0,tnaTom,parseInt(diasTom)||0,false);
   const col=calcCaucion(parseFloat(monto)||0,parseFloat(tnaCol)||0,parseInt(diasCol)||0,true);
@@ -1467,7 +1470,7 @@ function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetc
     <Card title="Calculadora de Caución" right={<span style={{fontSize:10,color:"#475569"}}>BYMA · Bull Market Active Trader Plus</span>}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:14,alignItems:"end"}}>
         <div style={{gridColumn:"span 1"}}><label style={labelSt}>Monto Contado ($)</label><input type="text" value={monto?parseInt(monto).toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setMonto(raw);}} style={inputSt}/></div>
-        <div><label style={labelSt}>TNA Tomadora (%)</label><input type="number" step="0.5" value={tnaTom} onChange={e=>setTnaTom(e.target.value)} style={inputSt}/></div>
+        <div><label style={labelSt}>TNA Tomadora (%)</label><input type="text" inputMode="decimal" value={tnaTomStr} onChange={e=>setTnaTom(e.target.value)} style={inputSt}/></div>
         <div><label style={labelSt}>Días Tomadora</label><input type="number" value={diasTom} onChange={e=>setDiasTom(e.target.value)} style={inputSt}/></div>
         <div><label style={labelSt}>TNA Colocadora (%)</label><input type="number" step="0.5" value={tnaCol} onChange={e=>setTnaCol(e.target.value)} style={inputSt}/></div>
         <div><label style={labelSt}>Días Colocadora</label><input type="number" value={diasCol} onChange={e=>setDiasCol(e.target.value)} style={inputSt}/></div>
