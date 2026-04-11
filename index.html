@@ -386,7 +386,8 @@ async function fetchMacroReal(){
     }catch(e){}
 
     /* ── BCRA API — Tasa Política Monetaria, Inflación Interanual, Reservas ── */
-    const BCRA_BASE="https://api.bcra.gob.ar/estadisticas/v3.0/monetarias";
+    /* v3.0 deprecada 28/02/2026 — migrado a v4.0 */
+    const BCRA_BASE="https://api.bcra.gob.ar/estadisticas/v4.0/monetarias";
     const hoy=new Date();
     const hace60=new Date(hoy);hace60.setDate(hoy.getDate()-60);
     const fmtD=(d)=>d.toISOString().split("T")[0];
@@ -396,20 +397,39 @@ async function fetchMacroReal(){
         /* Intentar directo primero, si falla CORS usar proxy */
         let r;
         try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
-        const j=await r.json();
-        const arr=j.results||j.data||j;
-        if(Array.isArray(arr)&&arr.length>0){const last=arr[arr.length-1];return last.v??last.valor??last.value??null;}
+        if(r&&r.ok){
+          const j=await r.json();
+          const arr=j.results||j.data||j;
+          if(Array.isArray(arr)&&arr.length>0){const last=arr[arr.length-1];return last.v??last.valor??last.value??null;}
+        }
+      }catch(e){}
+      return null;
+    };
+    /* Fallback: datos.gob.ar series API (no requiere auth, sin CORS issues) */
+    const datosFetch=async(serieId)=>{
+      try{
+        const url="https://apis.datos.gob.ar/series/api/series/?ids="+serieId+"&last=1&format=json";
+        let r;
+        try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+        if(r&&r.ok){const j=await r.json();if(j.data&&j.data.length>0)return j.data[0][1];}
       }catch(e){}
       return null;
     };
 
-    /* BCRA: Tasa PM (6), Inflación IA (28), Reservas (1) — en paralelo */
+    /* BCRA: Tasa PM (6), Inflación IA (28), Reservas (1) — en paralelo, con fallback datos.gob.ar */
     let tasa=0,inflacionIA=0,reservas=0;
     try{
       const [vTasa,vIA,vRes]=await Promise.allSettled([bcraFetch(6),bcraFetch(28),bcraFetch(1)]);
       if(vTasa.status==="fulfilled"&&vTasa.value) tasa=vTasa.value;
       if(vIA.status==="fulfilled"&&vIA.value) inflacionIA=vIA.value;
       if(vRes.status==="fulfilled"&&vRes.value) reservas=Math.round(vRes.value);
+    }catch(e){}
+    /* Si alguno quedó en 0, intentar fallback datos.gob.ar */
+    try{
+      const fb=[];
+      if(!reservas) fb.push(datosFetch("92.2_RESERVAS_IRES_0_0_32_40").then(v=>{if(v)reservas=Math.round(v);}));
+      if(!tasa) fb.push(datosFetch("268.1_TMINDINGS_0_0_22").then(v=>{if(v)tasa=v;}));
+      if(fb.length>0)await Promise.allSettled(fb);
     }catch(e){}
 
     /* Índices de mercado: S&P 500 y Merval (para contexto de movimientos) */
