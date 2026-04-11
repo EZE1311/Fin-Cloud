@@ -1749,7 +1749,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
     </Card>}
 
     {/* ── Alertas de Precio ── */}
-    <Card title="🔔 Alertas de Precio" right={loadLS("wa_phone","")?<span style={{fontSize:10,color:"#34d399"}}>📱 WhatsApp activo</span>:<button onClick={onOpenConfig} style={{fontSize:10,color:"#60a5fa",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>⚙️ Configurar WhatsApp</button>}>
+    <Card title="🔔 Alertas de Precio" right={loadLS("tg_token","")&&loadLS("tg_chat_id","")?<span style={{fontSize:10,color:"#34d399"}}>📱 Telegram activo</span>:<button onClick={onOpenConfig} style={{fontSize:10,color:"#60a5fa",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>⚙️ Configurar Telegram</button>}>
       {(()=>{
         const [alertTicker,setAlertTicker]=useState("");
         const [alertTarget,setAlertTarget]=useState("");
@@ -2111,11 +2111,11 @@ function SyncConfigPanel({onClose}){
   const [gistId,setGistId]=useState(loadLS("gist_id",""));
   const [status,setStatus]=useState("");
   const [testing,setTesting]=useState(false);
-  /* CallMeBot */
-  const [waPhone,setWaPhone]=useState(loadLS("wa_phone",""));
-  const [waKey,setWaKey]=useState(loadLS("wa_apikey",""));
-  const [waStatus,setWaStatus]=useState("");
-  const [waTesting,setWaTesting]=useState(false);
+  /* Telegram */
+  const [tgToken,setTgToken]=useState(loadLS("tg_token",""));
+  const [tgChatId,setTgChatId]=useState(loadLS("tg_chat_id",""));
+  const [tgStatus,setTgStatus]=useState("");
+  const [tgTesting,setTgTesting]=useState(false);
 
   const testConnection=async()=>{
     setTesting(true);setStatus("");
@@ -2130,22 +2130,19 @@ function SyncConfigPanel({onClose}){
     setTesting(false);
   };
 
-  const testWhatsApp=async()=>{
-    setWaTesting(true);setWaStatus("");
+  const testTelegram=async()=>{
+    setTgTesting(true);setTgStatus("");
     try{
-      saveLS("wa_phone",waPhone);saveLS("wa_apikey",waKey);
-      saveLS("wa_phone",waPhone);saveLS("wa_apikey",waKey);
-      const msg=encodeURIComponent("✅ Fin-Cloud alertas conectadas!");
-      const directUrl=`https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(waPhone)}&text=${msg}&apikey=${encodeURIComponent(waKey)}`;
-      /* Try direct first, then CORS proxies */
+      saveLS("tg_token",tgToken);saveLS("tg_chat_id",tgChatId);
+      const url=`https://api.telegram.org/bot${tgToken}/sendMessage?chat_id=${tgChatId}&text=${encodeURIComponent("✅ Fin-Cloud alertas conectadas!")}`;
       let ok=false;
-      try{const res=await fetch(directUrl);ok=res.ok;}catch(e){}
-      if(!ok){try{const res=await fetch(PROXY+encodeURIComponent(directUrl));ok=res.ok;}catch(e){}}
-      if(!ok){try{const res=await fetch("https://corsproxy.io/?"+encodeURIComponent(directUrl));ok=res.ok;}catch(e){}}
-      if(ok){setWaStatus("✅ Mensaje enviado, revisá tu WhatsApp!");}
-      else{setWaStatus("❌ Error de conexión. Probá abrir este link en otra pestaña: "+directUrl);}
-    }catch(e){setWaStatus("❌ "+e.message);}
-    setWaTesting(false);
+      try{const res=await fetch(url);ok=res.ok;}catch(e){}
+      if(!ok){try{const res=await fetch(PROXY+encodeURIComponent(url));ok=res.ok;}catch(e){}}
+      if(!ok){try{const res=await fetch("https://corsproxy.io/?"+encodeURIComponent(url));ok=res.ok;}catch(e){}}
+      if(ok){setTgStatus("✅ Mensaje enviado, revisá tu Telegram!");}
+      else{setTgStatus("❌ Error de conexión. Verificá el token y chat ID.");}
+    }catch(e){setTgStatus("❌ "+e.message);}
+    setTgTesting(false);
   };
 
   const btnSt={background:"#2563eb",border:"none",color:"#fff",borderRadius:6,padding:"8px 16px",fontSize:13,cursor:"pointer",fontWeight:600};
@@ -2156,7 +2153,7 @@ function SyncConfigPanel({onClose}){
     <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:12,padding:24,maxWidth:500,width:"100%"}} onClick={e=>e.stopPropagation()}>
       <div style={{display:"flex",gap:4,marginBottom:16}}>
         <button onClick={()=>setActiveTab("sync")} style={tabBtnSt("sync")}>☁️ Sync</button>
-        <button onClick={()=>setActiveTab("whatsapp")} style={tabBtnSt("whatsapp")}>📱 WhatsApp</button>
+        <button onClick={()=>setActiveTab("telegram")} style={tabBtnSt("telegram")}>📱 Telegram</button>
       </div>
 
       {activeTab==="sync"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -2180,28 +2177,28 @@ function SyncConfigPanel({onClose}){
         </div>
       </div>}
 
-      {activeTab==="whatsapp"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
-        <h3 style={{margin:0,fontSize:16,fontWeight:700}}>Alertas por WhatsApp</h3>
-        <p style={{margin:0,fontSize:13,color:"#94a3b8"}}>Recibí alertas de precio directo a tu WhatsApp vía CallMeBot.</p>
+      {activeTab==="telegram"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <h3 style={{margin:0,fontSize:16,fontWeight:700}}>Alertas por Telegram</h3>
+        <p style={{margin:0,fontSize:13,color:"#94a3b8"}}>Recibí alertas de precio instantáneas vía tu bot de Telegram.</p>
         <div style={{background:"#111827",border:"1px solid #334155",borderRadius:8,padding:12,fontSize:12,color:"#94a3b8"}}>
           <strong style={{color:"#e2e8f0"}}>Setup (una sola vez):</strong><br/>
-          1. Mandá un WhatsApp a <strong style={{color:"#34d399"}}>+34 644 71 70 98</strong><br/>
-          2. Escribí: <code style={{color:"#fbbf24"}}>I allow callmebot to send me messages</code><br/>
-          3. Te responden con tu API key<br/>
-          4. Cargá tu número y key acá abajo
+          1. Buscá <strong style={{color:"#34d399"}}>@BotFather</strong> en Telegram y mandá <code style={{color:"#fbbf24"}}>/newbot</code><br/>
+          2. Seguí los pasos para crear tu bot y copiá el <strong style={{color:"#e2e8f0"}}>token</strong><br/>
+          3. Abrí tu bot nuevo y mandále un mensaje (ej: "hola")<br/>
+          4. Visitá <code style={{color:"#60a5fa",fontSize:11}}>https://api.telegram.org/bot[TOKEN]/getUpdates</code> para obtener tu <strong style={{color:"#e2e8f0"}}>chat ID</strong>
         </div>
         <div>
-          <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>Tu número de WhatsApp (con código país, ej: 5491155551234)</label>
-          <input value={waPhone} onChange={e=>{setWaPhone(e.target.value.replace(/[^\d+]/g,""));saveLS("wa_phone",e.target.value.replace(/[^\d+]/g,""))}} placeholder="5491155551234" style={inpSt}/>
+          <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>Bot Token</label>
+          <input value={tgToken} onChange={e=>{setTgToken(e.target.value.trim());saveLS("tg_token",e.target.value.trim())}} placeholder="123456789:AAHxyz..." style={inpSt}/>
         </div>
         <div>
-          <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>API Key de CallMeBot</label>
-          <input value={waKey} onChange={e=>{setWaKey(e.target.value.trim());saveLS("wa_apikey",e.target.value.trim())}} placeholder="123456" style={inpSt}/>
+          <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>Chat ID</label>
+          <input value={tgChatId} onChange={e=>{setTgChatId(e.target.value.trim());saveLS("tg_chat_id",e.target.value.trim())}} placeholder="8555299838" style={inpSt}/>
         </div>
-        {waStatus&&<div style={{fontSize:13,padding:"8px 12px",borderRadius:6,background:waStatus.startsWith("✅")?"#065f4622":"#7f1d1d22",color:waStatus.startsWith("✅")?"#34d399":"#f87171"}}>{waStatus}</div>}
+        {tgStatus&&<div style={{fontSize:13,padding:"8px 12px",borderRadius:6,background:tgStatus.startsWith("✅")?"#065f4622":"#7f1d1d22",color:tgStatus.startsWith("✅")?"#34d399":"#f87171"}}>{tgStatus}</div>}
         <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:4}}>
           <button onClick={onClose} style={{...btnSt,background:"#334155"}}>Cerrar</button>
-          <button onClick={testWhatsApp} disabled={waTesting||!waPhone||!waKey} style={{...btnSt,opacity:waTesting||!waPhone||!waKey?.5:1}}>{waTesting?"Enviando...":"Enviar Mensaje de Prueba"}</button>
+          <button onClick={testTelegram} disabled={tgTesting||!tgToken||!tgChatId} style={{...btnSt,opacity:tgTesting||!tgToken||!tgChatId?.5:1}}>{tgTesting?"Enviando...":"Enviar Mensaje de Prueba"}</button>
         </div>
       </div>}
     </div>
@@ -2249,15 +2246,15 @@ function App(){
     setPriceAlerts(prev=>prev.map(a=>a.id===id?{...a,active:!a.active}:a));
   },[]);
 
-  /* Send WhatsApp via CallMeBot */
-  const sendWhatsApp=useCallback(async(msg)=>{
-    const phone=loadLS("wa_phone","");
-    const apikey=loadLS("wa_apikey","");
-    if(!phone||!apikey)return;
-    const directUrl=`https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(msg)}&apikey=${encodeURIComponent(apikey)}`;
-    try{await fetch(directUrl);return;}catch(e){}
-    try{await fetch(PROXY+encodeURIComponent(directUrl));return;}catch(e){}
-    try{await fetch("https://corsproxy.io/?"+encodeURIComponent(directUrl));}catch(e){console.warn("WhatsApp send failed — all proxies tried");}
+  /* Send Telegram message */
+  const sendTelegram=useCallback(async(msg)=>{
+    const token=loadLS("tg_token","");
+    const chatId=loadLS("tg_chat_id","");
+    if(!token||!chatId)return;
+    const url=`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(msg)}`;
+    try{await fetch(url);return;}catch(e){}
+    try{await fetch(PROXY+encodeURIComponent(url));return;}catch(e){}
+    try{await fetch("https://corsproxy.io/?"+encodeURIComponent(url));}catch(e){console.warn("Telegram send failed — all proxies tried");}
   },[]);
 
   /* Send browser notification */
@@ -2292,8 +2289,8 @@ function App(){
           const msg=`${dir} ${a.ticker} ${a.condition==="above"?"superó":"cayó a"} ${targetStr} → Precio actual: ${priceStr}${a.label?" | "+a.label:""}`;
           /* Browser notification */
           sendBrowserNotif(`🚨 Alerta ${a.ticker}`,msg);
-          /* WhatsApp */
-          sendWhatsApp(`🚨 FIN-CLOUD ALERTA\n${msg}`);
+          /* Telegram */
+          sendTelegram(`🚨 TRADE ALERT\n${msg}`);
           /* Play sound */
           try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator();const g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.frequency.value=880;o.type="sine";g.gain.value=0.3;o.start();setTimeout(()=>{o.stop();ctx.close()},300);}catch(e){}
           return{...a,active:false,triggeredAt:new Date().toISOString()};
@@ -2302,7 +2299,7 @@ function App(){
       });
       return changed?updated:prev;
     });
-  },[prices,macro,sendWhatsApp,sendBrowserNotif]);
+  },[prices,macro,sendTelegram,sendBrowserNotif]);
 
   /* Alert monitoring interval — every 60 seconds */
   useEffect(()=>{
