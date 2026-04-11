@@ -1342,7 +1342,7 @@ function Operaciones({ops,setOps,macro,enriched}){
 }
 
 /* ── RENDIMIENTO / PERFORMANCE ──────────────── */
-function Performance({snapshots,macro,enriched,dividends,setDividends}){
+function Performance({snapshots,macro,enriched}){
   const fU=n=>`USD ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(n)}`;
   const fPct=n=>n==null||isNaN(n)?"—":`${n>=0?"+":""}${n.toFixed(1)}%`;
 
@@ -1353,7 +1353,7 @@ function Performance({snapshots,macro,enriched,dividends,setDividends}){
         <span style={{fontSize:12}}>Se guarda un snapshot automático cada vez que abrís el dashboard.</span>
       </div>
     </Card>
-    <DividendTracker dividends={dividends} setDividends={setDividends} enriched={enriched}/>
+    <DividendCalendar enriched={enriched}/>
   </div>;
 
   /* Normalizar series a base 100 */
@@ -1452,68 +1452,193 @@ function Performance({snapshots,macro,enriched,dividends,setDividends}){
     </Card>
 
     {/* ── Dividendos ── */}
-    <DividendTracker dividends={dividends} setDividends={setDividends} enriched={enriched}/>
+    <DividendCalendar enriched={enriched}/>
   </div>;
 }
 
 /* ── DIVIDEND TRACKER ── */
-function DividendTracker({dividends,setDividends,enriched}){
+function DividendCalendar({enriched}){
   const fU=n=>`USD ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(n)}`;
-  const [showForm,setShowForm]=useState(false);
-  const [form,setForm]=useState({ticker:"",fecha:"",montoPorAccion:"",moneda:"USD"});
+  const [divData,setDivData]=useState([]);
+  const [loading,setLoading]=useState(false);
+  const [lastFetch,setLastFetch]=useState(null);
 
-  const tickers=[...new Set((enriched||[]).map(e=>e.ticker))].sort();
+  const tickers=[...new Set((enriched||[]).map(e=>e.ticker))];
 
-  const addDiv=()=>{
-    if(!form.ticker||!form.fecha||!form.montoPorAccion)return;
-    const pos=enriched?.find(e=>e.ticker===form.ticker);
-    const cant=pos?pos.cantidad:0;
-    const entry={id:Date.now(),ticker:form.ticker,fecha:form.fecha,montoPorAccion:parseFloat(form.montoPorAccion),moneda:form.moneda,cantidad:cant,total:cant*parseFloat(form.montoPorAccion)};
-    setDividends(d=>[...d,entry]);
-    setForm({ticker:"",fecha:"",montoPorAccion:"",moneda:"USD"});
-    setShowForm(false);
-  };
+  /* Fetch dividend data from Yahoo Finance for all portfolio tickers */
+  const fetchDividends=useCallback(async()=>{
+    if(tickers.length===0)return;
+    setLoading(true);
+    const results=[];
+    const now=Math.floor(Date.now()/1000);
+    const oneYearAgo=now-365*86400;
+    const oneYearFwd=now+365*86400;
 
-  const removeDiv=id=>setDividends(d=>d.filter(x=>x.id!==id));
+    for(const ticker of tickers){
+      const pos=enriched.find(e=>e.ticker===ticker);
+      if(!pos)continue;
+      const sym=yfSym(ticker);
+      try{
+        /* Fetch dividend events from Yahoo chart API */
+        const url=`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?period1=${oneYearAgo}&period2=${oneYearFwd}&interval=1mo&events=dividends`;
+        let r;
+        try{r=await fetch(PROXY+encodeURIComponent(url));}catch(e){r=await fetch("https://corsproxy.io/?"+encodeURIComponent(url));}
+        if(!r||!r.ok)continue;
+        const j=await r.json();
+        const divs=j.chart?.result?.[0]?.events?.dividends;
+        if(!divs)continue;
+        const price=pos.precioActual||pos.ppc;
+        Object.values(divs).forEach(d=>{
+          results.push({
+            ticker,sym,
+            date:new Date(d.date*1000).toISOString().split("T")[0],
+            amount:d.amount,
+            cantidad:pos.cantidad,
+            total:d.amount*pos.cantidad,
+            yield:price>0?((d.amount/price)*100):0,
+            isPast:d.date<now
+          });
+        });
+      }catch(e){console.warn("Div fetch error for",ticker,e);}
+    }
+    results.sort((a,b)=>a.date.localeCompare(b.date));
+    setDivData(results);
+    setLastFetch(new Date());
+    setLoading(false);
+  },[enriched,tickers.join(",")]); /* eslint-disable-line */
 
-  const totalDivs=dividends.reduce((s,d)=>s+d.total,0);
-  const divsByYear={};
-  dividends.forEach(d=>{const y=d.fecha.slice(0,4);divsByYear[y]=(divsByYear[y]||0)+d.total;});
+  useEffect(()=>{if(tickers.length>0&&divData.length===0)fetchDividends();},[tickers.length]); /* eslint-disable-line */
 
-  const inputSt={background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"8px 12px",color:"#e2e8f0",fontSize:14,width:"100%"};
-  const labelSt={fontSize:11,color:"#64748b",display:"block",marginBottom:4,textTransform:"uppercase",letterSpacing:".04em"};
+  /* Split into past and upcoming */
+  const today=new Date().toISOString().split("T")[0];
+  const upcoming=divData.filter(d=>d.date>=today);
+  const past=divData.filter(d=>d.date<today);
 
-  return <Card title="💰 Dividendos" right={<button onClick={()=>setShowForm(!showForm)} style={{background:"#1e40af",border:"none",color:"#fff",borderRadius:6,padding:"4px 12px",fontSize:12,cursor:"pointer",fontWeight:600}}>{showForm?"Cancelar":"+ Registrar"}</button>}>
-    {showForm&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr auto",gap:10,marginBottom:16,alignItems:"end"}}>
-      <div><label style={labelSt}>Ticker</label><select value={form.ticker} onChange={e=>setForm({...form,ticker:e.target.value})} style={inputSt}><option value="">—</option>{tickers.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
-      <div><label style={labelSt}>Fecha pago</label><input type="date" value={form.fecha} onChange={e=>setForm({...form,fecha:e.target.value})} style={inputSt}/></div>
-      <div><label style={labelSt}>Monto/acción</label><input type="text" inputMode="decimal" value={form.montoPorAccion} onChange={e=>setForm({...form,montoPorAccion:e.target.value})} style={inputSt} placeholder="0.00"/></div>
-      <div><label style={labelSt}>Moneda</label><select value={form.moneda} onChange={e=>setForm({...form,moneda:e.target.value})} style={inputSt}><option value="USD">USD</option><option value="ARS">ARS</option></select></div>
-      <button onClick={addDiv} style={{background:"#059669",border:"none",color:"#fff",borderRadius:6,padding:"8px 16px",fontSize:13,cursor:"pointer",fontWeight:600,height:38}}>Guardar</button>
-    </div>}
+  /* Annual projection: sum of last 12 months dividends per ticker, projected forward */
+  const annualByTicker={};
+  past.forEach(d=>{
+    if(!annualByTicker[d.ticker])annualByTicker[d.ticker]={ticker:d.ticker,annual:0,cantidad:d.cantidad,price:0,count:0};
+    annualByTicker[d.ticker].annual+=d.amount;
+    annualByTicker[d.ticker].count++;
+  });
+  /* Also include upcoming known dividends */
+  upcoming.forEach(d=>{
+    if(!annualByTicker[d.ticker])annualByTicker[d.ticker]={ticker:d.ticker,annual:0,cantidad:d.cantidad,price:0,count:0};
+  });
+  /* Get price for yield calc */
+  Object.values(annualByTicker).forEach(a=>{
+    const pos=enriched.find(e=>e.ticker===a.ticker);
+    if(pos)a.price=pos.precioActual||pos.ppc;
+  });
 
-    {dividends.length===0?<div style={{color:"#475569",textAlign:"center",padding:20,fontSize:13}}>No hay dividendos registrados. Usá "Registrar" para agregar los dividendos que vayas cobrando.</div>:
-    <div>
-      {Object.keys(divsByYear).sort().reverse().map(y=><div key={y} style={{marginBottom:6,fontSize:12,color:"#94a3b8"}}>{y}: <span style={{color:"#34d399",fontWeight:600}}>{fU(divsByYear[y])}</span></div>)}
-      <div style={{fontSize:14,fontWeight:700,color:"#34d399",marginBottom:12}}>Total acumulado: {fU(totalDivs)}</div>
-      <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-        <thead><tr style={{borderBottom:"1px solid #334155"}}>
-          <th style={{textAlign:"left",padding:8,color:"#64748b",fontWeight:500}}>Fecha</th>
-          <th style={{textAlign:"left",padding:8,color:"#64748b",fontWeight:500}}>Ticker</th>
-          <th style={{textAlign:"right",padding:8,color:"#64748b",fontWeight:500}}>$/acción</th>
-          <th style={{textAlign:"right",padding:8,color:"#64748b",fontWeight:500}}>Cant.</th>
-          <th style={{textAlign:"right",padding:8,color:"#64748b",fontWeight:500}}>Total</th>
-          <th style={{padding:8}}></th>
-        </tr></thead>
-        <tbody>{[...dividends].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(d=><tr key={d.id} style={{borderBottom:"1px solid #1e293b"}}>
-          <td style={{padding:8,color:"#94a3b8"}}>{d.fecha}</td>
-          <td style={{padding:8,fontWeight:600,color:"#e2e8f0"}}>{d.ticker}</td>
-          <td style={{padding:8,textAlign:"right",color:"#94a3b8"}}>{d.moneda==="USD"?`$${d.montoPorAccion.toFixed(2)}`:`ARS ${d.montoPorAccion.toFixed(0)}`}</td>
-          <td style={{padding:8,textAlign:"right",color:"#94a3b8"}}>{d.cantidad}</td>
-          <td style={{padding:8,textAlign:"right",fontWeight:600,color:"#34d399"}}>{d.moneda==="USD"?fU(d.total):`ARS ${d.total.toLocaleString("es-AR")}`}</td>
-          <td style={{padding:8,textAlign:"center"}}><button onClick={()=>removeDiv(d.id)} style={{background:"none",border:"none",color:"#f87171",cursor:"pointer",fontSize:14}}>✕</button></td>
-        </tr>)}</tbody>
-      </table>
+  const totalAnnualProjection=Object.values(annualByTicker).reduce((s,a)=>s+a.annual*a.cantidad,0);
+  const portfolioTotal=enriched.reduce((s,p)=>s+p.montoActual,0);
+  const portfolioYield=portfolioTotal>0?(totalAnnualProjection/portfolioTotal)*100:0;
+
+  const totalUpcoming=upcoming.reduce((s,d)=>s+d.total,0);
+  const totalPast=past.reduce((s,d)=>s+d.total,0);
+
+  /* Month names */
+  const monthName=d=>{const m=new Date(d+"T12:00:00").toLocaleDateString("es-AR",{month:"short"});return m.charAt(0).toUpperCase()+m.slice(1);};
+
+  /* Group upcoming by month */
+  const upByMonth={};
+  upcoming.forEach(d=>{const k=d.date.slice(0,7);if(!upByMonth[k])upByMonth[k]=[];upByMonth[k].push(d);});
+
+  const statSt={background:"#1a1f2e",borderRadius:10,padding:"14px 18px",border:"1px solid #252d3d",flex:1,textAlign:"center"};
+
+  return <Card title="💰 Dividendos" right={<button onClick={fetchDividends} disabled={loading} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"4px 12px",fontSize:11,cursor:"pointer",fontWeight:500}}>
+    {loading?"⏳ Cargando...":"🔄 Actualizar"}{lastFetch&&!loading&&<span style={{marginLeft:6,fontSize:9,color:"#475569"}}>{lastFetch.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"})}</span>}
+  </button>}>
+
+    {tickers.length===0&&<div style={{color:"#475569",textAlign:"center",padding:20,fontSize:13}}>Agregá posiciones en tu cartera para ver dividendos.</div>}
+
+    {tickers.length>0&&divData.length===0&&!loading&&<div style={{color:"#475569",textAlign:"center",padding:20,fontSize:13}}>Presioná "Actualizar" para buscar dividendos de tu cartera.</div>}
+
+    {divData.length>0&&<div>
+      {/* ── Resumen cards ── */}
+      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+        <div style={statSt}>
+          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Proyección Anual</div>
+          <div style={{fontSize:22,fontWeight:700,color:"#34d399"}}>{fU(totalAnnualProjection)}</div>
+          <div style={{fontSize:11,color:"#94a3b8"}}>Dividend yield: {portfolioYield.toFixed(2)}%</div>
+        </div>
+        <div style={statSt}>
+          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Próximos</div>
+          <div style={{fontSize:22,fontWeight:700,color:"#60a5fa"}}>{fU(totalUpcoming)}</div>
+          <div style={{fontSize:11,color:"#94a3b8"}}>{upcoming.length} pago{upcoming.length!==1?"s":""} programado{upcoming.length!==1?"s":""}</div>
+        </div>
+        <div style={statSt}>
+          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Cobrados (12m)</div>
+          <div style={{fontSize:22,fontWeight:700,color:"#a78bfa"}}>{fU(totalPast)}</div>
+          <div style={{fontSize:11,color:"#94a3b8"}}>{past.length} pago{past.length!==1?"s":""}</div>
+        </div>
+        <div style={statSt}>
+          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Mensual Promedio</div>
+          <div style={{fontSize:22,fontWeight:700,color:"#fbbf24"}}>{fU(totalAnnualProjection/12)}</div>
+          <div style={{fontSize:11,color:"#94a3b8"}}>estimado</div>
+        </div>
+      </div>
+
+      {/* ── Proyección por ticker ── */}
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:8,textTransform:"uppercase",letterSpacing:".04em"}}>Proyección anual por activo</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
+          {Object.values(annualByTicker).filter(a=>a.annual>0).sort((a,b)=>(b.annual*b.cantidad)-(a.annual*a.cantidad)).map(a=>{
+            const totalTk=a.annual*a.cantidad;
+            const yld=a.price>0?(a.annual/a.price*100):0;
+            return <div key={a.ticker} style={{background:"#111827",borderRadius:8,padding:"10px 14px",border:"1px solid #1e293b"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontWeight:700,color:"#e2e8f0",fontSize:14}}>{a.ticker}</span>
+                <span style={{color:"#34d399",fontWeight:600,fontSize:13}}>{fU(totalTk)}</span>
+              </div>
+              <div style={{fontSize:10,color:"#64748b",marginTop:2}}>${a.annual.toFixed(2)}/acción · {a.cantidad} acc · yield {yld.toFixed(1)}%</div>
+              {/* Barra visual */}
+              <div style={{marginTop:6,height:4,background:"#1e293b",borderRadius:2,overflow:"hidden"}}>
+                <div style={{height:"100%",background:"#34d399",borderRadius:2,width:`${Math.min(100,totalAnnualProjection>0?(totalTk/totalAnnualProjection*100):0)}%`}}/>
+              </div>
+            </div>;
+          })}
+        </div>
+      </div>
+
+      {/* ── Timeline de próximos dividendos ── */}
+      {upcoming.length>0&&<div style={{marginBottom:16}}>
+        <div style={{fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:8,textTransform:"uppercase",letterSpacing:".04em"}}>Calendario de próximos pagos</div>
+        {Object.entries(upByMonth).map(([month,divs])=><div key={month} style={{marginBottom:12}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#60a5fa",marginBottom:6,display:"flex",alignItems:"center",gap:8}}>
+            <span style={{background:"#1e40af33",padding:"2px 10px",borderRadius:12,fontSize:12}}>{monthName(divs[0].date)} {month.slice(0,4)}</span>
+            <span style={{fontSize:11,color:"#475569",fontWeight:400}}>Total: {fU(divs.reduce((s,d)=>s+d.total,0))}</span>
+          </div>
+          {divs.map((d,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 12px",background:"#0f172a",borderRadius:8,marginBottom:4,border:"1px solid #1e293b"}}>
+            <div style={{minWidth:70,fontSize:12,color:"#64748b"}}>{d.date.slice(5)}</div>
+            <div style={{minWidth:60,fontWeight:700,color:"#e2e8f0",fontSize:13}}>{d.ticker}</div>
+            <div style={{fontSize:11,color:"#94a3b8",flex:1}}>${d.amount.toFixed(4)} × {d.cantidad} acc</div>
+            <div style={{fontWeight:700,color:"#34d399",fontSize:13}}>{fU(d.total)}</div>
+          </div>)}
+        </div>)}
+      </div>}
+
+      {/* ── Historial reciente ── */}
+      {past.length>0&&<details style={{marginTop:4}}>
+        <summary style={{fontSize:12,color:"#64748b",cursor:"pointer",marginBottom:8}}>Dividendos cobrados últimos 12 meses ({past.length})</summary>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead><tr style={{borderBottom:"1px solid #334155"}}>
+            <th style={{textAlign:"left",padding:6,color:"#475569",fontWeight:500}}>Fecha</th>
+            <th style={{textAlign:"left",padding:6,color:"#475569",fontWeight:500}}>Ticker</th>
+            <th style={{textAlign:"right",padding:6,color:"#475569",fontWeight:500}}>$/acc</th>
+            <th style={{textAlign:"right",padding:6,color:"#475569",fontWeight:500}}>Cant.</th>
+            <th style={{textAlign:"right",padding:6,color:"#475569",fontWeight:500}}>Total</th>
+          </tr></thead>
+          <tbody>{[...past].reverse().map((d,i)=><tr key={i} style={{borderBottom:"1px solid #1e293b"}}>
+            <td style={{padding:6,color:"#64748b"}}>{d.date}</td>
+            <td style={{padding:6,fontWeight:600,color:"#94a3b8"}}>{d.ticker}</td>
+            <td style={{padding:6,textAlign:"right",color:"#64748b"}}>${d.amount.toFixed(4)}</td>
+            <td style={{padding:6,textAlign:"right",color:"#64748b"}}>{d.cantidad}</td>
+            <td style={{padding:6,textAlign:"right",fontWeight:600,color:"#a78bfa"}}>{fU(d.total)}</td>
+          </tr>)}</tbody>
+        </table>
+      </details>}
     </div>}
   </Card>;
 }
@@ -2472,7 +2597,6 @@ function App(){
   /* ── Form states lifted so they persist across tab switches ── */
   const [tradingForm,setTradingForm]=useState({tickerInput:"",cantidad:"",precioCompra:"",precioVentaManual:"",mercado:"BYMA"});
   const [caucionForm,setCaucionForm]=useState(()=>loadLS("caucionForm",INIT_CAUCION_FORM));
-  const [dividends,setDividends]=useState(()=>loadLS("dividends",[]));
 
   /* ── Price Alerts System ── */
   /* Alert: {id, ticker, mercado, condition:"above"|"below", price, active, label, createdAt, triggeredAt} */
@@ -2561,7 +2685,6 @@ function App(){
   useEffect(()=>{saveLS("hipoteca",hipoteca)},[hipoteca]);
   useEffect(()=>{saveLS("caucion",caucion)},[caucion]);
   useEffect(()=>{saveLS("caucionForm",caucionForm)},[caucionForm]);
-  useEffect(()=>{saveLS("dividends",dividends)},[dividends]);
 
   /* ── Auto-load desde Gist al abrir ──── */
   useEffect(()=>{
@@ -2578,7 +2701,6 @@ function App(){
         if(d.hipoteca)setHipoteca(d.hipoteca);
         if(d.caucion)setCaucion(d.caucion);
         if(d.perfSnapshots){setPerfSnapshots(d.perfSnapshots);saveLS("perf_snapshots",d.perfSnapshots);}
-        if(d.dividends){setDividends(d.dividends);saveLS("dividends",d.dividends);}
       }
       setSyncStatus("ok");setLastSync(new Date());
       setTimeout(()=>{isFirstLoad.current=false},500);
@@ -2590,7 +2712,7 @@ function App(){
     const token=loadLS("gh_token","");
     if(!token)return;
     const gistId=loadLS("gist_id","");
-    const data={ops,priceAlerts,casa,hipoteca,caucion,perfSnapshots,dividends,lastSaved:new Date().toISOString()};
+    const data={ops,priceAlerts,casa,hipoteca,caucion,perfSnapshots,lastSaved:new Date().toISOString()};
     setSyncStatus("syncing");
     gistSave(token,gistId,data).then(g=>{
       if(!gistId&&g.id){saveLS("gist_id",g.id)}
@@ -2887,7 +3009,7 @@ function App(){
     {showConfig&&<SyncConfigPanel onClose={()=>setShowConfig(false)}/>}
     <main className="main-content" style={{padding:24,maxWidth:1400,margin:"0 auto"}}>
       {tab==="resumen"&&<Resumen enriched={enriched} total={portfolioTotal} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news} portfolioNeto={portfolioNeto} totalComVenta={totalComVenta}/>}
-      {tab==="rendimiento"&&<Performance snapshots={perfSnapshots} macro={macro} enriched={enriched} dividends={dividends} setDividends={setDividends}/>}
+      {tab==="rendimiento"&&<Performance snapshots={perfSnapshots} macro={macro} enriched={enriched}/>}
       {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro} enriched={enriched}/>}
       {tab==="trading"&&<Trading macro={macro} prices={prices} pos={pos} priceAlerts={priceAlerts} addPriceAlert={addPriceAlert} removePriceAlert={removePriceAlert} togglePriceAlert={togglePriceAlert} onOpenConfig={()=>setShowConfig(true)} tradingForm={tradingForm} setTradingForm={setTradingForm}/>}
       {tab==="potencial"&&<Potencial pos={pos} prices={prices} macro={macro}/>}
