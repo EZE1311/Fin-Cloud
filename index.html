@@ -1430,7 +1430,7 @@ function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetc
 }
 
 /* ── TRADING — Simulador Intraday ────────── */
-function Trading({macro,prices,pos}){
+function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert,togglePriceAlert}){
   const fARS=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:0,maximumFractionDigits:0}).format(n)}`;
   const fARS2=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
   const fPct=(n,d=2)=>n==null||isNaN(n)?"—":`${n.toFixed(d)}%`;
@@ -1748,6 +1748,83 @@ function Trading({macro,prices,pos}){
       </table>
     </Card>}
 
+    {/* ── Alertas de Precio ── */}
+    <Card title="🔔 Alertas de Precio" right={<span style={{fontSize:10,color:loadLS("wa_phone","")?"#34d399":"#64748b"}}>{loadLS("wa_phone","")?"📱 WhatsApp activo":"⚙️ Configurar WhatsApp"}</span>}>
+      {/* Create alert form */}
+      {(()=>{
+        const [alertTicker,setAlertTicker]=useState("");
+        const [alertPrice,setAlertPrice]=useState("");
+        const [alertCondition,setAlertCondition]=useState("above");
+        const [alertLabel,setAlertLabel]=useState("");
+        const alertMercado=isBYMA?"BYMA":"NYSE";
+
+        const createAlert=()=>{
+          const t=alertTicker.trim().toUpperCase()||ticker;
+          const p=parseNum(alertPrice);
+          if(!t||p<=0)return;
+          addPriceAlert({ticker:t,mercado:alertMercado,condition:alertCondition,price:p,label:alertLabel});
+          setAlertTicker("");setAlertPrice("");setAlertLabel("");
+        };
+
+        return <div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 0.6fr 1fr 1.2fr auto",gap:10,alignItems:"end",marginBottom:14}}>
+            <div>
+              <label style={{fontSize:10,color:"#64748b",display:"block",marginBottom:3}}>TICKER</label>
+              <input value={alertTicker} onChange={e=>setAlertTicker(e.target.value.toUpperCase())} placeholder={ticker||"GGAL"} style={{...inputSt,fontSize:13,padding:"6px 10px"}}/>
+            </div>
+            <div>
+              <label style={{fontSize:10,color:"#64748b",display:"block",marginBottom:3}}>CONDICIÓN</label>
+              <select value={alertCondition} onChange={e=>setAlertCondition(e.target.value)} style={{...inputSt,fontSize:13,padding:"6px 10px",cursor:"pointer"}}>
+                <option value="above">⬆️ Sube a</option>
+                <option value="below">⬇️ Baja a</option>
+              </select>
+            </div>
+            <div>
+              <label style={{fontSize:10,color:"#64748b",display:"block",marginBottom:3}}>PRECIO ({monedaSym.trim()})</label>
+              <input value={alertPrice} onChange={e=>setAlertPrice(e.target.value.replace(/[^\d.,]/g,""))} placeholder={isBYMA?"35.000":"250"} style={{...inputSt,fontSize:13,padding:"6px 10px"}}/>
+            </div>
+            <div>
+              <label style={{fontSize:10,color:"#64748b",display:"block",marginBottom:3}}>NOTA (OPCIONAL)</label>
+              <input value={alertLabel} onChange={e=>setAlertLabel(e.target.value)} placeholder="Ej: Target 1, Stop loss" style={{...inputSt,fontSize:13,padding:"6px 10px"}}/>
+            </div>
+            <button onClick={createAlert} style={{background:"#2563eb",border:"none",color:"#fff",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>+ Crear</button>
+          </div>
+
+          {/* Active alerts list */}
+          {priceAlerts.length>0&&<table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead><tr>
+              {["Ticker","Condición","Precio","Nota","Estado",""].map(h=><th key={h} style={{padding:"5px 8px",textAlign:"left",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
+            </tr></thead>
+            <tbody>{priceAlerts.map(a=>{
+              const pd=prices[a.ticker];
+              const isBM=a.mercado==="BYMA";
+              const cur=isBM?(pd?.priceARS||0):(pd?.price||0);
+              const dist=a.price&&cur?((a.price-cur)/cur*100):null;
+              return<tr key={a.id} style={{borderBottom:"1px solid #1e293b",opacity:a.active?1:0.5}}>
+                <td style={{padding:"5px 8px",fontWeight:700,fontSize:13}}>{a.ticker} <span style={{fontSize:10,color:"#64748b"}}>{isBM?"🇦🇷":"🇺🇸"}</span></td>
+                <td style={{padding:"5px 8px",fontSize:12}}>{a.condition==="above"?"⬆️ Sube a":"⬇️ Baja a"}</td>
+                <td style={{padding:"5px 8px",fontSize:13,fontWeight:600,fontVariantNumeric:"tabular-nums"}}>
+                  {isBM?fARS(a.price):`USD ${a.price.toFixed(2)}`}
+                  {dist!=null&&<span style={{fontSize:10,color:dist>=0?"#34d399":"#f87171",marginLeft:6}}>({dist>=0?"+":""}{dist.toFixed(1)}%)</span>}
+                </td>
+                <td style={{padding:"5px 8px",fontSize:11,color:"#94a3b8"}}>{a.label||"—"}</td>
+                <td style={{padding:"5px 8px",fontSize:11}}>
+                  {a.triggeredAt?<span style={{color:"#fbbf24"}}>🔔 Disparada {new Date(a.triggeredAt).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
+                  :a.active?<span style={{color:"#34d399"}}>● Activa</span>
+                  :<span style={{color:"#64748b"}}>○ Pausada</span>}
+                </td>
+                <td style={{padding:"5px 8px",display:"flex",gap:4}}>
+                  <button onClick={()=>togglePriceAlert(a.id)} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:11,padding:2}} title={a.active?"Pausar":"Activar"}>{a.active?"⏸":"▶️"}</button>
+                  <button onClick={()=>removePriceAlert(a.id)} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:11,padding:2}} title="Eliminar">✕</button>
+                </td>
+              </tr>;
+            })}</tbody>
+          </table>}
+          {priceAlerts.length===0&&<div style={{textAlign:"center",padding:12,fontSize:12,color:"#475569"}}>No hay alertas configuradas. Creá una arriba o activá WhatsApp en ⚙️ Config.</div>}
+        </div>;
+      })()}
+    </Card>
+
     <div style={{fontSize:9,color:"#475569",fontStyle:"italic",textAlign:"center"}}>{isBYMA?"Comisión 0,10% + Der. Mercado 0,07% + Intra Venta 0,05% · IVA 21% (Bonos/Letras/ONs exentos) · Fuente: Tarifario BM Marzo 2025 + BYMA":"Comisión 0,60% all-in · Sin IVA · Fuente: Allaria (CS)"} · Equivalencias a MEP ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(mep)}</div>
   </div>;
 }
@@ -2018,10 +2095,16 @@ async function gistLoad(token,gistId){
 
 /* ── PANEL CONFIG (token + gist id) ──────── */
 function SyncConfigPanel({onClose}){
+  const [activeTab,setActiveTab]=useState("sync");
   const [token,setToken]=useState(loadLS("gh_token",""));
   const [gistId,setGistId]=useState(loadLS("gist_id",""));
   const [status,setStatus]=useState("");
   const [testing,setTesting]=useState(false);
+  /* CallMeBot */
+  const [waPhone,setWaPhone]=useState(loadLS("wa_phone",""));
+  const [waKey,setWaKey]=useState(loadLS("wa_apikey",""));
+  const [waStatus,setWaStatus]=useState("");
+  const [waTesting,setWaTesting]=useState(false);
 
   const testConnection=async()=>{
     setTesting(true);setStatus("");
@@ -2036,15 +2119,33 @@ function SyncConfigPanel({onClose}){
     setTesting(false);
   };
 
+  const testWhatsApp=async()=>{
+    setWaTesting(true);setWaStatus("");
+    try{
+      saveLS("wa_phone",waPhone);saveLS("wa_apikey",waKey);
+      const msg=encodeURIComponent("✅ Fin-Cloud alertas conectadas!");
+      const url=`https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(waPhone)}&text=${msg}&apikey=${encodeURIComponent(waKey)}`;
+      const res=await fetch(url);
+      if(res.ok){setWaStatus("✅ Mensaje de prueba enviado, revisá tu WhatsApp!");}
+      else{setWaStatus("❌ Error: revisá tu número y API key");}
+    }catch(e){setWaStatus("❌ "+e.message);}
+    setWaTesting(false);
+  };
+
   const btnSt={background:"#2563eb",border:"none",color:"#fff",borderRadius:6,padding:"8px 16px",fontSize:13,cursor:"pointer",fontWeight:600};
   const inpSt={background:"#1e293b",border:"1px solid #334155",borderRadius:6,padding:"8px 12px",color:"#e2e8f0",fontSize:13,width:"100%",outline:"none"};
+  const tabBtnSt=(t)=>({background:activeTab===t?"#2563eb":"transparent",border:"none",color:activeTab===t?"#fff":"#94a3b8",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600});
 
   return <div style={{position:"fixed",inset:0,background:"#000c",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
-    <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:12,padding:24,maxWidth:480,width:"100%"}} onClick={e=>e.stopPropagation()}>
-      <h3 style={{margin:"0 0 4px",fontSize:18,fontWeight:700}}>Configurar Sync</h3>
-      <p style={{margin:"0 0 16px",fontSize:13,color:"#94a3b8"}}>Configurá una vez y tus datos se sincronizan automáticamente entre todos tus dispositivos.</p>
+    <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:12,padding:24,maxWidth:500,width:"100%"}} onClick={e=>e.stopPropagation()}>
+      <div style={{display:"flex",gap:4,marginBottom:16}}>
+        <button onClick={()=>setActiveTab("sync")} style={tabBtnSt("sync")}>☁️ Sync</button>
+        <button onClick={()=>setActiveTab("whatsapp")} style={tabBtnSt("whatsapp")}>📱 WhatsApp</button>
+      </div>
 
-      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {activeTab==="sync"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <h3 style={{margin:0,fontSize:16,fontWeight:700}}>Configurar Sync</h3>
+        <p style={{margin:0,fontSize:13,color:"#94a3b8"}}>Sincronizá datos entre dispositivos vía GitHub Gist.</p>
         <div>
           <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>GitHub Personal Access Token</label>
           <input type="password" value={token} onChange={e=>setToken(e.target.value)} placeholder="ghp_xxxxxxxxxxxx" style={inpSt}/>
@@ -2052,19 +2153,41 @@ function SyncConfigPanel({onClose}){
             Crealo en: <a href="https://github.com/settings/tokens/new?scopes=gist&description=Fin-Cloud-Sync" target="_blank" rel="noopener" style={{color:"#60a5fa"}}>github.com/settings/tokens</a> → solo marcá "gist"
           </div>
         </div>
-
         <div>
           <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>Gist ID (se crea solo la primera vez, dejalo vacío)</label>
           <input value={gistId} onChange={e=>{setGistId(e.target.value);saveLS("gist_id",e.target.value)}} placeholder="Se genera automáticamente" style={inpSt}/>
         </div>
-
         {status&&<div style={{fontSize:13,padding:"8px 12px",borderRadius:6,background:status.startsWith("✅")?"#065f4622":"#7f1d1d22",color:status.startsWith("✅")?"#34d399":"#f87171"}}>{status}</div>}
-
         <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:4}}>
           <button onClick={onClose} style={{...btnSt,background:"#334155"}}>Cerrar</button>
           <button onClick={testConnection} disabled={testing||!token} style={{...btnSt,opacity:testing||!token?.5:1}}>{testing?"Probando...":"Probar Conexión"}</button>
         </div>
-      </div>
+      </div>}
+
+      {activeTab==="whatsapp"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <h3 style={{margin:0,fontSize:16,fontWeight:700}}>Alertas por WhatsApp</h3>
+        <p style={{margin:0,fontSize:13,color:"#94a3b8"}}>Recibí alertas de precio directo a tu WhatsApp vía CallMeBot.</p>
+        <div style={{background:"#111827",border:"1px solid #334155",borderRadius:8,padding:12,fontSize:12,color:"#94a3b8"}}>
+          <strong style={{color:"#e2e8f0"}}>Setup (una sola vez):</strong><br/>
+          1. Mandá un WhatsApp a <strong style={{color:"#34d399"}}>+34 644 71 70 98</strong><br/>
+          2. Escribí: <code style={{color:"#fbbf24"}}>I allow callmebot to send me messages</code><br/>
+          3. Te responden con tu API key<br/>
+          4. Cargá tu número y key acá abajo
+        </div>
+        <div>
+          <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>Tu número de WhatsApp (con código país, ej: 5491155551234)</label>
+          <input value={waPhone} onChange={e=>{setWaPhone(e.target.value.replace(/[^\d+]/g,""));saveLS("wa_phone",e.target.value.replace(/[^\d+]/g,""))}} placeholder="5491155551234" style={inpSt}/>
+        </div>
+        <div>
+          <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>API Key de CallMeBot</label>
+          <input value={waKey} onChange={e=>{setWaKey(e.target.value.trim());saveLS("wa_apikey",e.target.value.trim())}} placeholder="123456" style={inpSt}/>
+        </div>
+        {waStatus&&<div style={{fontSize:13,padding:"8px 12px",borderRadius:6,background:waStatus.startsWith("✅")?"#065f4622":"#7f1d1d22",color:waStatus.startsWith("✅")?"#34d399":"#f87171"}}>{waStatus}</div>}
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:4}}>
+          <button onClick={onClose} style={{...btnSt,background:"#334155"}}>Cerrar</button>
+          <button onClick={testWhatsApp} disabled={waTesting||!waPhone||!waKey} style={{...btnSt,opacity:waTesting||!waPhone||!waKey?.5:1}}>{waTesting?"Enviando...":"Enviar Mensaje de Prueba"}</button>
+        </div>
+      </div>}
     </div>
   </div>;
 }
@@ -2094,9 +2217,90 @@ function App(){
   const [hipoteca,setHipoteca]=useState(()=>loadLS("hipoteca",INIT_HIPOTECA));
   const [caucion,setCaucion]=useState(()=>loadLS("caucion",INIT_CAUCION));
 
+  /* ── Price Alerts System ── */
+  /* Alert: {id, ticker, mercado, condition:"above"|"below", price, active, label, createdAt, triggeredAt} */
+  const [priceAlerts,setPriceAlerts]=useState(()=>loadLS("price_alerts",[]));
+
+  const addPriceAlert=useCallback((alert)=>{
+    setPriceAlerts(prev=>[{id:Date.now(),...alert,active:true,createdAt:new Date().toISOString(),triggeredAt:null},...prev]);
+  },[]);
+
+  const removePriceAlert=useCallback((id)=>{
+    setPriceAlerts(prev=>prev.filter(a=>a.id!==id));
+  },[]);
+
+  const togglePriceAlert=useCallback((id)=>{
+    setPriceAlerts(prev=>prev.map(a=>a.id===id?{...a,active:!a.active}:a));
+  },[]);
+
+  /* Send WhatsApp via CallMeBot */
+  const sendWhatsApp=useCallback(async(msg)=>{
+    const phone=loadLS("wa_phone","");
+    const apikey=loadLS("wa_apikey","");
+    if(!phone||!apikey)return;
+    try{
+      const url=`https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(msg)}&apikey=${encodeURIComponent(apikey)}`;
+      await fetch(url);
+    }catch(e){console.warn("WhatsApp send failed:",e);}
+  },[]);
+
+  /* Send browser notification */
+  const sendBrowserNotif=useCallback((title,body)=>{
+    if(!("Notification" in window))return;
+    if(Notification.permission==="granted"){
+      new Notification(title,{body,icon:"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>"});
+    }else if(Notification.permission!=="denied"){
+      Notification.requestPermission();
+    }
+  },[]);
+
+  /* Check alerts against current prices — runs every 60s */
+  const checkAlerts=useCallback(()=>{
+    if(priceAlerts.length===0)return;
+    const mep=macro.dolarMEP||1;
+    setPriceAlerts(prev=>{
+      let changed=false;
+      const updated=prev.map(a=>{
+        if(!a.active)return a;
+        const pd=prices[a.ticker];
+        if(!pd)return a;
+        const isBYMA=a.mercado==="BYMA";
+        const currentPrice=isBYMA?(pd.priceARS||0):(pd.price||0);
+        if(currentPrice<=0)return a;
+        const triggered=(a.condition==="above"&&currentPrice>=a.price)||(a.condition==="below"&&currentPrice<=a.price);
+        if(triggered){
+          changed=true;
+          const dir=a.condition==="above"?"⬆️ SUBE":"⬇️ BAJA";
+          const priceStr=isBYMA?`$${currentPrice.toLocaleString("es-AR")}`:`USD ${currentPrice.toFixed(2)}`;
+          const targetStr=isBYMA?`$${a.price.toLocaleString("es-AR")}`:`USD ${a.price.toFixed(2)}`;
+          const msg=`${dir} ${a.ticker} ${a.condition==="above"?"superó":"cayó a"} ${targetStr} → Precio actual: ${priceStr}${a.label?" | "+a.label:""}`;
+          /* Browser notification */
+          sendBrowserNotif(`🚨 Alerta ${a.ticker}`,msg);
+          /* WhatsApp */
+          sendWhatsApp(`🚨 FIN-CLOUD ALERTA\n${msg}`);
+          /* Play sound */
+          try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator();const g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.frequency.value=880;o.type="sine";g.gain.value=0.3;o.start();setTimeout(()=>{o.stop();ctx.close()},300);}catch(e){}
+          return{...a,active:false,triggeredAt:new Date().toISOString()};
+        }
+        return a;
+      });
+      return changed?updated:prev;
+    });
+  },[prices,macro,sendWhatsApp,sendBrowserNotif]);
+
+  /* Alert monitoring interval — every 60 seconds */
+  useEffect(()=>{
+    /* Request notification permission on mount */
+    if("Notification" in window&&Notification.permission==="default"){Notification.requestPermission();}
+    const iv=setInterval(checkAlerts,60000);
+    checkAlerts(); /* check immediately on mount/price change */
+    return()=>clearInterval(iv);
+  },[checkAlerts]);
+
   /* Persistir en localStorage siempre */
   useEffect(()=>{saveLS("ops",ops)},[ops]);
   useEffect(()=>{saveLS("alerts",alerts)},[alerts]);
+  useEffect(()=>{saveLS("price_alerts",priceAlerts)},[priceAlerts]);
   useEffect(()=>{saveLS("casa",casa)},[casa]);
   useEffect(()=>{saveLS("hipoteca",hipoteca)},[hipoteca]);
   useEffect(()=>{saveLS("caucion",caucion)},[caucion]);
@@ -2393,7 +2597,7 @@ function App(){
     <main className="main-content" style={{padding:24,maxWidth:1400,margin:"0 auto"}}>
       {tab==="resumen"&&<Resumen enriched={enriched} total={portfolioTotal} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news} portfolioNeto={portfolioNeto} totalComVenta={totalComVenta}/>}
       {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro} enriched={enriched}/>}
-      {tab==="trading"&&<Trading macro={macro} prices={prices} pos={pos}/>}
+      {tab==="trading"&&<Trading macro={macro} prices={prices} pos={pos} priceAlerts={priceAlerts} addPriceAlert={addPriceAlert} removePriceAlert={removePriceAlert} togglePriceAlert={togglePriceAlert}/>}
       {tab==="potencial"&&<Potencial pos={pos} prices={prices} macro={macro}/>}
       {tab==="noticias"&&<Noticias pos={pos} news={news}/>}
       {tab==="caucion"&&<Caucion caucion={caucion} setCaucion={setCaucion} iolStatus={iolStatus} fetchCaucionRate={fetchCaucionRate}/>}
