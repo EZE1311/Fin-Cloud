@@ -1541,7 +1541,7 @@ function TradingChart({ticker,isBYMA,precioCompra,breakeven,monedaSym}){
 }
 
 /* ── TRADING — Simulador Intraday ────────── */
-function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert,togglePriceAlert,onOpenConfig}){
+function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert,togglePriceAlert,onOpenConfig,tradingForm,setTradingForm}){
   const fARS=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:0,maximumFractionDigits:0}).format(n)}`;
   const fARS2=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
   const fPct=(n,d=2)=>n==null||isNaN(n)?"—":`${n.toFixed(d)}%`;
@@ -1553,11 +1553,17 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
   const fmtInput=(s,decimals)=>{const n=parseNum(s);if(!s||n===0&&s!=="0")return s;return n.toLocaleString("es-AR",{maximumFractionDigits:decimals,minimumFractionDigits:0});};
 
   /* Operación */
-  const [tickerInput,setTickerInput]=useState("");
-  const [cantidad,setCantidad]=useState("");
-  const [precioCompra,setPrecioCompra]=useState("");
-  const [precioVentaManual,setPrecioVentaManual]=useState("");
-  const [mercado,setMercado]=useState("BYMA"); /* BYMA (ARS) | NYSE (USD) */
+  /* Form state lifted to App so it persists across tab switches */
+  const tickerInput=tradingForm.tickerInput;
+  const cantidad=tradingForm.cantidad;
+  const precioCompra=tradingForm.precioCompra;
+  const precioVentaManual=tradingForm.precioVentaManual;
+  const mercado=tradingForm.mercado;
+  const setTickerInput=v=>setTradingForm(f=>({...f,tickerInput:v}));
+  const setCantidad=v=>setTradingForm(f=>({...f,cantidad:v}));
+  const setPrecioCompra=v=>setTradingForm(f=>({...f,precioCompra:v}));
+  const setPrecioVentaManual=v=>setTradingForm(f=>({...f,precioVentaManual:v}));
+  const setMercado=v=>setTradingForm(f=>({...f,mercado:v}));
 
   /* Ticker: acepta cualquier texto, uppercase */
   const ticker=tickerInput.trim().toUpperCase();
@@ -1742,10 +1748,55 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
           <input type="text" value={precioVentaManual||(precioVentaAuto>0?(isBYMA?new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(precioVentaAuto):precioVentaAuto.toFixed(2)):"")} onChange={e=>setPrecioVentaManual(e.target.value.replace(/[^\d.,]/g,""))} style={{...inputSt,background:pvIsAuto?"#0f172a":"#111827",color:pv>0?"#34d399":tradingPriceLoading?"#fbbf24":"#e2e8f0"}} placeholder={tradingPriceLoading?"Buscando precio...":"Dejá vacío p/auto"}/>
         </div>
       </div>
+      {/* Inline Alert: Target / Stop Loss */}
+      {ticker&&(()=>{
+        const [inlineTarget,setInlineTarget]=useState("");
+        const [inlineStop,setInlineStop]=useState("");
+        const curPrice=isBYMA?(priceData?.priceARS||0):(priceData?.price||0);
+        const alertMercado=isBYMA?"BYMA":"NYSE";
+        const tParsed=parseNum(inlineTarget);
+        const sParsed=parseNum(inlineStop);
+        const createInlineAlerts=()=>{
+          if(tParsed<=0&&sParsed<=0)return;
+          const groupId=Date.now();
+          if(tParsed>0)addPriceAlert({ticker,mercado:alertMercado,condition:"above",price:tParsed,label:"Target",groupId});
+          if(sParsed>0)addPriceAlert({ticker,mercado:alertMercado,condition:"below",price:sParsed,label:"Stop Loss",groupId});
+          setInlineTarget("");setInlineStop("");
+        };
+        /* Check if alerts already exist for this ticker */
+        const existing=priceAlerts.filter(a=>a.ticker===ticker&&a.active);
+        const hasTarget=existing.some(a=>a.condition==="above");
+        const hasStop=existing.some(a=>a.condition==="below");
+        return <div style={{marginTop:14,paddingTop:12,borderTop:"1px solid #1e293b"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <span style={{fontSize:11,color:"#64748b",fontWeight:600,minWidth:50}}>🔔 ALERTAS</span>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <label style={{fontSize:10,color:"#34d399"}}>⬆️ Target</label>
+              <input value={inlineTarget} onChange={e=>setInlineTarget(e.target.value.replace(/[^\d.,]/g,""))} placeholder={curPrice>0?Math.round(curPrice*1.05).toLocaleString("es-AR"):"—"} style={{...inputSt,fontSize:12,padding:"4px 8px",width:110,borderColor:inlineTarget?"#34d39966":"#334155"}}/>
+              {tParsed>0&&curPrice>0&&<span style={{fontSize:10,color:"#34d399"}}>+{((tParsed-curPrice)/curPrice*100).toFixed(1)}%</span>}
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <label style={{fontSize:10,color:"#f87171"}}>⬇️ Stop</label>
+              <input value={inlineStop} onChange={e=>setInlineStop(e.target.value.replace(/[^\d.,]/g,""))} placeholder={curPrice>0?Math.round(curPrice*0.95).toLocaleString("es-AR"):"—"} style={{...inputSt,fontSize:12,padding:"4px 8px",width:110,borderColor:inlineStop?"#f8717166":"#334155"}}/>
+              {sParsed>0&&curPrice>0&&<span style={{fontSize:10,color:"#f87171"}}>{((sParsed-curPrice)/curPrice*100).toFixed(1)}%</span>}
+            </div>
+            <button onClick={createInlineAlerts} disabled={tParsed<=0&&sParsed<=0} style={{background:"#2563eb",border:"none",color:"#fff",borderRadius:5,padding:"4px 12px",fontSize:11,cursor:"pointer",fontWeight:600,opacity:(tParsed<=0&&sParsed<=0)?0.4:1}}>+ Alerta</button>
+            {(hasTarget||hasStop)&&<span style={{fontSize:10,color:"#34d399",marginLeft:4}}>{hasTarget?"⬆️ ":""}{hasStop?"⬇️ ":""}activa{hasTarget&&hasStop?"s":""}</span>}
+            {!loadLS("tg_token","")&&<button onClick={onOpenConfig} style={{fontSize:10,color:"#60a5fa",background:"none",border:"none",cursor:"pointer",textDecoration:"underline",marginLeft:"auto"}}>⚙️ Configurar Telegram</button>}
+          </div>
+        </div>;
+      })()}
     </Card>
 
-    {/* TradingView Lightweight Chart with Price Lines */}
-    {ticker&&<TradingChart ticker={ticker} isBYMA={isBYMA} precioCompra={pc} breakeven={breakeven} monedaSym={monedaSym}/>}
+    {/* TradingView Chart */}
+    {ticker&&(()=>{
+      const TV_MAP={YPFD:"BCBA:YPFD",GGAL:"BCBA:GGAL",EDN:"BCBA:EDN",MELI:"BCBA:MELI",ORCL:"BCBA:ORCL",IBM:"BCBA:IBM",BKUCF:"BCBA:BKUCF",TSLA:"BCBA:TSLA",AAPL:"BCBA:AAPL",MSFT:"BCBA:MSFT",AMZN:"BCBA:AMZN",GOOGL:"BCBA:GOOGL",META:"BCBA:META",NVDA:"BCBA:NVDA",UNH:"BCBA:UNH",FISV:"BCBA:FISV",JNJ:"BCBA:JNJ",KO:"BCBA:KO",DIS:"BCBA:DIS",GLOB:"BCBA:GLOB",SUPV:"BCBA:SUPV",PAMP:"BCBA:PAMP",BMA:"BCBA:BMA",CEPU:"BCBA:CEPU",LOMA:"BCBA:LOMA",TEO:"BCBA:TEO",CRESY:"BCBA:CRESY",TGS:"BCBA:TGS",IRCP:"BCBA:IRCP",DESP:"BCBA:DESP",CAAP:"BCBA:CAAP",BIOX:"BCBA:BIOX",AGRO:"BCBA:AGRO",VIST:"BCBA:VIST",AUSO:"BCBA:AUSO"};
+      const tvSymbol=isBYMA?(TV_MAP[ticker]||`BCBA:${ticker}`):`${ticker}`;
+      const widgetUrl=`https://s.tradingview.com/widgetembed/?frameElementId=tv_chart&symbol=${encodeURIComponent(tvSymbol)}&interval=D&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=America%2FArgentina%2FBuenos_Aires&locale=es&studies=%5B%5D&hideideas=1&hidevolume=0&padding=0&grids=0&hide_top_toolbar=0&withdateranges=1&hide_side_toolbar=0&studies_overrides=%7B%7D&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&utm_source=finclouddash&utm_medium=widget&utm_campaign=chart`;
+      return <div style={{borderRadius:12,overflow:"hidden",border:"1px solid #252d3d",height:420}}>
+        <iframe src={widgetUrl} style={{width:"100%",height:"100%",border:"none"}} allowTransparency="true" scrolling="no"/>
+      </div>;
+    })()}
 
     {/* Breakeven destacado */}
     {pc>0&&cant>0&&<div style={{background:"linear-gradient(135deg,#1a1f2e 0%,#0f172a 100%)",border:"1px solid #334155",borderRadius:12,padding:"20px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:14}}>
@@ -1861,93 +1912,39 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
       </table>
     </Card>}
 
-    {/* ── Alertas de Precio ── */}
-    <Card title="🔔 Alertas de Precio" right={loadLS("tg_token","")&&loadLS("tg_chat_id","")?<span style={{fontSize:10,color:"#34d399"}}>📱 Telegram activo</span>:<button onClick={onOpenConfig} style={{fontSize:10,color:"#60a5fa",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>⚙️ Configurar Telegram</button>}>
-      {(()=>{
-        const [alertTicker,setAlertTicker]=useState("");
-        const [alertTarget,setAlertTarget]=useState("");
-        const [alertStop,setAlertStop]=useState("");
-        const [alertLabel,setAlertLabel]=useState("");
-        const alertMercado=isBYMA?"BYMA":"NYSE";
-
-        const createAlerts=()=>{
-          const t=alertTicker.trim().toUpperCase()||ticker;
-          const target=parseNum(alertTarget);
-          const stop=parseNum(alertStop);
-          if(!t||(target<=0&&stop<=0))return;
-          const groupId=Date.now();
-          if(target>0)addPriceAlert({ticker:t,mercado:alertMercado,condition:"above",price:target,label:alertLabel?(alertLabel+" — Target"):"Target",groupId});
-          if(stop>0)addPriceAlert({ticker:t,mercado:alertMercado,condition:"below",price:stop,label:alertLabel?(alertLabel+" — Stop Loss"):"Stop Loss",groupId});
-          setAlertTicker("");setAlertTarget("");setAlertStop("");setAlertLabel("");
-        };
-
-        /* Current price for the alert ticker */
-        const aT=alertTicker.trim().toUpperCase()||ticker;
-        const aPd=prices[aT];
-        const aCur=isBYMA?(aPd?.priceARS||0):(aPd?.price||0);
-
-        return <div>
-          <div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 1fr 1.2fr auto",gap:10,alignItems:"start",marginBottom:14}}>
-            <div>
-              <label style={{fontSize:10,color:"#64748b",display:"block",marginBottom:3}}>TICKER</label>
-              <input value={alertTicker} onChange={e=>setAlertTicker(e.target.value.toUpperCase())} placeholder={ticker||"GGAL"} style={{...inputSt,fontSize:13,padding:"6px 10px"}}/>
-              {aCur>0&&<div style={{fontSize:10,color:"#64748b",marginTop:3}}>Actual: {isBYMA?`$ ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(aCur)}`:`USD ${aCur.toFixed(2)}`}</div>}
-            </div>
-            <div>
-              <label style={{fontSize:10,color:"#34d399",display:"block",marginBottom:3}}>⬆️ TARGET ({monedaSym.trim()})</label>
-              <input value={alertTarget} onChange={e=>setAlertTarget(e.target.value.replace(/[^\d.,]/g,""))} placeholder={isBYMA?"Ej: 45.000":"Ej: 280"} style={{...inputSt,fontSize:13,padding:"6px 10px",borderColor:alertTarget?"#34d39966":"#334155"}}/>
-              {parseNum(alertTarget)>0&&aCur>0&&<div style={{fontSize:10,color:"#34d399",marginTop:3}}>+{((parseNum(alertTarget)-aCur)/aCur*100).toFixed(1)}% desde actual</div>}
-            </div>
-            <div>
-              <label style={{fontSize:10,color:"#f87171",display:"block",marginBottom:3}}>⬇️ STOP LOSS ({monedaSym.trim()})</label>
-              <input value={alertStop} onChange={e=>setAlertStop(e.target.value.replace(/[^\d.,]/g,""))} placeholder={isBYMA?"Ej: 28.000":"Ej: 200"} style={{...inputSt,fontSize:13,padding:"6px 10px",borderColor:alertStop?"#f8717166":"#334155"}}/>
-              {parseNum(alertStop)>0&&aCur>0&&<div style={{fontSize:10,color:"#f87171",marginTop:3}}>{((parseNum(alertStop)-aCur)/aCur*100).toFixed(1)}% desde actual</div>}
-            </div>
-            <div>
-              <label style={{fontSize:10,color:"#64748b",display:"block",marginBottom:3}}>NOTA (OPCIONAL)</label>
-              <input value={alertLabel} onChange={e=>setAlertLabel(e.target.value)} placeholder="Ej: Trade VIST" style={{...inputSt,fontSize:13,padding:"6px 10px"}}/>
-            </div>
-            <div style={{paddingTop:17}}>
-              <button onClick={createAlerts} style={{background:"#2563eb",border:"none",color:"#fff",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>+ Crear</button>
-            </div>
-          </div>
-          <div style={{fontSize:10,color:"#475569",marginBottom:10,fontStyle:"italic"}}>Podés completar solo Target, solo Stop Loss, o ambos. Se crean alertas independientes para cada precio.</div>
-
-          {/* Active alerts list */}
-          {priceAlerts.length>0&&<table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr>
-              {["Ticker","Tipo","Precio","Nota","Estado",""].map(h=><th key={h} style={{padding:"5px 8px",textAlign:"left",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
-            </tr></thead>
-            <tbody>{priceAlerts.map(a=>{
-              const pd=prices[a.ticker];
-              const isBM=a.mercado==="BYMA";
-              const cur=isBM?(pd?.priceARS||0):(pd?.price||0);
-              const dist=a.price&&cur?((a.price-cur)/cur*100):null;
-              const isTarget=a.condition==="above";
-              return<tr key={a.id} style={{borderBottom:"1px solid #1e293b",opacity:a.active?1:0.5}}>
-                <td style={{padding:"5px 8px",fontWeight:700,fontSize:13}}>{a.ticker} <span style={{fontSize:10,color:"#64748b"}}>{isBM?"🇦🇷":"🇺🇸"}</span></td>
-                <td style={{padding:"5px 8px",fontSize:12}}><span style={{color:isTarget?"#34d399":"#f87171",fontWeight:600}}>{isTarget?"⬆️ Target":"⬇️ Stop Loss"}</span></td>
-                <td style={{padding:"5px 8px",fontSize:13,fontWeight:600,fontVariantNumeric:"tabular-nums"}}>
-                  {isBM?fARS(a.price):`USD ${a.price.toFixed(2)}`}
-                  {dist!=null&&<span style={{fontSize:10,color:dist>=0?"#34d399":"#f87171",marginLeft:6}}>({dist>=0?"+":""}{dist.toFixed(1)}%)</span>}
-                </td>
-                <td style={{padding:"5px 8px",fontSize:11,color:"#94a3b8"}}>{a.label||"—"}</td>
-                <td style={{padding:"5px 8px",fontSize:11}}>
-                  {a.triggeredAt?<span style={{color:"#fbbf24"}}>🔔 Disparada {new Date(a.triggeredAt).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
-                  :a.active?<span style={{color:"#34d399"}}>● Activa</span>
-                  :<span style={{color:"#64748b"}}>○ Pausada</span>}
-                </td>
-                <td style={{padding:"5px 8px",display:"flex",gap:4}}>
-                  <button onClick={()=>togglePriceAlert(a.id)} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:11,padding:2}} title={a.active?"Pausar":"Activar"}>{a.active?"⏸":"▶️"}</button>
-                  <button onClick={()=>removePriceAlert(a.id)} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:11,padding:2}} title="Eliminar">✕</button>
-                </td>
-              </tr>;
-            })}</tbody>
-          </table>}
-          {priceAlerts.length===0&&<div style={{textAlign:"center",padding:12,fontSize:12,color:"#475569"}}>No hay alertas configuradas. Ingresá un ticker con precio Target y/o Stop Loss.</div>}
-        </div>;
-      })()}
-    </Card>
+    {/* ── Alertas de Precio (solo tabla) ── */}
+    {priceAlerts.length>0&&<Card title="🔔 Alertas Activas" right={loadLS("tg_token","")&&loadLS("tg_chat_id","")?<span style={{fontSize:10,color:"#34d399"}}>📱 Telegram activo</span>:null}>
+      <table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead><tr>
+          {["Ticker","Tipo","Precio","Nota","Estado",""].map(h=><th key={h} style={{padding:"5px 8px",textAlign:"left",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
+        </tr></thead>
+        <tbody>{priceAlerts.map(a=>{
+          const pd=prices[a.ticker];
+          const isBM=a.mercado==="BYMA";
+          const cur=isBM?(pd?.priceARS||0):(pd?.price||0);
+          const dist=a.price&&cur?((a.price-cur)/cur*100):null;
+          const isTarget=a.condition==="above";
+          return<tr key={a.id} style={{borderBottom:"1px solid #1e293b",opacity:a.active?1:0.5}}>
+            <td style={{padding:"5px 8px",fontWeight:700,fontSize:13}}>{a.ticker} <span style={{fontSize:10,color:"#64748b"}}>{isBM?"🇦🇷":"🇺🇸"}</span></td>
+            <td style={{padding:"5px 8px",fontSize:12}}><span style={{color:isTarget?"#34d399":"#f87171",fontWeight:600}}>{isTarget?"⬆️ Target":"⬇️ Stop Loss"}</span></td>
+            <td style={{padding:"5px 8px",fontSize:13,fontWeight:600,fontVariantNumeric:"tabular-nums"}}>
+              {isBM?fARS(a.price):`USD ${a.price.toFixed(2)}`}
+              {dist!=null&&<span style={{fontSize:10,color:dist>=0?"#34d399":"#f87171",marginLeft:6}}>({dist>=0?"+":""}{dist.toFixed(1)}%)</span>}
+            </td>
+            <td style={{padding:"5px 8px",fontSize:11,color:"#94a3b8"}}>{a.label||"—"}</td>
+            <td style={{padding:"5px 8px",fontSize:11}}>
+              {a.triggeredAt?<span style={{color:"#fbbf24"}}>🔔 Disparada {new Date(a.triggeredAt).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
+              :a.active?<span style={{color:"#34d399"}}>● Activa</span>
+              :<span style={{color:"#64748b"}}>○ Pausada</span>}
+            </td>
+            <td style={{padding:"5px 8px",display:"flex",gap:4}}>
+              <button onClick={()=>togglePriceAlert(a.id)} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:11,padding:2}} title={a.active?"Pausar":"Activar"}>{a.active?"⏸":"▶️"}</button>
+              <button onClick={()=>removePriceAlert(a.id)} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:11,padding:2}} title="Eliminar">✕</button>
+            </td>
+          </tr>;
+        })}</tbody>
+      </table>
+    </Card>}
 
     <div style={{fontSize:9,color:"#475569",fontStyle:"italic",textAlign:"center"}}>{isBYMA?"Comisión 0,10% + Der. Mercado 0,07% + Intra Venta 0,05% · IVA 21% (Bonos/Letras/ONs exentos) · Fuente: Tarifario BM Marzo 2025 + BYMA":"Comisión 0,60% all-in · Sin IVA · Fuente: Allaria (CS)"} · Equivalencias a MEP ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(mep)}</div>
   </div>;
@@ -2340,6 +2337,9 @@ function App(){
   const [hipoteca,setHipoteca]=useState(()=>loadLS("hipoteca",INIT_HIPOTECA));
   const [caucion,setCaucion]=useState(()=>loadLS("caucion",INIT_CAUCION));
 
+  /* ── Trading form state (lifted so it persists across tab switches) ── */
+  const [tradingForm,setTradingForm]=useState({tickerInput:"",cantidad:"",precioCompra:"",precioVentaManual:"",mercado:"BYMA"});
+
   /* ── Price Alerts System ── */
   /* Alert: {id, ticker, mercado, condition:"above"|"below", price, active, label, createdAt, triggeredAt} */
   const [priceAlerts,setPriceAlerts]=useState(()=>loadLS("price_alerts",[]));
@@ -2720,7 +2720,7 @@ function App(){
     <main className="main-content" style={{padding:24,maxWidth:1400,margin:"0 auto"}}>
       {tab==="resumen"&&<Resumen enriched={enriched} total={portfolioTotal} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news} portfolioNeto={portfolioNeto} totalComVenta={totalComVenta}/>}
       {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro} enriched={enriched}/>}
-      {tab==="trading"&&<Trading macro={macro} prices={prices} pos={pos} priceAlerts={priceAlerts} addPriceAlert={addPriceAlert} removePriceAlert={removePriceAlert} togglePriceAlert={togglePriceAlert} onOpenConfig={()=>setShowConfig(true)}/>}
+      {tab==="trading"&&<Trading macro={macro} prices={prices} pos={pos} priceAlerts={priceAlerts} addPriceAlert={addPriceAlert} removePriceAlert={removePriceAlert} togglePriceAlert={togglePriceAlert} onOpenConfig={()=>setShowConfig(true)} tradingForm={tradingForm} setTradingForm={setTradingForm}/>}
       {tab==="potencial"&&<Potencial pos={pos} prices={prices} macro={macro}/>}
       {tab==="noticias"&&<Noticias pos={pos} news={news}/>}
       {tab==="caucion"&&<Caucion caucion={caucion} setCaucion={setCaucion} iolStatus={iolStatus} fetchCaucionRate={fetchCaucionRate}/>}
