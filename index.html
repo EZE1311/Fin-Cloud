@@ -1569,6 +1569,22 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
   const ventaFactor=(comPct+derPct+intraPct)*ivaMult;
   const breakeven=cant>0?(montoCompra+comCompra)/(cant*(1-ventaFactor)):0;
 
+  /* Auto-alert prices: solve for pv where neto = +/- alertPL */
+  const alertPL=isBYMA?1000000:1000; /* $1M ARS or USD 1000 */
+  /* neto = cant*pv*(1-ventaFactor) - montoCompra - comCompra → pv = (neto + montoCompra + comCompra) / (cant*(1-ventaFactor)) */
+  const autoTarget=cant>0&&pc>0?(alertPL+montoCompra+comCompra)/(cant*(1-ventaFactor)):0;
+  const autoStop=cant>0&&pc>0?(-alertPL+montoCompra+comCompra)/(cant*(1-ventaFactor)):0;
+
+  /* Auto-fill alert inputs when compra data changes */
+  React.useEffect(()=>{
+    if(cant>0&&pc>0&&autoTarget>0){
+      setInlineTarget(isBYMA?Math.ceil(autoTarget).toString():autoTarget.toFixed(2));
+    }
+    if(cant>0&&pc>0&&autoStop>0){
+      setInlineStop(isBYMA?Math.floor(autoStop).toString():autoStop.toFixed(2));
+    }
+  },[cant,pc,isBYMA]);
+
   /* Scenarios */
   const scenarios=pc>0?[-3,-2,-1,-0.5,0.5,1,2,3].map(pct=>{
     const pvS=pc*(1+pct/100);
@@ -1667,12 +1683,12 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <label style={{fontSize:10,color:"#34d399"}}>⬆️ Target</label>
               <input value={inlineTarget} onChange={e=>setInlineTarget(e.target.value.replace(/[^\d.,]/g,""))} placeholder={curPrice>0?Math.round(curPrice*1.05).toLocaleString("es-AR"):"—"} style={{...inputSt,fontSize:12,padding:"4px 8px",width:110,borderColor:inlineTarget?"#34d39966":"#334155"}}/>
-              {tParsed>0&&curPrice>0&&<span style={{fontSize:10,color:"#34d399"}}>+{((tParsed-curPrice)/curPrice*100).toFixed(1)}%</span>}
+              {tParsed>0&&cant>0&&pc>0&&(()=>{const mv=cant*tParsed;const cv=mv*ventaFactor;const n=mv-montoCompra-comCompra-cv;return <span style={{fontSize:10,color:"#34d399"}}>{isBYMA?fARS(n):`USD ${n.toFixed(0)}`}</span>})()}
             </div>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <label style={{fontSize:10,color:"#f87171"}}>⬇️ Stop</label>
               <input value={inlineStop} onChange={e=>setInlineStop(e.target.value.replace(/[^\d.,]/g,""))} placeholder={curPrice>0?Math.round(curPrice*0.95).toLocaleString("es-AR"):"—"} style={{...inputSt,fontSize:12,padding:"4px 8px",width:110,borderColor:inlineStop?"#f8717166":"#334155"}}/>
-              {sParsed>0&&curPrice>0&&<span style={{fontSize:10,color:"#f87171"}}>{((sParsed-curPrice)/curPrice*100).toFixed(1)}%</span>}
+              {sParsed>0&&cant>0&&pc>0&&(()=>{const mv=cant*sParsed;const cv=mv*ventaFactor;const n=mv-montoCompra-comCompra-cv;return <span style={{fontSize:10,color:"#f87171"}}>{isBYMA?fARS(n):`USD ${n.toFixed(0)}`}</span>})()}
             </div>
             <button onClick={createInlineAlerts} disabled={tParsed<=0&&sParsed<=0} style={{background:"#2563eb",border:"none",color:"#fff",borderRadius:5,padding:"4px 12px",fontSize:11,cursor:"pointer",fontWeight:600,opacity:(tParsed<=0&&sParsed<=0)?0.4:1}}>+ Alerta</button>
             {(hasTarget||hasStop)&&<span style={{fontSize:10,color:"#34d399",marginLeft:4}}>{hasTarget?"⬆️ ":""}{hasStop?"⬇️ ":""}activa{hasTarget&&hasStop?"s":""}</span>}
