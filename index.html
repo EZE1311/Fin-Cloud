@@ -1342,14 +1342,19 @@ function Operaciones({ops,setOps,macro,enriched}){
 }
 
 /* ── CALCULADORA CAUCIÓN ──────────────────── */
-function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetchCaucionRate}){
+function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetchCaucionRate,caucionForm,setCaucionForm}){
   const fARS=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
   const fPct=(n,d=2)=>n==null||isNaN(n)?"—":`${n.toFixed(d)} %`;
 
-  const [monto,setMonto]=useState("66521399");
-  const [diasTom,setDiasTom]=useState("4");
-  const [tnaCol,setTnaCol]=useState("22");
-  const [diasCol,setDiasCol]=useState("3");
+  /* Form fields lifted to App for persistence across tab switches */
+  const monto=caucionForm.monto;
+  const setMonto=v=>setCaucionForm(f=>({...f,monto:v}));
+  const diasTom=caucionForm.diasTom;
+  const setDiasTom=v=>setCaucionForm(f=>({...f,diasTom:v}));
+  const tnaCol=caucionForm.tnaCol;
+  const setTnaCol=v=>setCaucionForm(f=>({...f,tnaCol:v}));
+  const diasCol=caucionForm.diasCol;
+  const setDiasCol=v=>setCaucionForm(f=>({...f,diasCol:v}));
   const [showIOLConfig,setShowIOLConfig]=useState(false);
   const [iolUser,setIolUser]=useState(()=>{const c=loadLS("iol_creds",null);return c?c.user:""});
   const [iolPass,setIolPass]=useState(()=>{const c=loadLS("iol_creds",null);return c?c.pass:""});
@@ -2142,6 +2147,7 @@ function saveLS(key,val){try{localStorage.setItem("eid_"+key,JSON.stringify(val)
 const INIT_CASA={precioCompra:0,anios:0,tasaAnual:0};
 const INIT_HIPOTECA={uvas:0};
 const INIT_CAUCION={montoARS:0,tna:21,dias:1};
+const INIT_CAUCION_FORM={monto:"66521399",diasTom:"4",tnaCol:"22",diasCol:"3"};
 
 /* ── GIST SYNC ENGINE ───────────────────── */
 const GIST_FILENAME="fin-cloud-data.json";
@@ -2292,8 +2298,9 @@ function App(){
   const [hipoteca,setHipoteca]=useState(()=>loadLS("hipoteca",INIT_HIPOTECA));
   const [caucion,setCaucion]=useState(()=>loadLS("caucion",INIT_CAUCION));
 
-  /* ── Trading form state (lifted so it persists across tab switches) ── */
+  /* ── Form states lifted so they persist across tab switches ── */
   const [tradingForm,setTradingForm]=useState({tickerInput:"",cantidad:"",precioCompra:"",precioVentaManual:"",mercado:"BYMA"});
+  const [caucionForm,setCaucionForm]=useState(()=>loadLS("caucionForm",INIT_CAUCION_FORM));
 
   /* ── Price Alerts System ── */
   /* Alert: {id, ticker, mercado, condition:"above"|"below", price, active, label, createdAt, triggeredAt} */
@@ -2381,6 +2388,7 @@ function App(){
   useEffect(()=>{saveLS("casa",casa)},[casa]);
   useEffect(()=>{saveLS("hipoteca",hipoteca)},[hipoteca]);
   useEffect(()=>{saveLS("caucion",caucion)},[caucion]);
+  useEffect(()=>{saveLS("caucionForm",caucionForm)},[caucionForm]);
 
   /* ── Auto-load desde Gist al abrir ──── */
   useEffect(()=>{
@@ -2436,7 +2444,7 @@ function App(){
   /* Resetear — limpia todo a vacío */
   const resetData=useCallback(()=>{
     if(!confirm("¿Estás seguro? Esto borra todas tus operaciones, alertas y configuración."))return;
-    setOps([]);setPriceAlerts([]);setCasa({precioCompra:0,anios:0,tasaAnual:0});setHipoteca({uvas:0});setCaucion({montoARS:0,tna:21,dias:1});
+    setOps([]);setPriceAlerts([]);setCasa({precioCompra:0,anios:0,tasaAnual:0});setHipoteca({uvas:0});setCaucion({montoARS:0,tna:21,dias:1});setCaucionForm(INIT_CAUCION_FORM);
   },[]);
 
   /* Posiciones derivadas 100% de operaciones */
@@ -2676,7 +2684,7 @@ function App(){
       {tab==="trading"&&<Trading macro={macro} prices={prices} pos={pos} priceAlerts={priceAlerts} addPriceAlert={addPriceAlert} removePriceAlert={removePriceAlert} togglePriceAlert={togglePriceAlert} onOpenConfig={()=>setShowConfig(true)} tradingForm={tradingForm} setTradingForm={setTradingForm}/>}
       {tab==="potencial"&&<Potencial pos={pos} prices={prices} macro={macro}/>}
       {tab==="noticias"&&<Noticias pos={pos} news={news}/>}
-      {tab==="caucion"&&<Caucion caucion={caucion} setCaucion={setCaucion} iolStatus={iolStatus} fetchCaucionRate={fetchCaucionRate}/>}
+      {tab==="caucion"&&<Caucion caucion={caucion} setCaucion={setCaucion} iolStatus={iolStatus} fetchCaucionRate={fetchCaucionRate} caucionForm={caucionForm} setCaucionForm={setCaucionForm}/>}
     </main>
   </div>;
 }
