@@ -1341,6 +1341,183 @@ function Operaciones({ops,setOps,macro,enriched}){
   </div>;
 }
 
+/* ── RENDIMIENTO / PERFORMANCE ──────────────── */
+function Performance({snapshots,macro,enriched,dividends,setDividends}){
+  const fU=n=>`USD ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(n)}`;
+  const fPct=n=>n==null||isNaN(n)?"—":`${n>=0?"+":""}${n.toFixed(1)}%`;
+
+  if(!snapshots||snapshots.length<2) return <div>
+    <Card title="📈 Rendimiento">
+      <div style={{color:"#64748b",textAlign:"center",padding:40}}>
+        Se necesitan al menos 2 días de datos para mostrar la curva.<br/>
+        <span style={{fontSize:12}}>Se guarda un snapshot automático cada vez que abrís el dashboard.</span>
+      </div>
+    </Card>
+    <DividendTracker dividends={dividends} setDividends={setDividends} enriched={enriched}/>
+  </div>;
+
+  /* Normalizar series a base 100 */
+  const normalize=arr=>{if(!arr||arr.length===0)return[];const base=arr[0].v;return arr.map(p=>({d:p.d,v:base!==0?((p.v/base)-1)*100:0}));};
+  const portSeries=normalize(snapshots.map(s=>({d:s.date,v:s.portfolioUSD})));
+  const invSeries=normalize(snapshots.map(s=>({d:s.date,v:s.invertidoUSD})));
+  /* Benchmarks (si hay datos guardados) */
+  const mervalSeries=snapshots[0].merval?normalize(snapshots.map(s=>({d:s.date,v:s.merval||0}))):null;
+  const sp500Series=snapshots[0].sp500?normalize(snapshots.map(s=>({d:s.date,v:s.sp500||0}))):null;
+
+  const allSeries=[portSeries,mervalSeries,sp500Series].filter(Boolean);
+  const allVals=allSeries.flatMap(s=>s.map(p=>p.v));
+  const minV=Math.min(...allVals,0);const maxV=Math.max(...allVals,0);
+  const rangeV=maxV-minV||1;
+
+  const W=800,H=300,PAD=40,PB=30;
+  const chartW=W-PAD*2,chartH=H-PAD-PB;
+  const toX=(i,len)=>PAD+(i/(len-1))*chartW;
+  const toY=v=>PAD+chartH-(((v-minV)/rangeV)*chartH);
+
+  const makePath=(series,color)=>{
+    if(!series||series.length<2)return null;
+    const d=series.map((p,i)=>`${i===0?"M":"L"}${toX(i,series.length).toFixed(1)},${toY(p.v).toFixed(1)}`).join(" ");
+    return React.createElement("path",{d,fill:"none",stroke:color,strokeWidth:2.5,strokeLinejoin:"round",key:color});
+  };
+
+  /* Grid lines */
+  const gridLines=[];
+  const steps=5;
+  for(let i=0;i<=steps;i++){
+    const v=minV+(rangeV/steps)*i;
+    const y=toY(v);
+    gridLines.push(React.createElement("line",{key:"g"+i,x1:PAD,x2:W-PAD,y1:y,y2:y,stroke:"#1e293b",strokeWidth:1}));
+    gridLines.push(React.createElement("text",{key:"t"+i,x:PAD-6,y:y+4,fill:"#475569",fontSize:10,textAnchor:"end"},fPct(v)));
+  }
+  /* Date labels */
+  const dateLabels=[];
+  const labelCount=Math.min(snapshots.length,7);
+  for(let i=0;i<labelCount;i++){
+    const idx=Math.round(i*(snapshots.length-1)/(labelCount-1));
+    const s=snapshots[idx];
+    const x=toX(idx,snapshots.length);
+    dateLabels.push(React.createElement("text",{key:"d"+i,x,y:H-8,fill:"#475569",fontSize:9,textAnchor:"middle"},s.date.slice(5)));
+  }
+  /* Zero line */
+  const zeroY=toY(0);
+
+  /* Stats resumen */
+  const last=snapshots[snapshots.length-1];
+  const first=snapshots[0];
+  const rendTotal=first.portfolioUSD>0?((last.portfolioUSD/first.portfolioUSD)-1)*100:0;
+  const rendMerval=mervalSeries&&mervalSeries.length>0?mervalSeries[mervalSeries.length-1].v:null;
+  const rendSP=sp500Series&&sp500Series.length>0?sp500Series[sp500Series.length-1].v:null;
+
+  const statSt={background:"#1a1f2e",borderRadius:10,padding:"14px 18px",border:"1px solid #252d3d",flex:1,textAlign:"center"};
+  const colors={port:"#60a5fa",merval:"#a78bfa",sp500:"#34d399"};
+
+  return <div>
+    <Card title="📈 Rendimiento del Portfolio" right={<span style={{fontSize:10,color:"#475569"}}>{snapshots.length} días de datos</span>}>
+      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+        <div style={statSt}>
+          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Portfolio</div>
+          <div style={{fontSize:22,fontWeight:700,color:rendTotal>=0?"#34d399":"#f87171"}}>{fPct(rendTotal)}</div>
+          <div style={{fontSize:11,color:"#94a3b8"}}>{fU(last.portfolioUSD)}</div>
+        </div>
+        {rendMerval!=null&&<div style={statSt}>
+          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Merval (USD)</div>
+          <div style={{fontSize:22,fontWeight:700,color:rendMerval>=0?"#34d399":"#f87171"}}>{fPct(rendMerval)}</div>
+        </div>}
+        {rendSP!=null&&<div style={statSt}>
+          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>S&P 500</div>
+          <div style={{fontSize:22,fontWeight:700,color:rendSP>=0?"#34d399":"#f87171"}}>{fPct(rendSP)}</div>
+        </div>}
+        {rendMerval!=null&&<div style={statSt}>
+          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Alpha vs Merval</div>
+          <div style={{fontSize:22,fontWeight:700,color:(rendTotal-rendMerval)>=0?"#34d399":"#f87171"}}>{fPct(rendTotal-rendMerval)}</div>
+        </div>}
+      </div>
+      <div style={{overflowX:"auto"}}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",maxHeight:320,background:"#0f172a",borderRadius:10,border:"1px solid #1e293b"}}>
+          {gridLines}
+          {dateLabels}
+          {React.createElement("line",{x1:PAD,x2:W-PAD,y1:zeroY,y2:zeroY,stroke:"#334155",strokeWidth:1,strokeDasharray:"4,4"})}
+          {makePath(portSeries,colors.port)}
+          {makePath(mervalSeries,colors.merval)}
+          {makePath(sp500Series,colors.sp500)}
+          {/* Dots en último punto */}
+          {portSeries.length>0&&React.createElement("circle",{cx:toX(portSeries.length-1,portSeries.length),cy:toY(portSeries[portSeries.length-1].v),r:4,fill:colors.port})}
+        </svg>
+      </div>
+      <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:10}}>
+        <span style={{fontSize:11,color:colors.port}}>● Portfolio</span>
+        {mervalSeries&&<span style={{fontSize:11,color:colors.merval}}>● Merval USD</span>}
+        {sp500Series&&<span style={{fontSize:11,color:colors.sp500}}>● S&P 500</span>}
+      </div>
+    </Card>
+
+    {/* ── Dividendos ── */}
+    <DividendTracker dividends={dividends} setDividends={setDividends} enriched={enriched}/>
+  </div>;
+}
+
+/* ── DIVIDEND TRACKER ── */
+function DividendTracker({dividends,setDividends,enriched}){
+  const fU=n=>`USD ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(n)}`;
+  const [showForm,setShowForm]=useState(false);
+  const [form,setForm]=useState({ticker:"",fecha:"",montoPorAccion:"",moneda:"USD"});
+
+  const tickers=[...new Set((enriched||[]).map(e=>e.ticker))].sort();
+
+  const addDiv=()=>{
+    if(!form.ticker||!form.fecha||!form.montoPorAccion)return;
+    const pos=enriched?.find(e=>e.ticker===form.ticker);
+    const cant=pos?pos.cantidad:0;
+    const entry={id:Date.now(),ticker:form.ticker,fecha:form.fecha,montoPorAccion:parseFloat(form.montoPorAccion),moneda:form.moneda,cantidad:cant,total:cant*parseFloat(form.montoPorAccion)};
+    setDividends(d=>[...d,entry]);
+    setForm({ticker:"",fecha:"",montoPorAccion:"",moneda:"USD"});
+    setShowForm(false);
+  };
+
+  const removeDiv=id=>setDividends(d=>d.filter(x=>x.id!==id));
+
+  const totalDivs=dividends.reduce((s,d)=>s+d.total,0);
+  const divsByYear={};
+  dividends.forEach(d=>{const y=d.fecha.slice(0,4);divsByYear[y]=(divsByYear[y]||0)+d.total;});
+
+  const inputSt={background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"8px 12px",color:"#e2e8f0",fontSize:14,width:"100%"};
+  const labelSt={fontSize:11,color:"#64748b",display:"block",marginBottom:4,textTransform:"uppercase",letterSpacing:".04em"};
+
+  return <Card title="💰 Dividendos" right={<button onClick={()=>setShowForm(!showForm)} style={{background:"#1e40af",border:"none",color:"#fff",borderRadius:6,padding:"4px 12px",fontSize:12,cursor:"pointer",fontWeight:600}}>{showForm?"Cancelar":"+ Registrar"}</button>}>
+    {showForm&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr auto",gap:10,marginBottom:16,alignItems:"end"}}>
+      <div><label style={labelSt}>Ticker</label><select value={form.ticker} onChange={e=>setForm({...form,ticker:e.target.value})} style={inputSt}><option value="">—</option>{tickers.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
+      <div><label style={labelSt}>Fecha pago</label><input type="date" value={form.fecha} onChange={e=>setForm({...form,fecha:e.target.value})} style={inputSt}/></div>
+      <div><label style={labelSt}>Monto/acción</label><input type="text" inputMode="decimal" value={form.montoPorAccion} onChange={e=>setForm({...form,montoPorAccion:e.target.value})} style={inputSt} placeholder="0.00"/></div>
+      <div><label style={labelSt}>Moneda</label><select value={form.moneda} onChange={e=>setForm({...form,moneda:e.target.value})} style={inputSt}><option value="USD">USD</option><option value="ARS">ARS</option></select></div>
+      <button onClick={addDiv} style={{background:"#059669",border:"none",color:"#fff",borderRadius:6,padding:"8px 16px",fontSize:13,cursor:"pointer",fontWeight:600,height:38}}>Guardar</button>
+    </div>}
+
+    {dividends.length===0?<div style={{color:"#475569",textAlign:"center",padding:20,fontSize:13}}>No hay dividendos registrados. Usá "Registrar" para agregar los dividendos que vayas cobrando.</div>:
+    <div>
+      {Object.keys(divsByYear).sort().reverse().map(y=><div key={y} style={{marginBottom:6,fontSize:12,color:"#94a3b8"}}>{y}: <span style={{color:"#34d399",fontWeight:600}}>{fU(divsByYear[y])}</span></div>)}
+      <div style={{fontSize:14,fontWeight:700,color:"#34d399",marginBottom:12}}>Total acumulado: {fU(totalDivs)}</div>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+        <thead><tr style={{borderBottom:"1px solid #334155"}}>
+          <th style={{textAlign:"left",padding:8,color:"#64748b",fontWeight:500}}>Fecha</th>
+          <th style={{textAlign:"left",padding:8,color:"#64748b",fontWeight:500}}>Ticker</th>
+          <th style={{textAlign:"right",padding:8,color:"#64748b",fontWeight:500}}>$/acción</th>
+          <th style={{textAlign:"right",padding:8,color:"#64748b",fontWeight:500}}>Cant.</th>
+          <th style={{textAlign:"right",padding:8,color:"#64748b",fontWeight:500}}>Total</th>
+          <th style={{padding:8}}></th>
+        </tr></thead>
+        <tbody>{[...dividends].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(d=><tr key={d.id} style={{borderBottom:"1px solid #1e293b"}}>
+          <td style={{padding:8,color:"#94a3b8"}}>{d.fecha}</td>
+          <td style={{padding:8,fontWeight:600,color:"#e2e8f0"}}>{d.ticker}</td>
+          <td style={{padding:8,textAlign:"right",color:"#94a3b8"}}>{d.moneda==="USD"?`$${d.montoPorAccion.toFixed(2)}`:`ARS ${d.montoPorAccion.toFixed(0)}`}</td>
+          <td style={{padding:8,textAlign:"right",color:"#94a3b8"}}>{d.cantidad}</td>
+          <td style={{padding:8,textAlign:"right",fontWeight:600,color:"#34d399"}}>{d.moneda==="USD"?fU(d.total):`ARS ${d.total.toLocaleString("es-AR")}`}</td>
+          <td style={{padding:8,textAlign:"center"}}><button onClick={()=>removeDiv(d.id)} style={{background:"none",border:"none",color:"#f87171",cursor:"pointer",fontSize:14}}>✕</button></td>
+        </tr>)}</tbody>
+      </table>
+    </div>}
+  </Card>;
+}
+
 /* ── CALCULADORA CAUCIÓN ──────────────────── */
 function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetchCaucionRate,caucionForm,setCaucionForm}){
   const fARS=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
@@ -2295,6 +2472,7 @@ function App(){
   /* ── Form states lifted so they persist across tab switches ── */
   const [tradingForm,setTradingForm]=useState({tickerInput:"",cantidad:"",precioCompra:"",precioVentaManual:"",mercado:"BYMA"});
   const [caucionForm,setCaucionForm]=useState(()=>loadLS("caucionForm",INIT_CAUCION_FORM));
+  const [dividends,setDividends]=useState(()=>loadLS("dividends",[]));
 
   /* ── Price Alerts System ── */
   /* Alert: {id, ticker, mercado, condition:"above"|"below", price, active, label, createdAt, triggeredAt} */
@@ -2383,6 +2561,7 @@ function App(){
   useEffect(()=>{saveLS("hipoteca",hipoteca)},[hipoteca]);
   useEffect(()=>{saveLS("caucion",caucion)},[caucion]);
   useEffect(()=>{saveLS("caucionForm",caucionForm)},[caucionForm]);
+  useEffect(()=>{saveLS("dividends",dividends)},[dividends]);
 
   /* ── Auto-load desde Gist al abrir ──── */
   useEffect(()=>{
@@ -2398,6 +2577,8 @@ function App(){
         if(d.casa)setCasa(d.casa);
         if(d.hipoteca)setHipoteca(d.hipoteca);
         if(d.caucion)setCaucion(d.caucion);
+        if(d.perfSnapshots){setPerfSnapshots(d.perfSnapshots);saveLS("perf_snapshots",d.perfSnapshots);}
+        if(d.dividends){setDividends(d.dividends);saveLS("dividends",d.dividends);}
       }
       setSyncStatus("ok");setLastSync(new Date());
       setTimeout(()=>{isFirstLoad.current=false},500);
@@ -2409,7 +2590,7 @@ function App(){
     const token=loadLS("gh_token","");
     if(!token)return;
     const gistId=loadLS("gist_id","");
-    const data={ops,priceAlerts,casa,hipoteca,caucion,lastSaved:new Date().toISOString()};
+    const data={ops,priceAlerts,casa,hipoteca,caucion,perfSnapshots,dividends,lastSaved:new Date().toISOString()};
     setSyncStatus("syncing");
     gistSave(token,gistId,data).then(g=>{
       if(!gistId&&g.id){saveLS("gist_id",g.id)}
@@ -2438,7 +2619,7 @@ function App(){
   /* Resetear — limpia todo a vacío */
   const resetData=useCallback(()=>{
     if(!confirm("¿Estás seguro? Esto borra todas tus operaciones, alertas y configuración."))return;
-    setOps([]);setPriceAlerts([]);setCasa({precioCompra:0,anios:0,tasaAnual:0});setHipoteca({uvas:0});setCaucion({montoARS:0,tna:21,dias:1});setCaucionForm(INIT_CAUCION_FORM);
+    setOps([]);setPriceAlerts([]);setCasa({precioCompra:0,anios:0,tasaAnual:0});setHipoteca({uvas:0});setCaucion({montoARS:0,tna:21,dias:1});setCaucionForm(INIT_CAUCION_FORM);setPerfSnapshots([]);saveLS("perf_snapshots",[]);
   },[]);
 
   /* Posiciones derivadas 100% de operaciones */
@@ -2608,7 +2789,39 @@ function App(){
   /* Patrimonio total incluyendo inmueble neto - caución */
   const patrimonioNeto=portfolioTotal+casaActual.valor-deudaUSD-caucionUSD;
 
-  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"noticias",label:"Noticias",emoji:"📰"},{id:"caucion",label:"Caución",emoji:"🏦"},{id:"trading",label:"Trading",emoji:"⚡"},{id:"potencial",label:"Potencial",emoji:"🎯"}];
+  /* ── Snapshots diarios de rendimiento ── */
+  const [perfSnapshots,setPerfSnapshots]=useState(()=>loadLS("perf_snapshots",[]));
+  useEffect(()=>{
+    if(portfolioTotal<=0||!macro.dolarCCL)return;
+    const today=new Date().toISOString().split("T")[0];
+    const existing=perfSnapshots.find(s=>s.date===today);
+    const snap={date:today,portfolioUSD:Math.round(portfolioTotal*100)/100,invertidoUSD:Math.round(invertido*100)/100,portfolioARS:Math.round(portfolioTotal*macro.dolarCCL),dolarCCL:macro.dolarCCL};
+    /* Intentar guardar benchmarks (Merval en USD y S&P) — se obtienen via Yahoo */
+    const fetchBenchmarks=async()=>{
+      try{
+        const url=PROXY+encodeURIComponent("https://query1.finance.yahoo.com/v8/finance/chart/%5EMERV?range=1d&interval=1d");
+        const r=await fetch(url);const j=await r.json();
+        const mervalARS=j.chart?.result?.[0]?.meta?.regularMarketPrice||0;
+        if(mervalARS>0)snap.merval=Math.round((mervalARS/macro.dolarCCL)*100)/100;
+      }catch(e){}
+      try{
+        const url2=PROXY+encodeURIComponent("https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=1d&interval=1d");
+        const r2=await fetch(url2);const j2=await r2.json();
+        snap.sp500=j2.chart?.result?.[0]?.meta?.regularMarketPrice||0;
+      }catch(e){}
+      let updated;
+      if(existing){
+        updated=perfSnapshots.map(s=>s.date===today?{...existing,...snap}:s);
+      }else{
+        updated=[...perfSnapshots,snap].slice(-365); /* max 1 año */
+      }
+      setPerfSnapshots(updated);
+      saveLS("perf_snapshots",updated);
+    };
+    fetchBenchmarks();
+  },[portfolioTotal,invertido,macro.dolarCCL]); /* eslint-disable-line react-hooks/exhaustive-deps */
+
+  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"rendimiento",label:"Rendimiento",emoji:"📈"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"noticias",label:"Noticias",emoji:"📰"},{id:"caucion",label:"Caución",emoji:"🏦"},{id:"trading",label:"Trading",emoji:"⚡"},{id:"potencial",label:"Potencial",emoji:"🎯"}];
 
   return <div style={{minHeight:"100vh"}}>
     <header style={{background:"linear-gradient(90deg,#111827,#1e293b)",borderBottom:"1px solid #1e293b",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
@@ -2674,6 +2887,7 @@ function App(){
     {showConfig&&<SyncConfigPanel onClose={()=>setShowConfig(false)}/>}
     <main className="main-content" style={{padding:24,maxWidth:1400,margin:"0 auto"}}>
       {tab==="resumen"&&<Resumen enriched={enriched} total={portfolioTotal} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news} portfolioNeto={portfolioNeto} totalComVenta={totalComVenta}/>}
+      {tab==="rendimiento"&&<Performance snapshots={perfSnapshots} macro={macro} enriched={enriched} dividends={dividends} setDividends={setDividends}/>}
       {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro} enriched={enriched}/>}
       {tab==="trading"&&<Trading macro={macro} prices={prices} pos={pos} priceAlerts={priceAlerts} addPriceAlert={addPriceAlert} removePriceAlert={removePriceAlert} togglePriceAlert={togglePriceAlert} onOpenConfig={()=>setShowConfig(true)} tradingForm={tradingForm} setTradingForm={setTradingForm}/>}
       {tab==="potencial"&&<Potencial pos={pos} prices={prices} macro={macro}/>}
