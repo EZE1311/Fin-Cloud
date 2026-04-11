@@ -1351,10 +1351,6 @@ function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetc
   const setMonto=v=>setCaucionForm(f=>({...f,monto:v}));
   const diasTom=caucionForm.diasTom;
   const setDiasTom=v=>setCaucionForm(f=>({...f,diasTom:v}));
-  const tnaCol=caucionForm.tnaCol;
-  const setTnaCol=v=>setCaucionForm(f=>({...f,tnaCol:v}));
-  const diasCol=caucionForm.diasCol;
-  const setDiasCol=v=>setCaucionForm(f=>({...f,diasCol:v}));
   const [showIOLConfig,setShowIOLConfig]=useState(false);
   const [iolUser,setIolUser]=useState(()=>{const c=loadLS("iol_creds",null);return c?c.user:""});
   const [iolPass,setIolPass]=useState(()=>{const c=loadLS("iol_creds",null);return c?c.pass:""});
@@ -1367,7 +1363,7 @@ function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetc
   React.useEffect(()=>{if(caucionState.tna!=null&&caucionState.tna!==parseFloat(tnaTomStr))setTnaTomStr(String(caucionState.tna));},[caucionState.tna]);
 
   const tom=calcCaucion(parseFloat(monto)||0,tnaTom,parseInt(diasTom)||0,false);
-  const col=calcCaucion(parseFloat(monto)||0,parseFloat(tnaCol)||0,parseInt(diasCol)||0,true);
+  const col=calcCaucion(parseFloat(monto)||0,tnaTom,parseInt(diasTom)||0,true);
 
   const inputSt={background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"8px 12px",color:"#e2e8f0",fontSize:15,fontWeight:600,width:"100%",fontVariantNumeric:"tabular-nums"};
   const labelSt={fontSize:11,color:"#64748b",display:"block",marginBottom:4,textTransform:"uppercase",letterSpacing:".04em"};
@@ -1473,12 +1469,10 @@ function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetc
 
     {/* ── Calculadora de Caución ── */}
     <Card title="Calculadora de Caución" right={<span style={{fontSize:10,color:"#475569"}}>BYMA · Bull Market Active Trader Plus</span>}>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:14,alignItems:"end"}}>
-        <div style={{gridColumn:"span 1"}}><label style={labelSt}>Monto Contado ($)</label><input type="text" value={monto?parseInt(monto).toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setMonto(raw);}} style={inputSt}/></div>
-        <div><label style={labelSt}>TNA Tomadora (%)</label><input type="text" inputMode="decimal" value={tnaTomStr} onChange={e=>setTnaTom(e.target.value)} style={inputSt}/></div>
-        <div><label style={labelSt}>Días Tomadora</label><input type="number" value={diasTom} onChange={e=>setDiasTom(e.target.value)} style={inputSt}/></div>
-        <div><label style={labelSt}>TNA Colocadora (%)</label><input type="number" step="0.5" value={tnaCol} onChange={e=>setTnaCol(e.target.value)} style={inputSt}/></div>
-        <div><label style={labelSt}>Días Colocadora</label><input type="number" value={diasCol} onChange={e=>setDiasCol(e.target.value)} style={inputSt}/></div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14,alignItems:"end"}}>
+        <div><label style={labelSt}>Monto Contado ($)</label><input type="text" value={monto?parseInt(monto).toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setMonto(raw);}} style={inputSt}/></div>
+        <div><label style={labelSt}>TNA (%)</label><input type="text" inputMode="decimal" value={tnaTomStr} onChange={e=>setTnaTom(e.target.value)} style={inputSt}/></div>
+        <div><label style={labelSt}>Días</label><input type="number" value={diasTom} onChange={e=>setDiasTom(e.target.value)} style={inputSt}/></div>
       </div>
     </Card>
     {/* Paneles lado a lado */}
@@ -2147,7 +2141,7 @@ function saveLS(key,val){try{localStorage.setItem("eid_"+key,JSON.stringify(val)
 const INIT_CASA={precioCompra:0,anios:0,tasaAnual:0};
 const INIT_HIPOTECA={uvas:0};
 const INIT_CAUCION={montoARS:0,tna:21,dias:1};
-const INIT_CAUCION_FORM={monto:"66521399",diasTom:"4",tnaCol:"22",diasCol:"3"};
+const INIT_CAUCION_FORM={monto:"66521399",diasTom:"4"};
 
 /* ── GIST SYNC ENGINE ───────────────────── */
 const GIST_FILENAME="fin-cloud-data.json";
