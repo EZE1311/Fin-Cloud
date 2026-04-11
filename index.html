@@ -1616,15 +1616,15 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
 
     {/* Operación */}
     <Card title="Operación" right={<span style={{fontSize:10,color:exento?"#34d399":"#64748b"}}>{tipoActivo?`${tipoActivo} · `:""}{moneda}{exento?" · IVA Exento":isBYMA?" · IVA 21%":" · Sin IVA"}</span>}>
-      <div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 1fr 1fr",gap:14,alignItems:"end"}}>
+      <div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 1fr 1fr",gap:14,alignItems:"start"}}>
         <div><label style={labelSt}>Ticker</label>
           <div style={{position:"relative"}}>
             <input type="text" value={tickerInput} onChange={e=>setTickerInput(e.target.value.toUpperCase())} style={inputSt} placeholder={isBYMA?"Ej: GGAL, VIST, MELI":"Ej: IBM, AAPL, TSLA"} list="ticker-list"/>
             <datalist id="ticker-list">{allTickers.map(t=><option key={t} value={t}/>)}</datalist>
+            {ticker&&tradingPriceLoading&&<div style={{fontSize:10,color:"#fbbf24",marginTop:4,position:"absolute",left:0,top:"100%",whiteSpace:"nowrap"}}>Buscando cotización...</div>}
+            {ticker&&priceData&&!tradingPriceLoading&&<div style={{fontSize:10,color:"#34d399",marginTop:4,position:"absolute",left:0,top:"100%",whiteSpace:"nowrap"}}>Cotización: {isBYMA?(priceData.priceARS?`$ ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(priceData.priceARS)}`:"—"):(priceData.price?`USD ${new Intl.NumberFormat("en-US",{maximumFractionDigits:2}).format(priceData.price)}`:"—")}</div>}
+            {ticker&&!priceData&&!tradingPriceLoading&&<div style={{fontSize:10,color:"#64748b",marginTop:4,position:"absolute",left:0,top:"100%",whiteSpace:"nowrap"}}>Sin cotización — ingresá precio manual</div>}
           </div>
-          {ticker&&tradingPriceLoading&&<div style={{fontSize:10,color:"#fbbf24",marginTop:4}}>Buscando cotización...</div>}
-          {ticker&&priceData&&!tradingPriceLoading&&<div style={{fontSize:10,color:"#34d399",marginTop:4}}>Cotización: {isBYMA?(priceData.priceARS?`$ ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(priceData.priceARS)}`:"—"):(priceData.price?`USD ${new Intl.NumberFormat("en-US",{maximumFractionDigits:2}).format(priceData.price)}`:"—")}</div>}
-          {ticker&&!priceData&&!tradingPriceLoading&&<div style={{fontSize:10,color:"#64748b",marginTop:4}}>Sin cotización — ingresá precio manual</div>}
         </div>
         <div><label style={labelSt}>Cantidad</label><input type="text" value={cantidad} onChange={e=>setCantidad(e.target.value.replace(/[^\d]/g,""))} style={inputSt} placeholder="Nominales"/></div>
         <div><label style={labelSt}>Precio Compra ({monedaSym.trim()})</label><input type="text" value={precioCompra} onChange={e=>setPrecioCompra(e.target.value.replace(/[^\d.,]/g,""))} style={inputSt} placeholder={isBYMA?"34.800 ó 34800":"232.50"}/></div>
@@ -1750,59 +1750,70 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
 
     {/* ── Alertas de Precio ── */}
     <Card title="🔔 Alertas de Precio" right={loadLS("wa_phone","")?<span style={{fontSize:10,color:"#34d399"}}>📱 WhatsApp activo</span>:<button onClick={onOpenConfig} style={{fontSize:10,color:"#60a5fa",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>⚙️ Configurar WhatsApp</button>}>
-      {/* Create alert form */}
       {(()=>{
         const [alertTicker,setAlertTicker]=useState("");
-        const [alertPrice,setAlertPrice]=useState("");
-        const [alertCondition,setAlertCondition]=useState("above");
+        const [alertTarget,setAlertTarget]=useState("");
+        const [alertStop,setAlertStop]=useState("");
         const [alertLabel,setAlertLabel]=useState("");
         const alertMercado=isBYMA?"BYMA":"NYSE";
 
-        const createAlert=()=>{
+        const createAlerts=()=>{
           const t=alertTicker.trim().toUpperCase()||ticker;
-          const p=parseNum(alertPrice);
-          if(!t||p<=0)return;
-          addPriceAlert({ticker:t,mercado:alertMercado,condition:alertCondition,price:p,label:alertLabel});
-          setAlertTicker("");setAlertPrice("");setAlertLabel("");
+          const target=parseNum(alertTarget);
+          const stop=parseNum(alertStop);
+          if(!t||(target<=0&&stop<=0))return;
+          const groupId=Date.now();
+          if(target>0)addPriceAlert({ticker:t,mercado:alertMercado,condition:"above",price:target,label:alertLabel?(alertLabel+" — Target"):"Target",groupId});
+          if(stop>0)addPriceAlert({ticker:t,mercado:alertMercado,condition:"below",price:stop,label:alertLabel?(alertLabel+" — Stop Loss"):"Stop Loss",groupId});
+          setAlertTicker("");setAlertTarget("");setAlertStop("");setAlertLabel("");
         };
 
+        /* Current price for the alert ticker */
+        const aT=alertTicker.trim().toUpperCase()||ticker;
+        const aPd=prices[aT];
+        const aCur=isBYMA?(aPd?.priceARS||0):(aPd?.price||0);
+
         return <div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 0.6fr 1fr 1.2fr auto",gap:10,alignItems:"end",marginBottom:14}}>
+          <div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 1fr 1.2fr auto",gap:10,alignItems:"start",marginBottom:14}}>
             <div>
               <label style={{fontSize:10,color:"#64748b",display:"block",marginBottom:3}}>TICKER</label>
               <input value={alertTicker} onChange={e=>setAlertTicker(e.target.value.toUpperCase())} placeholder={ticker||"GGAL"} style={{...inputSt,fontSize:13,padding:"6px 10px"}}/>
+              {aCur>0&&<div style={{fontSize:10,color:"#64748b",marginTop:3}}>Actual: {isBYMA?`$ ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(aCur)}`:`USD ${aCur.toFixed(2)}`}</div>}
             </div>
             <div>
-              <label style={{fontSize:10,color:"#64748b",display:"block",marginBottom:3}}>CONDICIÓN</label>
-              <select value={alertCondition} onChange={e=>setAlertCondition(e.target.value)} style={{...inputSt,fontSize:13,padding:"6px 10px",cursor:"pointer"}}>
-                <option value="above">⬆️ Sube a</option>
-                <option value="below">⬇️ Baja a</option>
-              </select>
+              <label style={{fontSize:10,color:"#34d399",display:"block",marginBottom:3}}>⬆️ TARGET ({monedaSym.trim()})</label>
+              <input value={alertTarget} onChange={e=>setAlertTarget(e.target.value.replace(/[^\d.,]/g,""))} placeholder={isBYMA?"Ej: 45.000":"Ej: 280"} style={{...inputSt,fontSize:13,padding:"6px 10px",borderColor:alertTarget?"#34d39966":"#334155"}}/>
+              {parseNum(alertTarget)>0&&aCur>0&&<div style={{fontSize:10,color:"#34d399",marginTop:3}}>+{((parseNum(alertTarget)-aCur)/aCur*100).toFixed(1)}% desde actual</div>}
             </div>
             <div>
-              <label style={{fontSize:10,color:"#64748b",display:"block",marginBottom:3}}>PRECIO ({monedaSym.trim()})</label>
-              <input value={alertPrice} onChange={e=>setAlertPrice(e.target.value.replace(/[^\d.,]/g,""))} placeholder={isBYMA?"35.000":"250"} style={{...inputSt,fontSize:13,padding:"6px 10px"}}/>
+              <label style={{fontSize:10,color:"#f87171",display:"block",marginBottom:3}}>⬇️ STOP LOSS ({monedaSym.trim()})</label>
+              <input value={alertStop} onChange={e=>setAlertStop(e.target.value.replace(/[^\d.,]/g,""))} placeholder={isBYMA?"Ej: 28.000":"Ej: 200"} style={{...inputSt,fontSize:13,padding:"6px 10px",borderColor:alertStop?"#f8717166":"#334155"}}/>
+              {parseNum(alertStop)>0&&aCur>0&&<div style={{fontSize:10,color:"#f87171",marginTop:3}}>{((parseNum(alertStop)-aCur)/aCur*100).toFixed(1)}% desde actual</div>}
             </div>
             <div>
               <label style={{fontSize:10,color:"#64748b",display:"block",marginBottom:3}}>NOTA (OPCIONAL)</label>
-              <input value={alertLabel} onChange={e=>setAlertLabel(e.target.value)} placeholder="Ej: Target 1, Stop loss" style={{...inputSt,fontSize:13,padding:"6px 10px"}}/>
+              <input value={alertLabel} onChange={e=>setAlertLabel(e.target.value)} placeholder="Ej: Trade VIST" style={{...inputSt,fontSize:13,padding:"6px 10px"}}/>
             </div>
-            <button onClick={createAlert} style={{background:"#2563eb",border:"none",color:"#fff",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>+ Crear</button>
+            <div style={{paddingTop:17}}>
+              <button onClick={createAlerts} style={{background:"#2563eb",border:"none",color:"#fff",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>+ Crear</button>
+            </div>
           </div>
+          <div style={{fontSize:10,color:"#475569",marginBottom:10,fontStyle:"italic"}}>Podés completar solo Target, solo Stop Loss, o ambos. Se crean alertas independientes para cada precio.</div>
 
           {/* Active alerts list */}
           {priceAlerts.length>0&&<table style={{width:"100%",borderCollapse:"collapse"}}>
             <thead><tr>
-              {["Ticker","Condición","Precio","Nota","Estado",""].map(h=><th key={h} style={{padding:"5px 8px",textAlign:"left",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
+              {["Ticker","Tipo","Precio","Nota","Estado",""].map(h=><th key={h} style={{padding:"5px 8px",textAlign:"left",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
             </tr></thead>
             <tbody>{priceAlerts.map(a=>{
               const pd=prices[a.ticker];
               const isBM=a.mercado==="BYMA";
               const cur=isBM?(pd?.priceARS||0):(pd?.price||0);
               const dist=a.price&&cur?((a.price-cur)/cur*100):null;
+              const isTarget=a.condition==="above";
               return<tr key={a.id} style={{borderBottom:"1px solid #1e293b",opacity:a.active?1:0.5}}>
                 <td style={{padding:"5px 8px",fontWeight:700,fontSize:13}}>{a.ticker} <span style={{fontSize:10,color:"#64748b"}}>{isBM?"🇦🇷":"🇺🇸"}</span></td>
-                <td style={{padding:"5px 8px",fontSize:12}}>{a.condition==="above"?"⬆️ Sube a":"⬇️ Baja a"}</td>
+                <td style={{padding:"5px 8px",fontSize:12}}><span style={{color:isTarget?"#34d399":"#f87171",fontWeight:600}}>{isTarget?"⬆️ Target":"⬇️ Stop Loss"}</span></td>
                 <td style={{padding:"5px 8px",fontSize:13,fontWeight:600,fontVariantNumeric:"tabular-nums"}}>
                   {isBM?fARS(a.price):`USD ${a.price.toFixed(2)}`}
                   {dist!=null&&<span style={{fontSize:10,color:dist>=0?"#34d399":"#f87171",marginLeft:6}}>({dist>=0?"+":""}{dist.toFixed(1)}%)</span>}
@@ -1820,7 +1831,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
               </tr>;
             })}</tbody>
           </table>}
-          {priceAlerts.length===0&&<div style={{textAlign:"center",padding:12,fontSize:12,color:"#475569"}}>No hay alertas configuradas. Creá una arriba o activá WhatsApp en ⚙️ Config.</div>}
+          {priceAlerts.length===0&&<div style={{textAlign:"center",padding:12,fontSize:12,color:"#475569"}}>No hay alertas configuradas. Ingresá un ticker con precio Target y/o Stop Loss.</div>}
         </div>;
       })()}
     </Card>
@@ -2123,11 +2134,16 @@ function SyncConfigPanel({onClose}){
     setWaTesting(true);setWaStatus("");
     try{
       saveLS("wa_phone",waPhone);saveLS("wa_apikey",waKey);
+      saveLS("wa_phone",waPhone);saveLS("wa_apikey",waKey);
       const msg=encodeURIComponent("✅ Fin-Cloud alertas conectadas!");
-      const url=`https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(waPhone)}&text=${msg}&apikey=${encodeURIComponent(waKey)}`;
-      const res=await fetch(url);
-      if(res.ok){setWaStatus("✅ Mensaje de prueba enviado, revisá tu WhatsApp!");}
-      else{setWaStatus("❌ Error: revisá tu número y API key");}
+      const directUrl=`https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(waPhone)}&text=${msg}&apikey=${encodeURIComponent(waKey)}`;
+      /* Try direct first, then CORS proxies */
+      let ok=false;
+      try{const res=await fetch(directUrl);ok=res.ok;}catch(e){}
+      if(!ok){try{const res=await fetch(PROXY+encodeURIComponent(directUrl));ok=res.ok;}catch(e){}}
+      if(!ok){try{const res=await fetch("https://corsproxy.io/?"+encodeURIComponent(directUrl));ok=res.ok;}catch(e){}}
+      if(ok){setWaStatus("✅ Mensaje enviado, revisá tu WhatsApp!");}
+      else{setWaStatus("❌ Error de conexión. Probá abrir este link en otra pestaña: "+directUrl);}
     }catch(e){setWaStatus("❌ "+e.message);}
     setWaTesting(false);
   };
@@ -2238,10 +2254,10 @@ function App(){
     const phone=loadLS("wa_phone","");
     const apikey=loadLS("wa_apikey","");
     if(!phone||!apikey)return;
-    try{
-      const url=`https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(msg)}&apikey=${encodeURIComponent(apikey)}`;
-      await fetch(url);
-    }catch(e){console.warn("WhatsApp send failed:",e);}
+    const directUrl=`https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(msg)}&apikey=${encodeURIComponent(apikey)}`;
+    try{await fetch(directUrl);return;}catch(e){}
+    try{await fetch(PROXY+encodeURIComponent(directUrl));return;}catch(e){}
+    try{await fetch("https://corsproxy.io/?"+encodeURIComponent(directUrl));}catch(e){console.warn("WhatsApp send failed — all proxies tried");}
   },[]);
 
   /* Send browser notification */
