@@ -416,13 +416,31 @@ async function fetchMacroReal(){
       return null;
     };
 
-    /* BCRA: Tasa PM (6), Inflación IA (28), Reservas (1) — en paralelo, con fallback datos.gob.ar */
+    /* ArgentinaDatos: inflación interanual (fuente primaria, más confiable que BCRA API) */
+    const adFetch=async(path)=>{
+      try{
+        const url="https://api.argentinadatos.com/v1/"+path;
+        let r;
+        try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+        if(r&&r.ok){const j=await r.json();if(Array.isArray(j)&&j.length>0)return j[j.length-1].valor||null;}
+      }catch(e){}
+      return null;
+    };
+
+    /* Fuentes en paralelo: BCRA v4 (Tasa PM, Reservas) + ArgentinaDatos (Infl IA) + BCRA v4 Infl IA */
     let tasa=0,inflacionIA=0,reservas=0;
     try{
-      const [vTasa,vIA,vRes]=await Promise.allSettled([bcraFetch(6),bcraFetch(28),bcraFetch(1)]);
+      const [vTasa,vRes,vIA_ad,vIA_bcra]=await Promise.allSettled([
+        bcraFetch(6),                                     /* BCRA v4: Tasa PM */
+        bcraFetch(1),                                     /* BCRA v4: Reservas */
+        adFetch("finanzas/indices/inflacionInteranual"),   /* ArgentinaDatos: Infl IA */
+        bcraFetch(28)                                     /* BCRA v4: Infl IA (backup) */
+      ]);
       if(vTasa.status==="fulfilled"&&vTasa.value) tasa=vTasa.value;
-      if(vIA.status==="fulfilled"&&vIA.value) inflacionIA=vIA.value;
       if(vRes.status==="fulfilled"&&vRes.value) reservas=Math.round(vRes.value);
+      /* Inflación IA: preferir ArgentinaDatos, fallback BCRA */
+      if(vIA_ad.status==="fulfilled"&&vIA_ad.value) inflacionIA=vIA_ad.value;
+      else if(vIA_bcra.status==="fulfilled"&&vIA_bcra.value) inflacionIA=vIA_bcra.value;
     }catch(e){}
     /* Si alguno quedó en 0, intentar fallback datos.gob.ar */
     try{
@@ -431,6 +449,21 @@ async function fetchMacroReal(){
       if(!tasa) fb.push(datosFetch("268.1_TMINDINGS_0_0_22").then(v=>{if(v)tasa=v;}));
       if(fb.length>0)await Promise.allSettled(fb);
     }catch(e){}
+    /* Último intento Tasa PM: buscar dinámicamente en BCRA v4 si el ID cambió */
+    if(!tasa){
+      try{
+        const lUrl=BCRA_BASE+"?limit=100";
+        let lr;try{lr=await fetch(lUrl);}catch(e){lr=await fetch(PROXY+encodeURIComponent(lUrl));}
+        if(lr&&lr.ok){
+          const lj=await lr.json();
+          const vars=lj.results||lj.data||lj;
+          if(Array.isArray(vars)){
+            const tp=vars.find(v=>/pol.tica.monetaria/i.test(v.descripcion||v.nombre||v.description||""));
+            if(tp){const id=tp.idVariable||tp.id;if(id){const val=await bcraFetch(id);if(val)tasa=val;}}
+          }
+        }
+      }catch(e){}
+    }
 
     /* Índices de mercado: S&P 500 y Merval (para contexto de movimientos) */
     let sp500Chg=0,mervalChg=0;
