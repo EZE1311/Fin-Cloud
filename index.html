@@ -387,19 +387,25 @@ async function fetchMacroReal(){
 
     /* ── BCRA API — Tasa Política Monetaria, Inflación Interanual, Reservas ── */
     /* v3.0 deprecada 28/02/2026 — migrado a v4.0 */
+    /* NOTA: BCRA dejó de publicar "Tasa de política monetaria" (IDs 6/160/161) en jul-2025.
+       Se usa rango amplio (2 años) para capturar último valor conocido si no hay datos recientes. */
     const BCRA_BASE="https://api.bcra.gob.ar/estadisticas/v4.0/monetarias";
     const hoy=new Date();
     const hace60=new Date(hoy);hace60.setDate(hoy.getDate()-60);
+    const hace2y=new Date(hoy);hace2y.setFullYear(hoy.getFullYear()-2);
     const fmtD=(d)=>d.toISOString().split("T")[0];
-    const bcraFetch=async(idVar)=>{
+    const bcraFetch=async(idVar,desde)=>{
       try{
-        const url=BCRA_BASE+"/"+idVar+"?desde="+fmtD(hace60)+"&hasta="+fmtD(hoy)+"&limit=100";
+        const url=BCRA_BASE+"/"+idVar+"?desde="+fmtD(desde||hace60)+"&hasta="+fmtD(hoy)+"&limit=1000";
         /* Intentar directo primero, si falla CORS usar proxy */
         let r;
         try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
         if(r&&r.ok){
           const j=await r.json();
-          const arr=j.results||j.data||j;
+          const res=j.results||j.data||j;
+          /* v4.0 devuelve [{idVariable, detalle:[{fecha,valor}]}] */
+          let arr=res;
+          if(Array.isArray(res)&&res.length>0&&res[0].detalle) arr=res[0].detalle;
           if(Array.isArray(arr)&&arr.length>0){const last=arr[arr.length-1];return last.v??last.valor??last.value??null;}
         }
       }catch(e){}
@@ -427,53 +433,43 @@ async function fetchMacroReal(){
       return null;
     };
 
-    /* Fuentes en paralelo: BCRA v4 (Tasa PM, Reservas) + ArgentinaDatos (Infl IA) + BCRA v4 Infl IA */
+    /* Fuentes en paralelo: BCRA v4 (BADLAR, Reservas) + ArgentinaDatos (Infl IA) + BCRA v4 Infl IA */
+    /* BCRA dejó de publicar "Tasa de política monetaria" (IDs 6/160/161) tras jul-2025.
+       Se usa BADLAR bancos privados (ID 7) como referencia de tasa — se actualiza diariamente. */
     let tasa=0,inflacionIA=0,reservas=0;
     try{
-      const [vTasa,vRes,vIA_ad,vIA_bcra]=await Promise.allSettled([
-        bcraFetch(6),                                     /* BCRA v4: Tasa PM */
+      const [vBadlar,vRes,vIA_ad,vIA_bcra]=await Promise.allSettled([
+        bcraFetch(7),                                     /* BCRA v4: BADLAR bancos privados (TNA) */
         bcraFetch(1),                                     /* BCRA v4: Reservas */
         adFetch("finanzas/indices/inflacionInteranual"),   /* ArgentinaDatos: Infl IA */
         bcraFetch(28)                                     /* BCRA v4: Infl IA (backup) */
       ]);
-      if(vTasa.status==="fulfilled"&&vTasa.value) tasa=vTasa.value;
+      if(vBadlar.status==="fulfilled"&&vBadlar.value) tasa=vBadlar.value;
       if(vRes.status==="fulfilled"&&vRes.value) reservas=Math.round(vRes.value);
       /* Inflación IA: preferir ArgentinaDatos, fallback BCRA */
       if(vIA_ad.status==="fulfilled"&&vIA_ad.value) inflacionIA=vIA_ad.value;
       else if(vIA_bcra.status==="fulfilled"&&vIA_bcra.value) inflacionIA=vIA_bcra.value;
     }catch(e){}
-    /* Si alguno quedó en 0, intentar fallback datos.gob.ar */
+    /* Si reservas quedó en 0, intentar fallback datos.gob.ar */
     try{
       const fb=[];
       if(!reservas) fb.push(datosFetch("92.2_RESERVAS_IRES_0_0_32_40").then(v=>{if(v)reservas=Math.round(v);}));
-      if(!tasa) fb.push(datosFetch("268.1_TMINDINGS_0_0_22").then(v=>{if(v)tasa=v;}));
       if(fb.length>0)await Promise.allSettled(fb);
     }catch(e){}
-    /* Último intento Tasa PM: buscar dinámicamente en BCRA v4 si el ID cambió */
-    if(!tasa){
-      try{
-        const lUrl=BCRA_BASE+"?limit=100";
-        let lr;try{lr=await fetch(lUrl);}catch(e){lr=await fetch(PROXY+encodeURIComponent(lUrl));}
-        if(lr&&lr.ok){
-          const lj=await lr.json();
-          const vars=lj.results||lj.data||lj;
-          if(Array.isArray(vars)){
-            const tp=vars.find(v=>/pol.tica.monetaria/i.test(v.descripcion||v.nombre||v.description||""));
-            if(tp){const id=tp.idVariable||tp.id;if(id){const val=await bcraFetch(id);if(val)tasa=val;}}
-          }
-        }
-      }catch(e){}
-    }
 
     /* Índices de mercado: S&P 500 y Merval (para contexto de movimientos) */
+    /* Índices: usar v8/chart (v7/quote requiere auth desde ~2025) */
     let sp500Chg=0,mervalChg=0;
     try{
-      const idxUrl=PROXY+encodeURIComponent("https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5EGSPC,%5EMERV&fields=regularMarketChangePercent");
-      const idxRes=await fetch(idxUrl);const idxData=await idxRes.json();
-      (idxData.quoteResponse?.result||[]).forEach(q=>{
-        if(q.symbol==="^GSPC")sp500Chg=q.regularMarketChangePercent||0;
-        if(q.symbol==="^MERV")mervalChg=q.regularMarketChangePercent||0;
-      });
+      const chartIdx=async(sym)=>{
+        const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=1d&interval=1d`;
+        let r;try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+        if(r&&r.ok){const j=await r.json();const m=j.chart?.result?.[0]?.meta;if(m){const p=m.regularMarketPrice,prev=m.chartPreviousClose||m.previousClose;return prev?((p-prev)/prev*100):0;}}
+        return 0;
+      };
+      const [spR,mvR]=await Promise.allSettled([chartIdx("^GSPC"),chartIdx("^MERV")]);
+      if(spR.status==="fulfilled")sp500Chg=spR.value;
+      if(mvR.status==="fulfilled")mervalChg=mvR.value;
     }catch(e){}
 
     return{dolarOficial:oficial||0,dolarMEP:mep||0,dolarCCL:ccl||0,dolarBlue:blue||0,dolarTarjeta:tarjeta||0,riesgoPais,inflacion,inflacionIA,tasa,uva,uvaVar30d,reservas,sp500Chg,mervalChg};
@@ -539,20 +535,32 @@ async function fetchPricesReal(tickers){
     });
 
     /* Yahoo Finance fallback para tickers no encontrados en data912 */
+    /* NOTA: Yahoo v7/finance/quote requiere auth desde ~2025. Usar v8/finance/chart (público). */
     const missing=tickers.filter(t=>!prices[t]);
     if(missing.length>0){
-      try{
-        const syms=missing.map(t=>d912Sym(t,D912_USA_ALIAS)).join(",");
-        const yfUrl=PROXY+encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms}&fields=regularMarketPrice,regularMarketChangePercent,regularMarketPreviousClose`);
-        const yfRes=await fetch(yfUrl);const yfData=await yfRes.json();
-        (yfData.quoteResponse?.result||[]).forEach(q=>{
-          const ticker=missing.find(t=>d912Sym(t,D912_USA_ALIAS)===q.symbol)||q.symbol;
-          if(q.regularMarketPrice){
-            /* Determinar si es acción arg basado en exchange/currency */
-            const isArg=q.exchange==="BUE"||q.currency==="ARS"||(q.market||"").includes("ar_market");
-            prices[ticker]={price:isArg?0:q.regularMarketPrice,change:isArg?0:(q.regularMarketChangePercent||0),prev:isArg?0:(q.regularMarketPreviousClose||0),priceARS:isArg?q.regularMarketPrice:null,changeARS:isArg?(q.regularMarketChangePercent||0):null,d912:{isCedear:false,isArgStock:isArg,isBond:false,isUsaStock:!isArg}};
+      const yfChartFetch=async(ticker)=>{
+        const sym=d912Sym(ticker,D912_USA_ALIAS);
+        try{
+          const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=5d&interval=1d`;
+          let r;try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+          if(r&&r.ok){
+            const j=await r.json();
+            const meta=j.chart?.result?.[0]?.meta;
+            const quotes=j.chart?.result?.[0]?.indicators?.quote?.[0];
+            if(meta&&meta.regularMarketPrice){
+              const price=meta.regularMarketPrice;
+              const prev=meta.chartPreviousClose||meta.previousClose||price;
+              const change=prev?((price-prev)/prev*100):0;
+              const isArg=(meta.exchangeName||"").includes("Buenos")||(meta.currency||"")==="ARS";
+              return{ticker,price:isArg?0:price,change:isArg?0:change,prev:isArg?0:prev,priceARS:isArg?price:null,changeARS:isArg?change:null,d912:{isCedear:false,isArgStock:isArg,isBond:false,isUsaStock:!isArg}};
+            }
           }
-        });
+        }catch(e){}
+        return null;
+      };
+      try{
+        const results=await Promise.allSettled(missing.map(t=>yfChartFetch(t)));
+        results.forEach(r=>{if(r.status==="fulfilled"&&r.value){const d=r.value;prices[d.ticker]=d;}});
       }catch(e){}
     }
     return prices;
@@ -1875,14 +1883,18 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
           setTradingPrice({priceARS:isArg?hit.c:null,price:isArg?0:hit.c,changeARS:isArg?(hit.pct_change||0):null,change:isArg?0:(hit.pct_change||0)});
           setTradingPriceLoading(false);return;
         }
-        /* Yahoo fallback */
+        /* Yahoo v8/chart fallback (v7/quote requiere auth desde ~2025) */
         try{
-          const yfUrl=PROXY+encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${ticker}&fields=regularMarketPrice,regularMarketChangePercent`);
-          const yfRes=await fetch(yfUrl);const yfData=await yfRes.json();
-          const q=(yfData.quoteResponse?.result||[])[0];
-          if(q&&q.regularMarketPrice){
-            const isArg=q.exchange==="BUE"||q.currency==="ARS";
-            setTradingPrice({priceARS:isArg?q.regularMarketPrice:null,price:isArg?0:q.regularMarketPrice,changeARS:isArg?(q.regularMarketChangePercent||0):null,change:isArg?0:(q.regularMarketChangePercent||0)});
+          const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d`;
+          let r;try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+          if(r&&r.ok){
+            const j=await r.json();const meta=j.chart?.result?.[0]?.meta;
+            if(meta&&meta.regularMarketPrice){
+              const p=meta.regularMarketPrice,prev=meta.chartPreviousClose||meta.previousClose||p;
+              const chg=prev?((p-prev)/prev*100):0;
+              const isArg=(meta.exchangeName||"").includes("Buenos")||(meta.currency||"")==="ARS";
+              setTradingPrice({priceARS:isArg?p:null,price:isArg?0:p,changeARS:isArg?chg:null,change:isArg?0:chg});
+            }
           }
         }catch(e){}
       }catch(e){console.warn("Trading price fetch error:",e);}
@@ -1981,8 +1993,8 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
   const labelSt={fontSize:11,color:"#64748b",display:"block",marginBottom:4,textTransform:"uppercase",letterSpacing:".04em"};
 
   /* Formatear montos en la moneda del mercado */
-  const fM=n=>n==null||isNaN(n)?"—":isBYMA?fARS(n):`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
-  const fM2=n=>n==null||isNaN(n)?"—":isBYMA?fARS2(n):`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:2,maximumFractionDigits:4}).format(n)}`;
+  const fM=n=>{if(n==null||isNaN(n))return"—";if(isBYMA)return fARS(n);const abs=Math.abs(n);const d=abs<0.01?6:abs<1?4:2;return`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)}`;};
+  const fM2=n=>{if(n==null||isNaN(n))return"—";if(isBYMA)return fARS2(n);const abs=Math.abs(n);const d=abs<0.01?6:abs<1?4:2;return`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)}`;};
   /* Equivalente en la otra moneda */
   const fAlt=n=>n==null||isNaN(n)?"—":isBYMA?fUSD(n/mep):fARS(n*mep);
   const fAltLabel=isBYMA?"MEP":"ARS";
@@ -2008,7 +2020,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
           <div style={{position:"relative"}}>
             <input type="text" value={tickerInput} onChange={e=>setTickerInput(e.target.value.toUpperCase())} style={inputSt} placeholder={isBYMA?"Ej: GGAL, VIST, MELI":"Ej: IBM, AAPL, TSLA"}/>
             {ticker&&tradingPriceLoading&&<div style={{fontSize:10,color:"#fbbf24",marginTop:4,position:"absolute",left:0,top:"100%",whiteSpace:"nowrap"}}>Buscando cotización...</div>}
-            {ticker&&priceData&&!tradingPriceLoading&&<div style={{fontSize:10,color:"#34d399",marginTop:4,position:"absolute",left:0,top:"100%",whiteSpace:"nowrap"}}>Cotización: {isBYMA?(priceData.priceARS?`$ ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(priceData.priceARS)}`:"—"):(priceData.price?`USD ${new Intl.NumberFormat("en-US",{maximumFractionDigits:2}).format(priceData.price)}`:"—")}</div>}
+            {ticker&&priceData&&!tradingPriceLoading&&<div style={{fontSize:10,color:"#34d399",marginTop:4,position:"absolute",left:0,top:"100%",whiteSpace:"nowrap"}}>Cotización: {isBYMA?(priceData.priceARS?`$ ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(priceData.priceARS)}`:"—"):(priceData.price?fM(priceData.price):"—")}</div>}
             {ticker&&!priceData&&!tradingPriceLoading&&<div style={{fontSize:10,color:"#64748b",marginTop:4,position:"absolute",left:0,top:"100%",whiteSpace:"nowrap"}}>Sin cotización — ingresá precio manual</div>}
           </div>
         </div>
@@ -2708,17 +2720,38 @@ function App(){
   },[]);
 
   /* ── Auto-save a Gist con debounce de 3s ──── */
+  /* Incluye snapshot de portfolio para que tareas programadas puedan leerlo */
   const doGistSave=useCallback(()=>{
     const token=loadLS("gh_token","");
     if(!token)return;
     const gistId=loadLS("gist_id","");
-    const data={ops,priceAlerts,casa,hipoteca,caucion,perfSnapshots,lastSaved:new Date().toISOString()};
+    /* Portfolio snapshot con precios actuales para consumo externo */
+    const portfolioSnapshot=enriched.map(p=>({
+      ticker:p.ticker,cantidad:p.cantidad,ppc:Math.round(p.ppc*100)/100,
+      precioActual:Math.round(p.precioActual*100)/100,
+      montoInvertido:Math.round(p.montoInvertido*100)/100,
+      montoActual:Math.round(p.montoActual*100)/100,
+      pl:Math.round(p.pl*100)/100,rendimiento:Math.round(p.rendimiento*100)/100,
+      variacion:Math.round((p.variacion||0)*100)/100,
+      broker:p.broker,mercado:p.mercado
+    }));
+    const macroSnap={dolarCCL:macro.dolarCCL,dolarMEP:macro.dolarMEP,dolarBlue:macro.dolarBlue,
+      riesgoPais:macro.riesgoPais,inflacion:macro.inflacion,inflacionIA:macro.inflacionIA,
+      tasa:macro.tasa,reservas:macro.reservas,mervalChg:macro.mervalChg,sp500Chg:macro.sp500Chg};
+    const data={ops,priceAlerts,casa,hipoteca,caucion,perfSnapshots,
+      portfolioSnapshot,macroSnapshot:macroSnap,
+      portfolioTotal:Math.round(portfolioTotal*100)/100,
+      invertido:Math.round(invertido*100)/100,
+      pl:Math.round(pl*100)/100,
+      rend:Math.round(rend*100)/100,
+      caucionUSD:Math.round(caucionUSD*100)/100,
+      lastSaved:new Date().toISOString()};
     setSyncStatus("syncing");
     gistSave(token,gistId,data).then(g=>{
       if(!gistId&&g.id){saveLS("gist_id",g.id)}
       setSyncStatus("ok");setLastSync(new Date());
     }).catch(()=>setSyncStatus("error"));
-  },[ops,priceAlerts,casa,hipoteca,caucion]);
+  },[ops,priceAlerts,casa,hipoteca,caucion,enriched,macro,portfolioTotal,invertido,pl,rend,caucionUSD]);
 
   useEffect(()=>{
     if(isFirstLoad.current)return;
@@ -2731,12 +2764,12 @@ function App(){
 
   /* Exportar datos como JSON (backup local) */
   const exportData=useCallback(()=>{
-    const data={ops,priceAlerts,casa,hipoteca,caucion,exportDate:new Date().toISOString()};
+    const data={ops,priceAlerts,casa,hipoteca,caucion,perfSnapshots,exportDate:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");a.href=url;a.download="fin-cloud-backup-"+new Date().toISOString().slice(0,10)+".json";
     a.click();URL.revokeObjectURL(url);
-  },[ops,priceAlerts,casa,hipoteca,caucion]);
+  },[ops,priceAlerts,casa,hipoteca,caucion,perfSnapshots]);
 
   /* Resetear — limpia todo a vacío */
   const resetData=useCallback(()=>{
@@ -2980,7 +3013,7 @@ function App(){
               {l:"Reservas",v:`USD ${fmt(macro.reservas,0)}M`,daily:fVar(dVar(macro.reservas,mp.reservas))},
               {l:"Inflación",v:`${fmt(macro.inflacion,1)}%`,sub:"mensual"},
               {l:"Infl. IA",v:`${fmt(macro.inflacionIA,1)}%`,sub:"interanual"},
-              {l:"Tasa PM",v:`${fmt(macro.tasa,1)}%`,daily:fVar(dVar(macro.tasa,mp.tasa))},
+              {l:"BADLAR",v:`${fmt(macro.tasa,1)}%`,daily:fVar(dVar(macro.tasa,mp.tasa))},
               {l:"UVA",v:`$${fmt(macro.uva,2)}`,sub:macro.uvaVar30d?`30d: ${macro.uvaVar30d>0?"+":""}${macro.uvaVar30d.toFixed(1)}%`:null,daily:fVar(dVar(macro.uva,mp.uva))}
             ].map(i=><div key={i.l} style={{textAlign:"center",minWidth:48}}>
               <div style={{color:"#475569",marginBottom:1,whiteSpace:"nowrap"}}>{i.l}</div>
