@@ -536,22 +536,37 @@ async function fetchPricesReal(tickers){
 
     /* Yahoo Finance fallback para tickers no encontrados en data912 */
     /* NOTA: Yahoo v7/finance/quote requiere auth desde ~2025. Usar v8/finance/chart (público). */
+    /* BKUCF: OTC Markets no tiene API pública. Yahoo redondea BKUCF a 2 decimales.
+       Para mayor precisión, se usa BSK.V (TSX Venture, CAD) + conversión CAD/USD. */
     const missing=tickers.filter(t=>!prices[t]);
     if(missing.length>0){
+      /* Fetch CAD/USD si BKUCF está en missing */
+      let cadusd=0.72;
+      if(missing.some(t=>t.toUpperCase()==="BKUCF")){
+        try{
+          const fxUrl=`https://query1.finance.yahoo.com/v8/finance/chart/CADUSD%3DX?range=1d&interval=1d`;
+          let fxr;try{fxr=await fetch(fxUrl);}catch(e){fxr=await fetch(PROXY+encodeURIComponent(fxUrl));}
+          if(fxr&&fxr.ok){const fxj=await fxr.json();cadusd=fxj.chart?.result?.[0]?.meta?.regularMarketPrice||0.72;}
+        }catch(e){}
+      }
       const yfChartFetch=async(ticker)=>{
-        const sym=d912Sym(ticker,D912_USA_ALIAS);
+        const tu=ticker.toUpperCase();
+        /* BKUCF → usar BSK.V (CAD) y convertir a USD para máxima precisión */
+        const isBKUCF=tu==="BKUCF";
+        const sym=isBKUCF?"BSK.V":d912Sym(ticker,D912_USA_ALIAS);
         try{
           const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=5d&interval=1d`;
           let r;try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
           if(r&&r.ok){
             const j=await r.json();
             const meta=j.chart?.result?.[0]?.meta;
-            const quotes=j.chart?.result?.[0]?.indicators?.quote?.[0];
             if(meta&&meta.regularMarketPrice){
-              const price=meta.regularMarketPrice;
-              const prev=meta.chartPreviousClose||meta.previousClose||price;
+              let price=meta.regularMarketPrice;
+              let prev=meta.chartPreviousClose||meta.previousClose||price;
+              /* Convertir de CAD a USD para BKUCF */
+              if(isBKUCF){price=Math.round(price*cadusd*1e6)/1e6;prev=Math.round(prev*cadusd*1e6)/1e6;}
               const change=prev?((price-prev)/prev*100):0;
-              const isArg=(meta.exchangeName||"").includes("Buenos")||(meta.currency||"")==="ARS";
+              const isArg=!isBKUCF&&((meta.exchangeName||"").includes("Buenos")||(meta.currency||"")==="ARS");
               return{ticker,price:isArg?0:price,change:isArg?0:change,prev:isArg?0:prev,priceARS:isArg?price:null,changeARS:isArg?change:null,d912:{isCedear:false,isArgStock:isArg,isBond:false,isUsaStock:!isArg}};
             }
           }
@@ -1884,15 +1899,25 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
           setTradingPriceLoading(false);return;
         }
         /* Yahoo v8/chart fallback (v7/quote requiere auth desde ~2025) */
+        /* BKUCF: usar BSK.V (TSX Venture, CAD) + conversión CAD/USD */
         try{
-          const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d`;
+          const isBKUCF=ticker.toUpperCase()==="BKUCF";
+          const sym=isBKUCF?"BSK.V":ticker;
+          let cadusd=0.72;
+          if(isBKUCF){try{
+            const fxUrl=`https://query1.finance.yahoo.com/v8/finance/chart/CADUSD%3DX?range=1d&interval=1d`;
+            let fxr;try{fxr=await fetch(fxUrl);}catch(e){fxr=await fetch(PROXY+encodeURIComponent(fxUrl));}
+            if(fxr&&fxr.ok){const fxj=await fxr.json();cadusd=fxj.chart?.result?.[0]?.meta?.regularMarketPrice||0.72;}
+          }catch(e){}}
+          const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=5d&interval=1d`;
           let r;try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
           if(r&&r.ok){
             const j=await r.json();const meta=j.chart?.result?.[0]?.meta;
             if(meta&&meta.regularMarketPrice){
-              const p=meta.regularMarketPrice,prev=meta.chartPreviousClose||meta.previousClose||p;
+              let p=meta.regularMarketPrice,prev=meta.chartPreviousClose||meta.previousClose||p;
+              if(isBKUCF){p=Math.round(p*cadusd*1e6)/1e6;prev=Math.round(prev*cadusd*1e6)/1e6;}
               const chg=prev?((p-prev)/prev*100):0;
-              const isArg=(meta.exchangeName||"").includes("Buenos")||(meta.currency||"")==="ARS";
+              const isArg=!isBKUCF&&((meta.exchangeName||"").includes("Buenos")||(meta.currency||"")==="ARS");
               setTradingPrice({priceARS:isArg?p:null,price:isArg?0:p,changeARS:isArg?chg:null,change:isArg?0:chg});
             }
           }
