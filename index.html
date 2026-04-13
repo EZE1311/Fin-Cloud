@@ -2954,7 +2954,7 @@ function App(){
           <div style={{fontSize:11,color:"#64748b"}}>Actualizado: {lastUp.toLocaleTimeString("es-AR")}</div>
           <div style={{display:"flex",gap:10,fontSize:10,marginTop:2}}>
             <span>Data: <span style={{color:dataSource==="live"?"#34d399":dataSource==="fallback"?"#fbbf24":"#64748b",fontWeight:600}}>{dataSource==="live"?"Online":dataSource==="fallback"?"Offline":"⏳"}</span></span>
-            {(()=>{const now=new Date();const utc=now.getTime()+now.getTimezoneOffset()*60000;const art=new Date(utc-3*3600000);const h=art.getHours();const d=art.getDay();const bymaOn=d>=1&&d<=5&&h>=11&&h<17;return <span>BYMA: <span style={{color:bymaOn?"#34d399":"#f87171",fontWeight:600}}>{bymaOn?"Online":"Offline"}</span></span>;})()}
+            {(()=>{const now=new Date();const utc=now.getTime()+now.getTimezoneOffset()*60000;const art=new Date(utc-3*3600000);const h=art.getHours();const m=art.getMinutes();const d=art.getDay();const t=h*60+m;const bymaOn=d>=1&&d<=5&&t>=630&&t<1020;return <span>BYMA: <span style={{color:bymaOn?"#34d399":"#f87171",fontWeight:600}}>{bymaOn?"Online":"Offline"}</span></span>;})()}
             {(()=>{const now=new Date();const utc=now.getTime()+now.getTimezoneOffset()*60000;const et=new Date(utc-4*3600000);const h=et.getHours();const m=et.getMinutes();const d=et.getDay();const t=h*60+m;const nyseOn=d>=1&&d<=5&&t>=570&&t<960;return <span>NYSE: <span style={{color:nyseOn?"#34d399":"#f87171",fontWeight:600}}>{nyseOn?"Online":"Offline"}</span></span>;})()}
           </div>
         </div>
