@@ -592,6 +592,24 @@ function getTickerKW(ticker){
   return kws;
 }
 
+/* ── Portfolio News JSON — curado server-side por finance-briefing ──
+ * Fuente: EDGAR filings (8-K/10-Q/10-K/6-K) + Google News dirigido por ticker
+ * + RSS AR/global filtrados. Ya viene filtrado por los tickers del Gist,
+ * pero acá igual aplicamos el filtro local (defensa) y dejamos pasar sólo
+ * los tickers que están en esta cartera actual. Cache 5 min en max-age del raw.
+ */
+const PORTFOLIO_NEWS_URL="https://raw.githubusercontent.com/EZE1311/finance-briefing/main/portfolio_news.json";
+async function fetchPortfolioNewsJSON(tickers){
+  try{
+    const res=await fetch(PORTFOLIO_NEWS_URL+"?t="+Math.floor(Date.now()/300000)); /* bust cada 5 min */
+    if(!res.ok)return[];
+    const data=await res.json();
+    const tkSet=new Set(tickers.map(t=>t.toUpperCase()));
+    const out=(data.news||[]).filter(n=>n.ticker&&tkSet.has(n.ticker.toUpperCase()));
+    return out;
+  }catch(e){console.warn("portfolio_news.json fetch failed:",e);return[];}
+}
+
 /* Noticias — Bloomberg-style deep search across global + local portals */
 async function fetchNewsReal(tickers){
   try{
@@ -615,6 +633,21 @@ async function fetchNewsReal(tickers){
         link:item.link,pubDate:item.pubDate
       });
     };
+
+    /* ── 0) Portfolio News JSON (server-side, curado por finance-briefing) ──
+     * Estas entradas vienen ya asociadas a un ticker del portfolio, con
+     * filings SEC EDGAR marcados con kind="filing". Tienen prioridad por
+     * calidad: sin CORS-proxy, sin rate-limit, y filings únicos. */
+    const portfolioJSON=await fetchPortfolioNewsJSON(tickers);
+    portfolioJSON.forEach(n=>{
+      const source=n.source+(n.kind==="filing"?" 📄":"");
+      addItem(n.ticker,{
+        title:n.title,
+        description:n.summary||"",
+        link:n.url,
+        pubDate:n.published
+      },source);
+    });
 
     /* ── 1) Feeds POR TICKER — noticias específicas de cada activo ── */
     const tickerFeeds=[];
