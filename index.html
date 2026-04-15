@@ -598,7 +598,7 @@ function getTickerKW(ticker){
  * pero acá igual aplicamos el filtro local (defensa) y dejamos pasar sólo
  * los tickers que están en esta cartera actual. Cache 5 min en max-age del raw.
  */
-const PORTFOLIO_NEWS_URL="https://raw.githubusercontent.com/EZE1311/finance-briefing/main/portfolio_news.json";
+const PORTFOLIO_NEWS_URL="https://raw.githubusercontent.com/EZE1311/Fin-Cloud/main/portfolio_news.json";
 async function fetchPortfolioNewsJSON(tickers){
   try{
     const res=await fetch(PORTFOLIO_NEWS_URL+"?t="+Math.floor(Date.now()/300000)); /* bust cada 5 min */

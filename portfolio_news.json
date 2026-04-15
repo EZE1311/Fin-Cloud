@@ -1,0 +1,1215 @@
+{
+  "generated_at": "2026-04-15T04:46:17.935359Z",
+  "portfolio_tickers": [
+    "IBM",
+    "BKUCF",
+    "MELI",
+    "ORCL",
+    "YPFD",
+    "EDN"
+  ],
+  "source_version": "v1",
+  "count": 120,
+  "news": [
+    {
+      "id": "ORCL-04a8f0b9fd",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Java Download: Entre seguridad y obsolescencia, ¿por qué sigue siendo clave ahora? - AD HOC NEWS",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMiwwFBVV95cUxOZXZza1NvVFlGSEtYWllpWVdVOWkxNUgwaEMxYjFjZTVTNVR0MWVHVXlwYnAtOGVvWFhtMVhzLXljc3FlMWVuT2lfakFHVUkwOExVQUZ3c1dmVDlEOFhOdDF5SjRWU0VlalRGOFdMQ2tQRllRUllnb3lQaTFGR3BjV1dheHRiLXVJYXZqdTg4d1dULUdtR3dHbnJpWDNZQk9nWmtyUzI5TU1zYjBqT2lFdzN4akFQaUl6WWFYSUpCSmhHMXc?oc=5",
+      "published": "2026-04-15T03:37:38Z",
+      "summary": "Java Download: Entre seguridad y obsolescencia, ¿por qué sigue siendo clave ahora?&nbsp;&nbsp;AD HOC NEWS"
+    },
+    {
+      "id": "MELI-0a1d37535e",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "MercadoLibre Inc. acción (US58733R1023): ¿Es su dominio en e-commerce el impulsor clave para crece - AD HOC NEWS",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMixAFBVV95cUxORmR4TlZleEJISFJEeTc0OVh0SG5wQ0VZcEF2ZlRWSnF1VDJEek9PVFJjU3BuNkJYbGluc2JRMF81dU9VU0hsSUFnNnZPTkdnNm5ZNkl6VExrWlVIcXhhVnI5SHhtUS1fVGc1N01YbUM0TkxuVm9WOUtYNkt3aTFxaTllaGU0eVl3UjdaVzBTcVR1RGJSTWxGbzduNlZjZVJ6enM0THowdm1TQnZtNmI2YmRMTktrWW1rZDFpb0ZLR0FGRmZ3?oc=5",
+      "published": "2026-04-15T02:25:10Z",
+      "summary": "MercadoLibre Inc. acción (US58733R1023): ¿Es su dominio en e-commerce el impulsor clave para crece&nbsp;&nbsp;AD HOC NEWS"
+    },
+    {
+      "id": "MELI-75ed8783b8",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "Why Is Mercado Libre Stock Falling, and is it a Buying Opportunity? - The Globe and Mail",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMi5AFBVV95cUxOT3RfbW1xMkdSU3p0RlQ5OWJHTzdfZGdTNXRsUHo3UnZ6bjl6eDZTazUzYzhDWlRyRElDSGw1RGlhQjY0ck9HU3Q2UVhyTnhmbFZYRjZ3UmZ1dTYteWVnaktHQ2Zka2JqT1p2Zm54N3FUaXdqMUlYMzlJVDRfczBsZWpNazBtQ3pEMkcya2JfMHVmZWhoRHZxMFZrVm9RLUF3aGlOWkJmdVpKME5YSzdXVHo1MnpjZG5rVEtqajRtNnBlTmM0QjNrNlIyQ1pSRW0za0JINjVSUjVGZUMtTndjZ282OEc?oc=5",
+      "published": "2026-04-14T22:54:43Z",
+      "summary": "Why Is Mercado Libre Stock Falling, and is it a Buying Opportunity?&nbsp;&nbsp;The Globe and M"
+    },
+    {
+      "id": "ORCL-b086b577ac",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Bloom Energy Stock Surges As Oracle AI Power Deal Fuels Rally - StocksToTrade",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMigwFBVV95cUxQbE9DZ3NpNmtGaTJDUERlbTEwQnhfTWd4ZzBINVhucGJBQmZOV0s1bVppbmQ3SXhNZ3N6Qzk0V0ZnNGZlSUFJN3YwQVlFT0FaV3RVZ21Zb0xueXM3NDM0M3hUaEQ4a1NEWE1nMFZDTEdLWlpLRmZWY2xLZFRUdm92TU80bw?oc=5",
+      "published": "2026-04-14T22:45:00Z",
+      "summary": "Bloom Energy Stock Surges As Oracle AI Power Deal Fuels Rally&nbsp;&nbsp;StocksToTrade"
+    },
+    {
+      "id": "IBM-aff1a1a778",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "International Business Machines (NYSE:IBM) Shares Up 1% - Should You Buy? - MarketBeat",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMivAFBVV95cUxONVdNRXJXQTh6QlpiamxkU291X2dkVnFaNmVQby1pbUxOX2FPQVdoZGNjQ040WHhqNnpJb05FVm5sUFBSZnI3Um9vWi1zS01OVzQ2SUlCSE5LdS1odWl3d3E0ZE9ab3dvMWRhLXlTSnlxdFRWRmZVYjQ1OFAtMl9LY3BSWlE1aUlBbXpUQXlhb21mU3VablV5OTh6Nlp1N3VoUmNMNnlZSUNCSFdPVlpuaEhWNndDSjV6SWlWWg?oc=5",
+      "published": "2026-04-14T21:46:15Z",
+      "summary": "International Business Machines (NYSE:IBM) Shares Up 1% - Should You Buy?&nbsp;&nbsp;MarketBeat"
+    },
+    {
+      "id": "YPFD-395c35e3ac",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "A Look at YPF SA (YPF) After 3.2% Decline -- GF Value $45.79 vs Price $42.11 - GuruFocus",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMipwFBVV95cUxOanljSmtZMVFHeUNzeWVFbUZSYzRqZnljNUN5OXE2UU00eFRWeGdJcHoyR0RhZG80MnFCdW5FV2doY3NkVVczblRQR3BFZWFXamFDcmcwNWE3Z1BrdnpheENiWnFpVmRhZEZ3OGRzbEhqMEE3NlhBTnAxNTN5YV9zLWV5ZHdYUEFONDVlSXVtT0hSdjNVN0VBdWFOR09KamJaaHd5QVpZNA?oc=5",
+      "published": "2026-04-14T21:37:25Z",
+      "summary": "A Look at YPF SA (YPF) After 3.2% Decline -- GF Value $45.79 vs Price $42.11&nbsp;&nbsp;GuruFocus"
+    },
+    {
+      "id": "EDN-8cd6a61068",
+      "ticker": "EDN",
+      "kind": "news",
+      "title": "Edenor puso en funcionamiento la nueva Subestación Martínez - econojournal.com.ar",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMinAFBVV95cUxPeHlxQ0ZfTzRyaTd1akF2Zm9iS3BaWHR6UVZfZTNQMDFlOU1TQm14ZDhfNTFWQzN3RThtUmpmQWExRnlBNVdGdjNzaVlIWUt3YmhuS1F0SGNQNUIwNWI4ZkpEekFKcjR6M3lUa0NTWjBySVdnSTdlcm5nN2h5SnpzR01CQXBITWZORU03WnphNk9iQ09oaTdSNjZfSzE?oc=5",
+      "published": "2026-04-14T19:45:10Z",
+      "summary": "Edenor puso en funcionamiento la nueva Subestación Martínez&nbsp;&nbsp;econojournal.com.ar"
+    },
+    {
+      "id": "ORCL-3e56d99a81",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Oracle se dispara en bolsa: Wall Street la revaloriza como gigante de infraestructura de IA - Yahoo",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMijgFBVV95cUxQalppMXp4dVg3c1FHT0UtU3pKdnJnRW9fSmxZeVpQdmpJbzNmZm5oVE5ZRkZ2cUpPdkljbnZEd2R2dDdOX1l5NDFWRWFlRGREb2ZldEVtRDZTTVpfVFVpS19XSmx2TWpTX05sMHctM3VITFNuNElnR2d5VTA4WGk2QVU5bG01UWhHaFRiSEJB?oc=5",
+      "published": "2026-04-14T18:06:36Z",
+      "summary": "Oracle se dispara en bolsa: Wall Street la revaloriza como gigante de infraestructura de IA&nbsp;&nbsp;Yahoo"
+    },
+    {
+      "id": "MELI-2827d0dfa9",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "Pictet Loads Up MercadoLibre With 3,500 Shares Worth $6.8 Million - Yahoo Finance",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMinAFBVV95cUxOVGlOLS1HOF91Q0VQd212YW56YVdwc0hlWTVTMXZGMFRsd2FjendlaDVibks1NUhvYWlwZUZtVTFHbS1DVUZObVB5WUMyWUg3Z205YzN1ZlRUWEF6T3o2WUctbEF6c1N6aDAwVlpyelA0Ri11U3FWMURTZVA5S09MUnZic2t5bXBPa202dXk5VmFFaFFqSHBpMi10Wjg?oc=5",
+      "published": "2026-04-14T17:30:20Z",
+      "summary": "Pictet Loads Up MercadoLibre With 3,500 Shares Worth $6.8 Million&nbsp;&nbsp;Yahoo Finance"
+    },
+    {
+      "id": "ORCL-b5effb0400",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Oracle sube tras ampliar su alianza con Bloom Energy para centros de datos de IA - Bolsamania",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMixgFBVV95cUxOMU84ZlF5WGRpSEtNYktVV2VrQ0U5UGUyOXY4VU1tN0ZYSkpFSFR1ZndOaElYalhOYTFlSFJnSnp5M1FqQlNfbnJyOVE2T0ItUW9McXY1X0FNT3F1dXRwQ1gyNzBPWVBzRzZpTDFsLTMySm9hemtMVVB2Nmg3Mm1oektJa1M5Q0Z3NXBqczBRYW9BWXRHc0ZibEUwaUYyRWRfdTRmRkIwZTRzZzlfUnkwbmxSN3owLWNrXzYxZEgwcE1Xc0lKSEHSAcsBQVVfeXFMUFFLRU53dl9MV0o3eU1uSWdQTTlqM245em9zcXBWcTFNYWM5TWlHLVJLSVFvLWRpbDB5MmF2Vk5UY080NHlzeXJwTG5JZGd0NGs0anlXbzlZT0RPQnp6T1cyREllYk16OVBZdlNveGpLWGJ5bk0tTkwtYkFXUXd4QTZEcFFtNFg1SDJWZDhaWmNhaWxENXZpU1NsRmNBTXk0TkZ0cjZtd2hQZzBjbTYzZFl5VmpDemc1OE1UOTZrcExwSGZqYVdRTEVqMzQ?oc=5",
+      "published": "2026-04-14T16:52:55Z",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMixgFBVV95cUxOMU84ZlF5WGRpSEtNYktVV2VrQ0U5UGUyOXY4VU1tN0ZYSkpFSFR1ZndOaElYalhOYTFlSFJnSnp5M1FqQlNfbnJyOVE2T0ItUW9McXY1X0FNT3F1dXRwQ1gyNzBPWVBzRzZpTDFsLTMySm9hemtMVVB2Nmg3Mm1oektJa1M5Q0Z3NXBqczBRYW9BWXRHc0ZibEUwaUYyRWRfdTRmRkIwZTRzZzlfUnkwbmxSN3owLWNrXz"
+    },
+    {
+      "id": "ORCL-dce4f85920",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Oracle Corporation introduce funciones impulsadas por IA en Oracle Primavera Unifier - MarketScreener España",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMi1wFBVV95cUxNcEtpdU5QTmpDOTBJcUZhQXZCQVdkUUlkN3JOTThRZ2ktZXRndU0xbElsU3JmTllwck1sc2tuVXhPWjR4VXNhU1NPVmR2eGpQTGoxR29VX2hIRVNqb1FrUkc2a2xpUF82U2xyZVRfZnhFVTYxRWJ5MmMxczBMamJlUGEwblJaUEVqbXoyU3gyUjN1LVRta3V6X2xSX0puY3dQSHpHUWdjbWRZSURfbEZtU1JUU2huZ3Itc2JiMWlESU44VVFXcWxmbkR2NUtWZ3MwSVZlaFRXOA?oc=5",
+      "published": "2026-04-14T16:52:09Z",
+      "summary": "Oracle Corporation introduce funciones impulsadas por IA en Oracle Primavera Unifier&nbsp;&nbsp;MarketScreener"
+    },
+    {
+      "id": "IBM-3d82fd40e2",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "IBM Closes $11 Billion Confluent Deal: Street Sees a 30% Potential Upside - TIKR.com",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMinAFBVV95cUxQa0RndU1SMW1ma191ZG5Ob0NMTFNLNVFESy1rQ3RRU191UkFSLUVvTnFZSHMwTW5jSWJsTy13TF9pYV9MeXFZR3dpdl9QM0JaQnF2UFlEX3FBbmhQRTkyNllfdlNBS2VrZ2JHNE9wN0NWSk9jT1VWODJ4WFA3YTRlek9FWVV3TzdWcm1mQ1JxOE9Ydk1qUng5QjVsN3Q?oc=5",
+      "published": "2026-04-14T16:49:31Z",
+      "summary": "IBM Closes $11 Billion Confluent Deal: Street Sees a 30% Potential Upside&nbsp;&nbsp;TIKR.com"
+    },
+    {
+      "id": "ORCL-f321a9f2b9",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Oracle Suddenly Looks Different: Why This Former Bear Is Taking a Second Look - TheStreet Pro",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMitAFBVV95cUxNR0FTSUFGRDJHRVVSQXEzNmNMN3RzeVpYSWViT2pEWU96bEl6c1hkVVhCeFNGRi1MNkRFWjBkN0xvTlEzdkVTR2R5Zk1HNVRDNnJRN0FhZU4zdVUxdl9DWi11YXBNVlVnVjJIV1NkdlFTZGxVeW1mSl9NRWhOMnpheTFPOHBkOXJvaFNMT05Eak0wS1h1bktkc0N4QTRqbjVNYVNUNEY2bDJHM2R1QjRTNGRTU2k?oc=5",
+      "published": "2026-04-14T16:30:00Z",
+      "summary": "Oracle Suddenly Looks Different: Why This Former Bear Is Taking a Second Look&nbsp;&nbsp;TheStreet Pro"
+    },
+    {
+      "id": "IBM-7b4a399615",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "Why Citi Analysts Are Betting IBM Stock Can Gain Nearly 20% From Here - Yahoo Finance",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMimgFBVV95cUxPeGE1VkxTaG1wSjhaSGk1ZmFIemg3ak9mU0lpOFZnN3Rwbm9zZnBLS2VkeTlKaXc5bnNWdXRlTTdwalFfSkFPOUFzVmRUU1k4c1VVVFI1ejhjWktrZVptdkJDeXRYZTVJdkNsUDB3S2lSa1hMNlRRZllpT0Z1a09rODlkWXlMWkx5dlo3TzdrYTMydjVaeHJxdUxB?oc=5",
+      "published": "2026-04-14T15:56:43Z",
+      "summary": "Why Citi Analysts Are Betting IBM Stock Can Gain Nearly 20% From Here&nbsp;&nbsp;Yahoo Finance"
+    },
+    {
+      "id": "ORCL-ab7f07beff",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Jefferies mejora la calificación de Bloom Energy por visibilidad de pedidos de Oracle - Investing.com España",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMi1gFBVV95cUxPQ2pqM3dfaXNsNmlXdEhMZmdtOEl1bGUzc3oySVI0YVprUE5yWnFxdUNNZFdZcXNseDE2WG5na3B2RDUtWjQ3b2F4MU1VWm1sS091NE5ubk1YbUNsV1RPRWIwMEswMHFyV0ZMWVFzV2tsN0VmMW9vY1p5Tl94NHFiODUzMkF0X29aLWRYeUdoNThYRHl1Xy1POFg4emdHcWF4Q2RuWmE0SG1kU1QtVGd1NTZ0NUhzaHBORGNJamlDeUpGanZnT2tFUXYxZ0xQMTJSc1ROUjFB?oc=5",
+      "published": "2026-04-14T15:53:00Z",
+      "summary": "Jefferies mejora la calificación de Bloom Energy por visibilidad de pedidos de Oracle&nbsp;&nbsp;Investing.com Es"
+    },
+    {
+      "id": "ORCL-4f70471095",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Oracle sube por impulso energético de la IA mientras aumenta la demanda - Invezz",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMitAFBVV95cUxQQklBTFRLTWotV1o3eFlPOHJ2cnFPb180eEZDZWJUWHpVYWpzWHVVaXNDWkZ3WU1mMlpmajFxU1JNQm9nSGoyWHJYLWJyR3VOZkxObjh4NGY4Q01zRjc5eVM2VW1CSVRhZnRueFIwRnEwY1lRVmtCSGpyYUNrWmJLaU9iZjgwUElBMndOU3c2QWphWlNRQ3JkbXJ1M0JOSzZ3dkcyRmlsNE1XODFhOGJxbkItVk0?oc=5",
+      "published": "2026-04-14T15:52:36Z",
+      "summary": "Oracle sube por impulso energético de la IA mientras aumenta la demanda&nbsp;&nbsp;Invezz"
+    },
+    {
+      "id": "ORCL-eece71e130",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Oracle stock pops as company agrees to buy fuel cell power from Bloom Energy - Yahoo Finance",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMivwFBVV95cUxPY0R6NWJwLVNoUW9xVDl3UzBsWjdjMk5SWnZyTTdEUFE2VVE0OXBiMENSRTNHUlNVR0cyUFVOUjNNWWJZUF80eFhnSUUyVlhMZHRwSXhOSkIwUXo2ZjdaNDVqcHdXQlJXam5Hb200SXBBbl9MVFZqekh4a05QaUNUQmZ3VkJXd2RvZlVQZXY1VEhjTTZGeHVSd1d5MDkwRmFIRVVhRmNwdlZ4NEJXQ3NpY2ZJMEZ1LThkYVhpaWZrVQ?oc=5",
+      "published": "2026-04-14T15:09:25Z",
+      "summary": "Oracle stock pops as company agrees to buy fuel cell power from Bloom Energy&nbsp;&nbsp;Yahoo Finance<a href=\"https://n"
+    },
+    {
+      "id": "ORCL-09319d5645",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Las acciones de Oracle suben un 5,39% tras anunciarse mejoras impulsadas por AI en la plataforma de servicios públicos - Traders Union",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMinAFBVV95cUxOeUxJeGFyUHVkZTV0d3NDd05CdnJBRGRObFphY2RFNzBBTmRNT01qLVRmODl6a2dsMUpIOXZEYkhGU1JnRWVkR2NublEwYlJPX0lhRGN6em5JUi0wX05uMkxNdmVzTXZmRHlIemNreFJfbzE3amRfb0ZIXzE5M3NpZ1BxdGVzYU9hZW11aE05VmtMY0UwdlVkOUt6eGQ?oc=5",
+      "published": "2026-04-14T14:13:20Z",
+      "summary": "Las acciones de Oracle suben un 5,39% tras anunciarse mejoras impulsadas por AI en la plataforma de servicios públicos&nbsp;&nbsp;Traders Union"
+    },
+    {
+      "id": "EDN-d76963de18",
+      "ticker": "EDN",
+      "kind": "news",
+      "title": "Genneia, Edison, Edenor y Central Puerto se disputarán la privatización de Transener - Forbes Argentina",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMiuwFBVV95cUxOVFVaWWhPaWZmaHF4c0p6eXd0cGoyR05LWExQemhzZkJfU1VXVW9ldXJ2dEdBZ1dSaWprV1pacS1NX2dweVVtQjV6VmxXRDJ3UzExTUVSMmVncE8zQlBvbjlDUXY2NTB6NG11ZS11Y0JiQlJVRnA4eGpjcDZIcTBpMlFTN1pDRmFVMzI5dVVHUy1Pb0R6YjI3czlMRkY1bkpoUGxjV1FibTg4QjkwMUhMSkl3MF8td216Vlg00gHAAUFVX3lxTFBHNGExakVhVnFDbnc0b0RJY0N2cFp2YzJUbDdqNDYwYnljTzNINTgzckJGUXdScURrRmNYNUFTRndQa2VITTRBRFZLRnItX25vRHVQbkgxN2xBM3h0Y2dwX29LY2xNd05Ud3ZfalJMV1ZOMXNBQS1HVzRJM3NKbmJfeU9MZWZONU9Za2hhdUJTRzVxNGlPa2Y2YjV3Z21pMnY0SHRWZ29HZGZwQ29PdGhORTBxRHNQODU1akltbG01Qg?oc=5",
+      "published": "2026-04-14T14:04:00Z",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMiuwFBVV95cUxOVFVaWWhPaWZmaHF4c0p6eXd0cGoyR05LWExQemhzZkJfU1VXVW9ldXJ2dEdBZ1dSaWprV1pacS1NX2dweVVtQjV6VmxXRDJ3UzExTUVSMmVncE8zQlBvbjlDUXY2NTB6NG11ZS11Y0JiQlJVRnA4eGpjcDZIcTBpMlFTN1pDRmFVMzI5dVVHUy1Pb0R6YjI3czlMRkY1bkpoUGxjV1FibTg4QjkwMUhMSkl3MF8td216Vl"
+    },
+    {
+      "id": "MELI-bcdf7b8a93",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "What Makes Mercado Libre (MELI) a Classic Survivor & Thriver Business? - Yahoo Finance UK",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMiiAFBVV95cUxOVEVxU29GYU1EVHY2RlZfM2Z6b0FVREdfUm1ZS0xLZGF3aXQ0b0toaFVfaU5mWk5icjRRWFRVRmFxbXVxei1wUkdtQ3BXam9fRERUUnQzcnZ6VkNOd19iQUhwdndWUGdOQ0txM1pwTUxWdHdKaUtqTGlqR1ZFYjlXTG1ReUM2aVla?oc=5",
+      "published": "2026-04-14T12:59:34Z",
+      "summary": "What Makes Mercado Libre (MELI) a Classic Survivor & Thriver Business?&nbsp;&nbsp;Yahoo Finance UK"
+    },
+    {
+      "id": "ORCL-edb910dd7c",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "JPMorgan earnings, Oracle's $300 million windfall, new Delta suites and more in Morning Squawk - CNBC",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMigwFBVV95cUxNam5CVlRuYmtvdzJvTU5BMGdESzdWeXYycHA0QlpMMmR0WmQzQzJoX0ViWmt1ZWhxOTRnVngzU0FtT1Y1ejBtMEJ1RTlmOE1OQmgxNWRIbVNuQWN4ZWVBYUlfWXl3RHFtWVZORE5pSFUwVEh2Z2g5RzhlMWVqMWl0VE10UdIBiAFBVV95cUxNWUpHazc1YjZQWU9TQXk0UnJ1eE9KSFhOak1ENWRFYnFwZ21KVUsteHhIcVJSeDZkbU95MEJxSHB2UEhObEFZbkVYbnZzYjdqdGxUX3hjV3k0TndRNVNWR3FEb29TQ0EycGZKNjhFdXlhTm1zZEcxWWFvYmY4a1lJWE4yTElqVmlE?oc=5",
+      "published": "2026-04-14T12:07:10Z",
+      "summary": "JPMorgan earnings, Oracle's $300 million windfall, new Delta su"
+    },
+    {
+      "id": "YPFD-d6531f3f05",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "Juicio por YPF en Nueva York: otro paso a favor de Argentina - La Verdad Junín",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMikAFBVV95cUxOOUlsa3hVbFk1X1dWTHNPZnk3VVN4U25zcW9EaFoxbnk3ZEcwcHpucW8yTlVMWTg2Z2p1azhibjFKc1EzdHNFQ0hUcHZ0VFJBQ0V0TDFVMTlDamtMRUxzeFRnbkw2YzEzQ1FCOHhnMGlxY2NkVjFGckZhREJmQmpIUlpNUG4zakRqWHhKWjFaaG8?oc=5",
+      "published": "2026-04-14T11:42:43Z",
+      "summary": "Juicio por YPF en Nueva York: otro paso a favor de Argentina&nbsp;&nbsp;La Verdad Junín"
+    },
+    {
+      "id": "ORCL-e04ca05e9b",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Las acciones de Oracle suben: nuevo acuerdo con Bloom Energy - XTB.com",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMi2wFBVV95cUxObzA2amx0ai1sWHNqdnZmVmNQcHB1aDRGTTB5THdNaGZkeS1fWjk4NjFJSEg1N1B4akNod2ZhQXBoRjM3VS1yMy1TRDdWX0NyaENTbkRlM0Y2QV94QmlaWU5Na05DSkw1TUhwQ1lIZmFNc3huRWxiajdNc1IyV05LM1R3RE9zLURQUThhVWU3enpSaV8tV2YtRFhEdUFiS0pfYTRxaEFCOGMyNnFTN2M0WF9YTGNUalk4b3hUc2NXM0FJTkd2V3oxRlI0QklDVEhNNzc3c2NXdWM3Y2s?oc=5",
+      "published": "2026-04-14T10:04:05Z",
+      "summary": "Las acciones de Oracle suben: nuevo acuerdo con Bloom Energy&nbsp;&nbsp;XTB.com"
+    },
+    {
+      "id": "BKUCF-e348bda08e",
+      "ticker": "BKUCF",
+      "kind": "news",
+      "title": "Why Banco BBVA Argentina’s Rally May Not Last - TipRanks",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMiiwFBVV95cUxNX3Z4bkJNY0hPSG4tTmQxTXZLczN0RXhYdkJQVmFvUFlQdy1iYTFuZ0h6WlJzRG1TcjZDb1ZSODlWWFRMamI2bWF4QnlWVFBDczMwY1d2WWZ3U3lVWlZXbE92RVVhTGpoaUpIUWtZaTI1WDZ5aWxkTTRvRDN3RXpfWlhzd0RJWjljZkRV?oc=5",
+      "published": "2026-04-14T10:00:06Z",
+      "summary": "Why Banco BBVA Argentina’s Rally May Not Last&nbsp;&nbsp;TipRanks"
+    },
+    {
+      "id": "MELI-720e8a0387",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "El desembarco de Mercado Libre podría darse en febrero - El diario de Tandil",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMioAFBVV95cUxNV3lMVGZUR2o2UEQ4Ui1PZUhXN1FRdGx1a0tfVjBGVFRZVFRjVUVPV2dfM1dRQnFHSHBqRnNhU1Y5bVdIeWJuMXVZQWE2X0VJZWoyV2ljNEc4Q1ZhQ21vN1RlMEdLcUdpV1pnUEpHVjJLOXhqcl81d2dSQkt1ZFhrUWhPR0lDUnlPdmUzaHBicW8tbFFjMUl0OWtjRUNsdmlt?oc=5",
+      "published": "2026-04-14T07:43:57Z",
+      "summary": "El desembarco de Mercado Libre podría darse en febrero&nbsp;&nbsp;El diario de Tandil"
+    },
+    {
+      "id": "ORCL-be9cb84493",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Oracle layoffs targeted employees with pending stock payouts, claims former worker - People Matters - HR News",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMizwFBVV95cUxQZFFDcVVSYkczSkhBdEVhZnJ3X2hGYjVmZS1mUnRuYVZkenhqZGFuZnF2TUE2Wk03UTZId1d1SUlmQndMdWd0RW4yNnJkYmdKc3VUank5M0k0UzZ3TjBKZG40TDg0VGEtb3hJWXljVk9tUlVUa3Y1WW1FSERBSWxsTHliSlg0aXRoQ1U3RldmQU51SG9tcDQzczRXRi1selJNLWFWeWh5aTdsaVBLZVdhRk1EVUxlM1ctWFo0MG1Na084RlB0ai1FRGNlRGdJcDg?oc=5",
+      "published": "2026-04-14T04:30:43Z",
+      "summary": "Oracle layoffs targeted employees with pending stock payouts, claims former worker&nbsp;&nbsp;People Matters - HR News</fo"
+    },
+    {
+      "id": "YPFD-cca61a3112",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "YPF Sociedad Anonima (YPF) Just Flashed Golden Cross Signal: Do You Buy? - qz.com",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMiiwFBVV95cUxNeGNITTZvX2FldVZ4UGFDRklObzFsakR5UngxdWRKT1dCS2Y3clJKcFZhS2xtMGVwaGFFUnRUNTFCZGdHWEd6Nmk0MFRtVFZESGFkV1pfLWtKT2VFMEc5djVIdDB2U2N4OWwxc3pBN1phOWpNZVpHZXlueTI5WjFqdno1RmNiblJFaFRn?oc=5",
+      "published": "2026-04-14T00:17:35Z",
+      "summary": "YPF Sociedad Anonima (YPF) Just Flashed Golden Cross Signal: Do You Buy?&nbsp;&nbsp;qz.com"
+    },
+    {
+      "id": "MELI-9c716f0ef4",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "MercadoLibre Inc (MELI) Shares Surge 3.3% -- What GF Score of 87 Tells Investors - GuruFocus",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMiwgFBVV95cUxQaG52SzUzYWJTdm16TE5rRWRzZmlkQUV3cXJ0aktmWHNQMXp3Y2l3X2pMRkhWZDlmRFdYcDdkM2FxalFwd0VLeE5rVTBvZE9rcnB2SDRKOXJyRGdSUG9KTnZaZlc5RkZfX0JaUDZDeU03c2o2QjlUMU05em11N1lnaEFNWjVDQmFKY2k1eWk4MG8zR2FwWnRiNEVuR3V0TU95dlFnSEthSVNnM2ltc1BFZklwVWlxUlNtd0RnRFFyamFZUQ?oc=5",
+      "published": "2026-04-13T22:07:30Z",
+      "summary": "MercadoLibre Inc (MELI) Shares Surge 3.3% -- What GF Score of 87 Tells Investors&nbsp;&nbsp;GuruFocus"
+    },
+    {
+      "id": "YPFD-7f8c33d8c4",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "Otra señal a favor de la Argentina en la causa YPF: pausaron todas las apelaciones - El Litoral",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMi1AFBVV95cUxOcmRqYVE0WWhkZTJnQkFZRVRVb3hIQlpsWlo1R0xkMXlZeU5OSE1GamRtZWgtbkRBQXNZTjFDbTRIMUpfNk1GMDgwQ3dxREhyQ09LSlIybXhIN3I3OE9NNGdhMUM0RWFGdmRWcm52RTcyNTRoelFCUGFwWW5SR1BTUHJ2eHJjazJ1V0t0N1F0aGhaZkJkdU5aSnhCTUI4UXZFOXpuN29meGNRR2RWdVk1NnM5WVBwd2dQZF84bVBZV1I5SEtZNTZhQmN3SzNtcmlQWFVOS9IB2gFBVV95cUxOaXI4Z3RjaVhlVzB2T1E0Rmh4dW5laFNRVWxEWGFKeVA3ZE1SdlhyYndtNFhsU0U1ZHhBcUZUM2FZZEcyRHF5Tk5GeDFEc3Z6T1U0ektSYmhVMGlhU2Zjekk5VE5jSWwzSzJfNGFhMEJlb21reEZ5UFNVQVl2SURMeHg1VkpJdHRfNlZmWEdkUjhmUS1KTjZlZUJzd1ptOGY1VDV3djFQVnQtdXUwczQ0TVJlbl9KSkpTVDd3V0VkNVpFZVZNYnkxZVlnOXU2Q0xSRjg1a0JvODg4UQ?oc=5",
+      "published": "2026-04-13T21:38:00Z",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMi1AFBVV95cUxOcmRqYVE0WWhkZTJnQkFZRVRVb3hIQlpsWlo1R0xkMXlZeU5OSE1GamRtZWgtbkRBQXNZTjFDbTRIMUpfNk1GMDgwQ3dxREhyQ09LSlIybXhIN3I3OE9NNGdhMUM0RWFGdmRWcm52RTcyNTRoelFCUGFwWW5SR1BTUHJ2eHJjazJ1V0t0N1F0aGhaZkJkdU5aSnhCTUI4UXZFOXpuN29meGNRR2RWdVk1NnM5WVBwd2dQZF"
+    },
+    {
+      "id": "YPFD-8d7c209f3c",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "Juicio por YPF: la Justicia de Nueva York suspendió todas las apelaciones - Perfil",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMi7wFBVV95cUxQcWtDSm9HMzU1YTkyaEVqZy1SRWU2QUZlTmtPVWRaNDRkYlRYenlJYXZ0eFFIREc4eVI5N0daMTVvU3FiZ3NSZm1VMkdkSG1Gal94QktmS2dxZEZRNjJMa1FVckNMdGhDT0tqemVtaF9Ha29JVHdCc2wyb1NnNHREZ3Q4TXVab3lPbktFV1hmTVp3bHF1QkI0cVh1LS1xRnk4ZDlhbDNGN1g3LUE5T2V6SGNfOTQ2WUp2bjFVR0N4aXNpd2F6dDRNMW90LUpKbDdUS0tRYUkxMTdwZVFsc0o1UUpxVUQtUkVRamV5N0RhMNIB9AFBVV95cUxPb3RYenhCRmxFRFZWVlBROTdmOWFoanhaTmxxTmlHakFMWjNpa3hkckkzTE1zam5tTTZZbEtTWjFoMlptV0xIc2IwenlfLWUyc0Exeks1Um5fdTR1d1VRdUJQYlB3SDROekthbDZXc3g0a0RQTkpjZkpNQWhFZ1pOUnZzU2REX3lwUHlNS0FNT21lclhvM2FJT1FmS0tJT0RiZWZnX2NlQjQwbERLMk5iQmV1Xzd6X3BlckJxM0dnS255OUpDZm9UTmRFWFZRejAyTEI3amJwUmdkM0NndVJNRnpxTndiZ0ZrVUl0eVBxdEotSk5B?oc=5",
+      "published": "2026-04-13T21:33:33Z",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMi7wFBVV95cUxQcWtDSm9HMzU1YTkyaEVqZy1SRWU2QUZlTmtPVWRaNDRkYlRYenlJYXZ0eFFIREc4eVI5N0daMTVvU3FiZ3NSZm1VMkdkSG1Gal94QktmS2dxZEZRNjJMa1FVckNMdGhDT0tqemVtaF9Ha29JVHdCc2wyb1NnNHREZ3Q4TXVab3lPbktFV1hmTVp3bHF1QkI0cVh1LS1xRnk4ZDlhbDNGN1g3LUE5T2V6SGNfOTQ2WUp2bj"
+    },
+    {
+      "id": "YPFD-15ccc0b1af",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "YPF: la Cámara de Nueva York frenó las apelaciones de Burford y afianza el fallo favorable a la Argentina - Ambito",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMi0wFBVV95cUxPMzFiZXdUaVkwUXdiWUhSRGlMNVF3MWw2dXFKbWVRQXY3OHNqR0RuQmpqSFhNcnFFeG1QMURWRC11V2pPSjRsN0ljQ09GcFY3eFY0SFFTR0pyM0NZaWN4Z2M3aVk3bEZWeGJlZXJQX0xMVkxTTkpCMnMwVTJWZUNuZE1qa0o2YnVaMU9QTjVfVkxSVURWQlRKc0NFUE9lSmdqQnNMZnEzU2w0el83Tzd0V1J3RE4yZ1dKcEI5RkdEX1F2S3NjS0JoU2xTcXY1cHNhNUkw0gHYAUFVX3lxTE9rNUptTUtrUUlGQWVnMmpRTkZaeWp5dEkxMFU4eks1aUdXdHJ5RldCbnZUNDlIUGI4ZUJhajNyLVlza0ZERkMtOEpXMDZEVXFTb3BXSHBqODdkcTVoaG5NeEhsS1ZaQW9Ldk5kNnhGOFFLbkVUbkkwcy1KYVNPZmdSeDd3aHZKRFNwWmRYb2ZnRkJLVDFwSzVxZmRTLXdRT2s1Y0luNUhNa1huMmpfMXNWRmVBb05XSjI4TlVJQ1Y0SUhsNUFrclJDUW4yX0hMNUlQdDJOQ2JHUg?oc=5",
+      "published": "2026-04-13T20:42:00Z",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMi0wFBVV95cUxPMzFiZXdUaVkwUXdiWUhSRGlMNVF3MWw2dXFKbWVRQXY3OHNqR0RuQmpqSFhNcnFFeG1QMURWRC11V2pPSjRsN0ljQ09GcFY3eFY0SFFTR0pyM0NZaWN4Z2M3aVk3bEZWeGJlZXJQX0xMVkxTTkpCMnMwVTJWZUNuZE1qa0o2YnVaMU9QTjVfVkxSVURWQlRKc0NFUE9lSmdqQnNMZnEzU2w0el83Tzd0V1J3RE4yZ1dKcE"
+    },
+    {
+      "id": "YPFD-5436b45baf",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "Caso YPF: buenas noticias para Argentina, la Justicia de Estados Unidos suspendió todas las apelaciones - LM Neuquén",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMizgFBVV95cUxNZmVOUFJKc3FvT3dpNjh2TnhwdXU5LXRVNzByelp4XzRoQmZ3bjJZc2V5LXBYU0J5OC1KM1hBdXJ2Y0VpQzJIS2VUYWUwMFNjUVYzWGJUVDJxQW5LY3ZOUVA3XzVLQlEzb2d6SmE2MDA2OGJ6UzlQRDFfQ2tnMk9ZOTZZSEVTbE9NVEUxaTBfSWtPVWVTQW4tNVhORVNubXZ3WS1HUTdBczBuam95MDhDRTE3Nk5sc09tWkdqSkZtSlludGM1TzNMVGFfYVJUQdIB0wFBVV95cUxQVTAxTE1wRk05ZnA3YWxLeXBDUDVrdW13Y3FEMFlnYm1oekpORm81SEhla2tCWnE3dlhRT2pWbl9WTkluYTM0dUhDNEdBbmxkZkt4U3BOTnVackgtOGFJN3JFYzBwT0VYX3diN1hsdzF3WHFYcjZxbmxIZzlEZ3JjWHd4d0ZBZVhVUVF6OXNCaDRBU3FyVzh2cmVzTk82R1ZaNXpaQWQ2UkN3d2VELU5FMWpObS1hSDRjZmJJLXBqUDR5WmVZSGdkZkN6SzdsTzBpaGxB?oc=5",
+      "published": "2026-04-13T20:30:00Z",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMizgFBVV95cUxNZmVOUFJKc3FvT3dpNjh2TnhwdXU5LXRVNzByelp4XzRoQmZ3bjJZc2V5LXBYU0J5OC1KM1hBdXJ2Y0VpQzJIS2VUYWUwMFNjUVYzWGJUVDJxQW5LY3ZOUVA3XzVLQlEzb2d6SmE2MDA2OGJ6UzlQRDFfQ2tnMk9ZOTZZSEVTbE9NVEUxaTBfSWtPVWVTQW4tNVhORVNubXZ3WS1HUTdBczBuam95MDhDRTE3Nk5sc09tWk"
+    },
+    {
+      "id": "IBM-38a7862ebd",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "+3.14% for IBM stock as Confluent acquisition boosts confidence - Traders Union",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMikwFBVV95cUxPSExvR0xFd3pjVmVqbTUxTnNhbUZSMXJJN1dsM2JEbDNncGJHVVVlQzgxdEx5dmZtTjFJMXphNkdvM3dwY08zSnZtd21uSTFHZEo5cG15WVJTZFVaSG00VjZzem1RR1Q0WUZyMzBaVHVvblhzWXhkSVhiTkFJTXRPczdzSUlhd0pFQWZUbzdGdG1WNDg?oc=5",
+      "published": "2026-04-13T18:58:24Z",
+      "summary": "+3.14% for IBM stock as Confluent acquisition boosts confidence&nbsp;&nbsp;Traders Union"
+    },
+    {
+      "id": "ORCL-7d0e1aca28",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Oracle accused of targeting employees with stock options in recent layoffs - New York Post",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMitAFBVV95cUxNT3FxcFNhZUZEaW1JbW5mVTZ3UzNXb2RScWZyX2Q4Ul9VeDByTU9lZzNWUWxOLU4xMW4zeU40MngtZjRFRHl4VVhqUVJKdTFKNUNabVpZYVBEUWtyZUYzTkhsLU9qVURxaXZfWG1waGZ0WVdHdFJ6bEthQ3J0Yk5ocjNuNGZBdUV3eTYzV0hhcDJfb0JpOHZXSUZnZVZxOG5MUzlzUGdHd1FlZTRweThxWG5HWVg?oc=5",
+      "published": "2026-04-13T18:48:00Z",
+      "summary": "Oracle accused of targeting employees with stock options in recent layoffs&nbsp;&nbsp;New York Post"
+    },
+    {
+      "id": "ORCL-238437d61e",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Oracle pops nearly 13%, leading bounce back rally in software stocks - CNBC",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMigwFBVV95cUxNZm51ZklYT2xPRmRfVWdhdk9waFZJd3FfbW5hYXRjR0dlbEJOSEQ3bXJ4TnlKU0hBaWpiTFNJdjV0VVlEdExlLVNKcm15WUo1S29wcWNrWGN2Um4wajNVaHlieDVzb0stWUlkVWRRUko2RWxfVzM5Y1hHejVOSWlBR1ZxY9IBiAFBVV95cUxQQUR1cngzZXFFZWNPWjNYbzg3bmJIclhwZ2hKcUR2VWE5V0pBaWFySEJlWkJWWlFwOHZYd1VlSWtJMEpXTTFTN0JmZzY1Zldleld4T1hDd1Q1YXgtMGJmOThScGRvdlBxZFRMbVl1UzJWV0lFVVR2cGxkSTJyY2JidGZFUTk0cGtZ?oc=5",
+      "published": "2026-04-13T17:58:02Z",
+      "summary": "Oracle pops nearly 13%, leading bounce back rally in so"
+    },
+    {
+      "id": "ORCL-69befbf552",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Las acciones de Oracle suben tras una serie de anuncios centrados en IA - TradingView: siga todos los mercados",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMiZkFVX3lxTFBHSHcyVGlzQzBqZ0twaUJKanBZUmVNMWZSQkUtcVQxRVBQVUtQckdQNUVrWVJoM1BuNDlrallfNDN4MFg5emtHdGUyVnJ0X19oWnBUd3RTRnZtZ1JscnB2X19GWlFjQQ?oc=5",
+      "published": "2026-04-13T17:38:02Z",
+      "summary": "Las acciones de Oracle suben tras una serie de anuncios centrados en IA&nbsp;&nbsp;TradingView: siga todos los mercados"
+    },
+    {
+      "id": "YPFD-9d150d58a7",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "Sigue la suba de la nafta en la Argentina: saltó casi 23% desde el inicio de la guerra en Irán - Infobae",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMi0wFBVV95cUxNdk1SOXBFWndzRTJpLV9zcXZPeTBGY3NnUE8zT3J6VmhUbTBOZkJ2czhwQmhrbVh3VnlEVUpZQ3FqdFkzVmlCRnpBcEo1SW1Ec3NYZ3NkMm80dXFLRXNMN2hBckIyTXhRdXJ2bGRiNlRMVllCNjF3TXhLaU02aDNCS1ZUaFp3eng4OTBoUEthYkptNFJmcjVud1pFdnJDUGdXdS0yTnZIWFE2MzJUTU43RWFkQ2VJWE4wcDNRNjJCdkJUQUJaeVQxWHNRcURuRnpWTi1R0gHuAUFVX3lxTFBuWDdRMUpWclpLU3U4SXI1UHlLNDM2dVBSRHNTb3pZLW9RU3M0NDN3TnlBeTJDY0xvYmxEajV4RHBXeG5PSTFTbDNrVGdMUXhLTG8zOXdxZDE0cnFOTW9TZTFsNFE2Q0g5RjVHeHVFekxpa2NHYmFneDlzMC1oSG5NVDNETUlPT0lmT3ZmRFNrUlh5Y3FBVDZvM0tYTzRQbW9kbFozMG1XRkI1WFN4bUg2YjZrY3FKbFYwZ28yTUJxR1FjVXhaZW9KUHd4Wko3UmF3cGgweVRMR0lobnpUUEU2aUpjUFpXZi04OFRlTHc?oc=5",
+      "published": "2026-04-13T17:31:00Z",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMi0wFBVV95cUxNdk1SOXBFWndzRTJpLV9zcXZPeTBGY3NnUE8zT3J6VmhUbTBOZkJ2czhwQmhrbVh3VnlEVUpZQ3FqdFkzVmlCRnpBcEo1SW1Ec3NYZ3NkMm80dXFLRXNMN2hBckIyTXhRdXJ2bGRiNlRMVllCNjF3TXhLaU02aDNCS1ZUaFp3eng4OTBoUEthYkptNFJmcjVud1pFdnJDUGdXdS0yTnZIWFE2MzJUTU43RWFkQ2VJWE4wcD"
+    },
+    {
+      "id": "YPFD-12fec43830",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "Caso YPF: la Justicia de EE.UU. suspendió todas las apelaciones y envía una nueva señal favorable para la Argentina - TN",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMi3wFBVV95cUxQUk1ZaERTdFlNbXBhTXhmLXN1R1V0UVlhVEJoMWJzVWV6aHFPYVNNUG51RkNKY01tWkN3M1B5a3FTVE5HM3RhWm5YTDFhc1c4bkF1U200N2RZMGFUX3h6ZVZ6Ymp6eTZpVGsza0ozU3JsSFVHY2VTTkRDb3RCSkhROWNPaUhyTnY4bndJOXRvcHA0VE5RVlgxTWxhVW5GUVJzUzNLX3lYREdSMUhycjZGeTdJLVdrTjU5VGIxeWJrNGViN1VvTGtuQ3N2MUdnSjVBeXhhVzhKejBvRnE0Z1Rr0gHzAUFVX3lxTE4yNmRTTENjblA3dVV2V2M5ejhUa3VJWHk1cmdQb1RkNE91Wk90TWZiREdDdWNZbXlWcDJNOXZSS1hVQjZaY196ekVvMnFUcE9zNE90cVVmRmdPejV1eWtJTmZ4am5jamppREljTnZacjlEY2FudzUyWE54T0JqSU1LMHI4VS01YkNScTdHemJ0NnZqOEZkQ094Wkw2N2I4U3BlVlNoVWhFRUZfYWMwbW1RbHpEY204ejNMWGp4U2R5RnNXTk1jb0FHM0FnUmN0QnAtN1BaN0x3YVJNcWpJQk1vZmEyclM4WlVteVpCaGdKbjdDUQ?oc=5",
+      "published": "2026-04-13T17:01:36Z",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMi3wFBVV95cUxQUk1ZaERTdFlNbXBhTXhmLXN1R1V0UVlhVEJoMWJzVWV6aHFPYVNNUG51RkNKY01tWkN3M1B5a3FTVE5HM3RhWm5YTDFhc1c4bkF1U200N2RZMGFUX3h6ZVZ6Ymp6eTZpVGsza0ozU3JsSFVHY2VTTkRDb3RCSkhROWNPaUhyTnY4bndJOXRvcHA0VE5RVlgxTWxhVW5GUVJzUzNLX3lYREdSMUhycjZGeTdJLVdrTjU5VG"
+    },
+    {
+      "id": "ORCL-4ade276ad9",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Stocks making the biggest moves midday: Oracle, Conagra, Salesforce, Goldman Sachs & more - CNBC",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMilgFBVV95cUxOWDliLUR0UXNjTHZaYWlmSl84ZloxdnFGcW1kN2R4c3UwVTBUVlRIRkpvOW1ZZl85ZmdlY2NWZkZiSEVQN3duSktESjFlX0RQaVRyYktkNWd3TTNKNDRXYkRHbmpyUXRzVE0wZHB3VnJUT0xTVWRxSG80T2lfSnJaTzVrT3BVZTIwcEhIWlBRVG80ejZ3RVE?oc=5",
+      "published": "2026-04-13T16:50:16Z",
+      "summary": "Stocks making the biggest moves midday: Oracle, Conagra, Salesforce, Goldman Sachs & more&nbsp;&nbsp;CNBC"
+    },
+    {
+      "id": "YPFD-6764c9d28e",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "(YPF) and the Role of Price-Sensitive Allocations - Stock Traders Daily",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMixgFBVV95cUxPb2MxOUpVaHZsdVlqOVFIVlFUTy0xU0tmRnlMbHpULVRRR2FvNlpyeVZBRjVnaUVkcWtsOHVCMmJhMzVucHdMMlNPZThPemFNYk1fdkdjOWI0cUNaVUt3dzdpWW5QUnZXMHRCQUxsbFdkRmlMcGRyZ1BEWjNEUHNvYjVpamJJeHQtUmYxaXAwZWk0azRfbUN4dXBvbWsyY0R2aXE1TEo0dl9rRHlEZVVTa0lXLTdtazFZaF9ub0RxN1dqS2lwLVE?oc=5",
+      "published": "2026-04-13T14:58:02Z",
+      "summary": "(YPF) and the Role of Price-Sensitive Allocations&nbsp;&nbsp;Stock Traders Daily"
+    },
+    {
+      "id": "YPFD-4e036d30de",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "Halliburton wins multibillion-dollar contract from YPF for Vaca Muerta work (HAL:NYSE) - Seeking Alpha",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMiswFBVV95cUxOMU5IYnRlSHUwWjVfZHFaamZ3clhDX2RUMWJ0UFRpUUNYNHRBX21BYUJtRHVHbDZpUW1MVzcyZDBYdy1aenphVWxiSk5PeVVkRTMzS1ppZ21LbTY0TmZNYk0yNXA0Sm1lX2JPRDQtY1k0RzRPajB2R2h3SjJlVzctQVRVZDNtRzN4WlFyaTU2SjB3NERmQVB3WndpTUlKS0oxLTVLdlFOMG5CUks5VmwyT3hsSQ?oc=5",
+      "published": "2026-04-13T11:52:27Z",
+      "summary": "Halliburton wins multibillion-dollar contract from YPF for Vaca Muerta work (HAL:NYSE)&nbsp;&nbsp;Seeking Alpha"
+    },
+    {
+      "id": "YPFD-46e799ba4a",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "Vaca Muerta taps Halliburton for first overseas electric fracking - Stock Titan",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMivgFBVV95cUxNbjZrU0FReFJQeWJ5VTRfVlBVN3RSdV9PbU1STld3QzZ0RkxfNU45OXRJQUJMRHFhRzlES0ZlRnJzdVNCMjNHdnpDOHdUcmQ3WkU0WUl0aDhiWEVoVi1xMmw3Ui1TN0VQM040SWp4VVc5RjNoX1hiUzV3YWRvNVVNMFFuZE44RHExLW5XQS1zSG5DUkYyQmJSNjJteGk0TTMzRzU3a1ZreV9mejFIRE0zamU0YmNqcml5d19xem1n?oc=5",
+      "published": "2026-04-13T10:50:00Z",
+      "summary": "Vaca Muerta taps Halliburton for first overseas electric fracking&nbsp;&nbsp;Stock Titan"
+    },
+    {
+      "id": "IBM-5ba06a8df5",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "BofA cuts IBM stock price target on Confluent integration timing - Investing.com",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMiwgFBVV95cUxOZ3hhaTJQSjJwSm91NUF3TzNqcC1vbTFQaE5WOWdYQjFTQ21mbkFQZVdEUlVmR2dWSm56U3NHX2trQl83M0NsMGc2TEoyTGtQNGZDVHI0SnZnRTJ6Njc0MUdWUFVic0lSaWFaQm5YcXB0YWdUZndFLUxlTkRXUTRIS09RUzdyTjFxb3pXNFBfR00zRkFyYTRjd0xSZjR1ODBnRVV6WjNmeWdWaHV1NUN1WnBCMWhnSmhHbzJyc3hIamR2dw?oc=5",
+      "published": "2026-04-13T10:31:05Z",
+      "summary": "BofA cuts IBM stock price target on Confluent integration timing&nbsp;&nbsp;Investing.com"
+    },
+    {
+      "id": "MELI-7e0819009e",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "Stanley Laman Group Ltd. Acquires Shares of 900 MercadoLibre, Inc. $MELI - MarketBeat",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMiyAFBVV95cUxONlhHb0doU0Q4YVY5UkE3LTM1X3J6OHdtN3hjLVE1Skt6bVhkQUkyOUxtcEs3SG1PcjAtRHpSLTFaSlVfbzRBMDZIWTBsaWdtd1VkV2RHN3JBOUd4czYyQXBiaGRuM3hLUUcwNmh4Ny1KMG53cFA1QjVGOXZqQ1lvSjVQYjdjbGp3eXI3bHZfUnQzOXVUd0NvU2lYdzNfZEZrMHd2YU5pdl9lTE94MEN6VE16eFNTbHk5eWU1ckMxYWZVVWhxb1Mwag?oc=5",
+      "published": "2026-04-13T10:20:33Z",
+      "summary": "Stanley Laman Group Ltd. Acquires Shares of 900 MercadoLibre, Inc. $MELI&nbsp;&nbsp;MarketBeat"
+    },
+    {
+      "id": "IBM-997bffebaf",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "IBM Stock Struggles But Citi Sees 23% Upside Ahead - National Today",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMirgFBVV95cUxPaG9xa0JZbXhhVnk4WVBYVmkwbDN5MnFSQmdfUzRwcXEwRkQ3eGhIc1Z6X0dNUXlLaFI4MXplYnpiYlpoYWdXVEtUWkYzZXZDdl9FME1HeWI1VUV1dF9fTlVzYVAycXNNWGN1RFM2M2l2NHd0bGZtWUY0U1JPSlktTUU5NW9DUXZqLTQ2b3JaVGhXa2Niai1jQVktNHg1dkZLQW84RzhqQ0ViVDF6cFE?oc=5",
+      "published": "2026-04-13T10:07:19Z",
+      "summary": "IBM Stock Struggles But Citi Sees 23% Upside Ahead&nbsp;&nbsp;National Today"
+    },
+    {
+      "id": "BKUCF-682f008915",
+      "ticker": "BKUCF",
+      "kind": "news",
+      "title": "Why Banco BBVA Argentina Stock Spiked Unexpectedly Today - TipRanks",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMimwFBVV95cUxQa2tqLWx6cmx0LTY4cUtqTHViLUN4VkFPYzhuZm90SFRSc1JnWGNHdVpKVEJmN09zbmxIZkVjbFdzOU0zYTBqZ0FQLXdjMDJkcXJBX3BSVFl6Um96Y0VCbmUtbXdfTjlzN1BOcmJjYUlEZXA3aGt6Z2p1YXltYkpmMFliRnM5dnI2RUMtNm1kbV92djRlOEVaM2xXYw?oc=5",
+      "published": "2026-04-13T08:49:35Z",
+      "summary": "Why Banco BBVA Argentina Stock Spiked Unexpectedly Today&nbsp;&nbsp;TipRanks"
+    },
+    {
+      "id": "MELI-792404738f",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "MercadoLibre, Inc. $MELI Holdings Boosted by Baillie Gifford & Co. - MarketBeat",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMivgFBVV95cUxNb3RmT3V5Mm1wN1RoenZGUFRoM243SUpPS1IwSkxWMDB0NEhVMXU4TXFpR3FReGJvek9McHpHQWxZaGJJZmR1YjQ0dUVxTE8wbVR1aERaOXdaQUUycVZvNmF0UWtWOWtMZFlaQUpKMloyc2xBRDVtQ2k3NnRsSlBYSDRNb3NSaTJkS3YzbTJya3A2LTR0Zl81bDRHTWk1NnRjaVdkVnV5ZHByNm13R054UlVEMDNzN2VZQ0NMdTNn?oc=5",
+      "published": "2026-04-13T07:28:53Z",
+      "summary": "MercadoLibre, Inc. $MELI Holdings Boosted by Baillie Gifford & Co.&nbsp;&nbsp;MarketBeat"
+    },
+    {
+      "id": "MELI-0fa5c1b053",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "MercadoLibre, Inc. $MELI Shares Sold by Altfest L J & Co. Inc. - MarketBeat",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMitwFBVV95cUxPVWhkYk5jZWZxV3czdTNTS3Bob2dFLVA5SkR2dkg3Um9IRjZuaW5ubTY2bWJHYkF4elBtbzhvRUs2blowRlZYVzlCWlZLSEZiRFlITmNlcVdUc2JOYmo5dVdDNDZtTUpfeUZzdG0tWTNXdW45djhKTzVFbzVFRWNNOFg2c2FfVWFmeE93QlhGMXpZMmlYZUkzVHRQOUQ1THcwVlI4Y25XOXlJNmxIUVhqNWxrTVBLSWs?oc=5",
+      "published": "2026-04-13T07:22:51Z",
+      "summary": "MercadoLibre, Inc. $MELI Shares Sold by Altfest L J & Co. Inc.&nbsp;&nbsp;MarketBeat"
+    },
+    {
+      "id": "YPFD-705d5524c7",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "YPF avanzó en dos condiciones clave para el proyecto de LNG Argentina: ¿Cuál falta? - Bloomberg Línea",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMi0gFBVV95cUxQUFZ2VXdzS0NSWTJ0OWlrMWRMa2ptU01Bb0xuQ1hDWHF6TmJ2U1RHY054SzNlaVlDTzRoWkNiN3pLdk95THYtNTRmOVhaNzl4aldwZHZMVGFvSXo3QkNOZFBKQU1rUmI3RHh0cGlzNmlWc0s0MDBIWDNJYS1VMmplLXN5UnMyX3ZHeW43QU56MElGZjlMX0JNVGN3Q3RjUl9qY3JBaEozT2FBd2dMX3F6bk5qeDZ6Y2w0Qm16NWZQMmh5Q3ZoelNhZWJZRU9QRlA4YkHSAeYBQVVfeXFMTXVLcHFlbVVnd2VqeHlJWXFwck43V3ViTkc3b3p6bkxvcWxXZ3JGM1lkbUc0TnVTYlJMd09HWTFybUUxdE1KSEUtVUFMZGFnVEJYdnVUa1Vqc25helQ2LTBaLTkzdlVXY3I2X0tTaHRvcWpocGpyRlU4RXF4TURZLUFmZTF6QnphRjZ2UlFBUHNPODRrWURWRG9TYng0U2dNblpkbGJpYWQ5dlduNUlFUGUwSWJ6Z3I4MFpVeU5EYnhXS2V1ZC1pYVdvSzlBYlJXdmNvanpUdm5BQm1FUkpXNWVzOXE2NEE?oc=5",
+      "published": "2026-04-13T07:00:00Z",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMi0gFBVV95cUxQUFZ2VXdzS0NSWTJ0OWlrMWRMa2ptU01Bb0xuQ1hDWHF6TmJ2U1RHY054SzNlaVlDTzRoWkNiN3pLdk95THYtNTRmOVhaNzl4aldwZHZMVGFvSXo3QkNOZFBKQU1rUmI3RHh0cGlzNmlWc0s0MDBIWDNJYS1VMmplLXN5UnMyX3ZHeW43QU56MElGZjlMX0JNVGN3Q3RjUl9qY3JBaEozT2FBd2dMX3F6bk5qeDZ6Y2w0Qm"
+    },
+    {
+      "id": "MELI-b26dac51d1",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "Analysts Optimistic About MercadoLibre’s (MELI) New Growth Initiatives - Insider Monkey",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMisAFBVV95cUxQZl9qTExEMnlBMnpTNmg2bC0tbEkxUC04OHJKbGRMUWJOT2N5cTgwQTBnZXJuNHREaWZjOTRXSEtQOTRUMUJtWFUxclhVNFg2MEZxa2J0YzRjVHM1QzUtSWM1ZEhPTGU2SDM1MmhqajhWdEN0VFdtbEk1VmJGUFJPSlo2Njc0ZjJBdjVRS3NIRTE2Z1pMNU12WFJDcWdFRWM0SWl5c2IxY0JjdjVkMjQ2OdIBuAFBVV95cUxNTjlQU1NxbVZaeHdQV3JRVXVadlQ0TDRmWnBrOEtWdGZGNjNUMFV1VFVwOWFod2VWNkxxVFNrWFhZTlBoNlBPTkR3a3pRUjJtVWozbXM1bVNxdEJoUmZZWUdQcXNMcDYzSnJfdW9URDAycTN5UjFVbG1QZGZpRjBJZEhlR09MVkV4UXM3bnNVWjB4N0Yxb0EtUGRKTm9uendlNzNvSjZHNEFuT19TaUJleGtOVS00STR3?oc=5",
+      "published": "2026-04-12T12:08:01Z",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMisAFBVV95cUxQZl9qTExEMnlBMnpTNmg2bC0tbEkxUC04OHJKbGRMUWJOT2N5cTgwQTBnZXJuNHREaWZjOTRXSEtQOTRUMUJtWFUxclhVNFg2MEZxa2J0YzRjVHM1QzUtSWM1ZEhPTGU2SDM1MmhqajhWdEN0VFdtbEk1VmJGUFJPSlo2Njc0ZjJBdjVRS3NIRTE2Z1pMNU12WFJDcWdFRWM0SWl5c2IxY0JjdjVkMjQ2OdIBuAFBVV95cU"
+    },
+    {
+      "id": "IBM-cf3c2af07d",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "\"=Consulta plataforma DUTT impresiones 2026 usuarios reales.ibm\" - Results on X | Live Posts & Updates - x.com",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMivAFBVV95cUxNaWJOVFlFMVIxbzRDdFJtMERaa3IzcW1BdGlud01mam45N2pkSFdUS19VaV9icDNDRzNBaTZma1lGOWQtWDhYeGI1cHB1MWdGenRiZUZNT25RRDUzRC1rdC03YzN5eGxyTzlGNWFUbU9kT1lYX3hNdEJROXY0eWhWNWREd29Nb3NwR2lsdUVGeTNXUkxaREs5b1M4ekktZkVjcWlIVmNhYml4cGhDUExFSmZYZXU1dzFsOHRSNA?oc=5",
+      "published": "2026-04-12T09:18:11Z",
+      "summary": "\"=Consulta plataforma DUTT impresiones 2026 usuarios reales.ibm\" - Results on X | Live Posts & Updates&nbsp;&nbsp;x.com"
+    },
+    {
+      "id": "BKUCF-043f11219b",
+      "ticker": "BKUCF",
+      "kind": "news",
+      "title": "Banco BBVA Argentina (BUE:FRAN) PE Ratio : N/A (As of Apr. 11, 2026) - GuruFocus",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMiwAFBVV95cUxNdC13MVpEeFJvWHl3MmZNNXRwbHNCNFZBTk5vbTRkMFhhSi1NaHgzcDBuYkNNQXdkYzVBR1poZnZxdjU0ZGxkMFNCVkdyTklBT3lxU09zYWdFb0tpcjZ6czN0XzdmSjF3eFM0LTlqODBOSklGOWRMU29vOTJfQjhoMTQ2MWhJZUxHZFF0aDdMcmxFQTc5VTlNUEpib0R0LXc3cE5tTlBodTl4V29fWFZPbTdKRFR0X1RYMHk1cUt2c24?oc=5",
+      "published": "2026-04-11T18:42:24Z",
+      "summary": "Banco BBVA Argentina (BUE:FRAN) PE Ratio : N/A (As of Apr. 11, 2026)&nbsp;&nbsp;GuruFocus"
+    },
+    {
+      "id": "ORCL-c6dd3dd61a",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Oracle gave its new CFO $26M in stock after firing up to 30,000 workers. Employee says an 'algorithm' may have targeted those with stock options first - moneywise.com",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMi9wFBVV95cUxNUG1FYnhKemhmTFRVYWtvSS15QjJhVnJjeHpzMHdFU3BzUXJnYVlWeHZFYWI4aTRfekpIWlNpdWM4Rm9oczZDcW5YV2p1Rm9aRWlMNnpBM2l4bmxuT2pGX2RXLWFpTnI5bmY0RTZkLXVqejAycUNSQUNJR25aRDlXRU1jT1pfLXR4cGh5OUlaWEdDbGt1bXBRc2VaVnlDNVNORi00dXNGdlBRWElVcldIN2RTMy1iUmwyUVE5YVUxaU9tWEpLTUZzTmh3TG81djJoQ253UzQ4RXlHWlZObmthVW00NkxRWmJlWGRIMjdraGszZVppT1g0?oc=5",
+      "published": "2026-04-11T18:08:16Z",
+      "summary": "Oracle gave its new CFO $26M in stock after firing up to 30,000 workers. Employee says an 'algo"
+    },
+    {
+      "id": "IBM-e7dda1b5b8",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "Dear IBM Stock Fans, Mark Your Calendars for April 22 - Barchart.com",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMinAFBVV95cUxQVGVkWjJZaFUyenFPRndsdDVrZFBaLWNaenRCM0pJSTBHcXdOX1p2Yl9VYUJDR0g5bzdwYWl5Z2llTUt5bW9sejhuWkpYamh1cFVWQ0R0OEFnNzkyWWo2SmZzcjNPZUJEREFrcUR1MHpNd0hjYlRzQ1d2OWxVVUFLZURCWERBQkFVUXhaRWc5Zlk5dDNpRWd2VjlZdVQ?oc=5",
+      "published": "2026-04-11T13:00:02Z",
+      "summary": "Dear IBM Stock Fans, Mark Your Calendars for April 22&nbsp;&nbsp;Barchart.com"
+    },
+    {
+      "id": "EDN-f5c218a010",
+      "ticker": "EDN",
+      "kind": "news",
+      "title": "Empresa Distribuidora Y Comercializadora Norte S.A. (Edenor) (NYSE:EDN) Stock Passes Above 200 Day Moving Average - Time to Sell? - MarketBeat",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMigwJBVV95cUxPQVpyNmoxN25fM2J6dVo2Q0lVUV9KNVFtWHExZkFvMzBoVlBjazd2S1g3aE8xaUswSjN0R0x3UnN5N2haUzFmcGd4MV94dXFtUWtETG9oLXBIUkpQbWVHZUF1X1N2SnUwNHNGeGQxV1lOcVNtTlFLaEFzMUJudkxuTmppTDlzLTRfb19hSEtLNk52eHZ6VlZlZWdpX0ltNlE1aHBKN3VNZDBZYlRyMGE0ZF9wSHd3ZmJvaUdpMnZFTkJSTkhRdThWNHhCdkU3YWJWa2x4SVVENFA0NVNHN1Y4cTVwZFZJMXBoOWNWQ3hTZ3dRMU1EWGd3bTBvMTU3b09QRU1r?oc=5",
+      "published": "2026-04-11T06:52:48Z",
+      "summary": "Empresa Distribuidora Y Comercializadora Norte S.A. (Edenor) (NYSE:EDN) Stock P"
+    },
+    {
+      "id": "BKUCF-71a6cae669",
+      "ticker": "BKUCF",
+      "kind": "news",
+      "title": "Banco BBVA Argentina Details Shareholder Structure and Governance Ahead of April 28 Meeting - TipRanks",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMi2wFBVV95cUxPMGlnN2xfU0NieXJWdmRlTDRnQzIwRkhOVXFmWTZETFJ0QmJTZFl2Yk5lRzVhcmg5Tm9GMUVFdWszVjg1bVdkSTg3Rm9iSmNNUnZ2SG5JNlh2WEF0dDdMV2xHQXFRXzMwN3ZUMl92ZVRFbFNFaFI5V19oT25RLVFDQW9kZjVMbWlyVUozMHg0OVdlblJsRFpUMGlpdDlmZnZRY2Zub0QxVDE4SW84VHh3MXZCa3I4UW5JUjU1Zm1ybnZGQmJoT2lNQ2t3OVN4VXlfV051aVpQcFVFc3c?oc=5",
+      "published": "2026-04-10T21:57:56Z",
+      "summary": "Banco BBVA Argentina Details Shareholder Structure and Governance Ahead of April 28 Meeting&nbsp;&nbsp;Tip"
+    },
+    {
+      "id": "MELI-88de9f6714",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "BTIG reitera calificación de Compra para MercadoLibre con precio objetivo de 2.400 dólares - Investing.com España",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMi4gFBVV95cUxQVTJ2VXRFSlJJVkZHWDlOOWd3YUdrN3l1R0xpbUY5bjBvMkl6MUg2SWJXUjZ2dzNfZGhiZ0hKTmV3a2lIWkhCeTg1eXZ2WW8xdWRzQXpVR282U3NYaldtdjF4QzNwZVd0bEoxcTFPWmsxZkJRQ2p5eXJiMWdHT2RGdnh0X3phX2hZb1BMSzQxQ05iM1VYSEV5SThBZF9Keld3dWZTdk0wdThoNGNWbXdXY1JlaTFQakVUdEFZSFpEUER2TUVVT0lkNUgtT2NRTnlVVVhucFp4WFM2YXE3NzVGSm13?oc=5",
+      "published": "2026-04-10T21:29:00Z",
+      "summary": "BTIG reitera calificación de Compra para MercadoLibre con precio objetivo de 2.400 dólares&nbsp;&nbsp;<font color=\"#6f6"
+    },
+    {
+      "id": "IBM-0cb7b43eee",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "IBM Stock Is Having Its Worst Year Since 2002. Here’s Why It Just Got a Buy Rating. - Barron's",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMijAFBVV95cUxQdVd1cWNUY29DOE9ZYXpRVDRYRFlYc0txMHlaeDBTb0lrTjBSUDZzZ1hIT3lhVXJmM3g2ZnhTd3E5WjB4d2dGaWx5MGRrdnRaTlVWWUhDeE95RjIwc1pqQjZlRkNVaXJTdGN3SzlOLVIyWnNkVHJXeVR2emdYdDFYSmNMbFB4c29mdUVaeQ?oc=5",
+      "published": "2026-04-10T20:05:00Z",
+      "summary": "IBM Stock Is Having Its Worst Year Since 2002. Here’s Why It Just Got a Buy Rating.&nbsp;&nbsp;Barron's"
+    },
+    {
+      "id": "EDN-26ca5764ba",
+      "ticker": "EDN",
+      "kind": "news",
+      "title": "EDENOR (EDN) Chief Audit Executive files Form 3 showing no share transactions - Stock Titan",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMitwFBVV95cUxQV3Ixc0VEQVc0UDlldTNUN29BeHlpQTM1RjJWd094MmxnaE53TXVBOG1SQ3hUWWt2UVpYQnM3amo2MEJ1R1NKdmhLS2VwOXZXX3M2aGdGRGVhc3R2MkwwelhDM1UtcVdTRjhFOC1mS2szd21CaDNNNEFPOGVFQnB6UWxBRHdlTG1aanBFV1FiRHN6TnEtbWxMTVlJeEhQOTBPeXVZN0gydXloN2pablpsTDE3VFp0dDQ?oc=5",
+      "published": "2026-04-10T19:49:08Z",
+      "summary": "EDENOR (EDN) Chief Audit Executive files Form 3 showing no share transactions&nbsp;&nbsp;Stock Titan"
+    },
+    {
+      "id": "IBM-adc7386e33",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "Veteran Analyst Initiates 'Buy' Rating on IBM Stock - TradingView: siga todos los mercados",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMisgFBVV95cUxNLW1GaGc4V19Danh5ODk1U3hPSUV2NTRRSHMxbUZTc0RPYnp3b2F0dnRtQV94b0t0bXVjRkZNbWtSNHFTYmVXejJoeWlaY2xFbjY3VWEzdlppUHNFQUg4d3pjcUJQWmVkZGNKUmlRd1M1YzhCbWk3RENTeDhUQnJTeFdEUWozWTVpN3AzaUk5Yk9yQ0hYUVdTdU5aWUM4REpOWGpQV1NWVXQyN3VzempJMUJ3?oc=5",
+      "published": "2026-04-10T19:23:07Z",
+      "summary": "Veteran Analyst Initiates 'Buy' Rating on IBM Stock&nbsp;&nbsp;TradingView: siga todos los mercados"
+    },
+    {
+      "id": "MELI-ee49597b6a",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "Mercado Libre apuesta por una jugada que divide al mercado - iProUP",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMinAFBVV95cUxObGt0c3lsdUw3bmp5enh5LUEwTVZEeTlDQkVjUkR2cjhueERSamotZlBiSE1lQnhPUWxtelBqN0VwcFFJZGlROWZyNWVOZGU4NDkzcldhSjVvU0RJblRTWmFxeTdZd2NQN2g0NjRwYThsZy1rRkd1eVdSYzNSeGVTbndoNXVLbTl5RVNfVDdxTXRHcXpvNno0WWtsdFbSAaIBQVVfeXFMTmd5cWFOZ3AyWHJSWm56d3N5TERNNldmYmR3ZV8xZFVjeG5SZlB3blNjU184MFItZ0ZRNTlYNHo1WWJHck5EMldvMHZrUVlEaXNaMEVZTlhvdXZhcE5JUGFhTGZKdXd1NWs1ZWRrdmdfa1FkaVE0MGYtUWc4MWpkM2cyTTZGV0MteDFHbkVDY1ZZWmkzYXRiMjB1XzZuWmVCVkJR?oc=5",
+      "published": "2026-04-10T18:55:00Z",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMinAFBVV95cUxObGt0c3lsdUw3bmp5enh5LUEwTVZEeTlDQkVjUkR2cjhueERSamotZlBiSE1lQnhPUWxtelBqN0VwcFFJZGlROWZyNWVOZGU4NDkzcldhSjVvU0RJblRTWmFxeTdZd2NQN2g0NjRwYThsZy1rRkd1eVdSYzNSeGVTbndoNXVLbTl5RVNfVDdxTXRHcXpvNno0WWtsdFbSAaIBQVVfeXFMTmd5cWFOZ3AyWHJSWm56d3N5TE"
+    },
+    {
+      "id": "YPFD-5ea6267048",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "YPF Sets April 30, 2026 Shareholder Votes on 2025 Results, Reserves and New Share-Based Incentive Plan - The Globe and Mail",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMilAJBVV95cUxQclRYSTJmX1hwcldFbnV5M2w0cS1LUVUwUmh5Z1hzVjZHbXRVempESllyelJNTTUtNmRoRmk0Q1dVMEpKaTVTZXl4cERPS094QVV5d25JNlhWcU9rMmhPVWVrdVRwd2R1SW1RVDRXMkRCcEprbWo1WGt3VjI5NzJJVUZOUERaUlFIUlNnd1pfMlpvU3BrRk5kWGcyRHowa3JkWVNla3N4eXdQcmV0eEZIM3VmRDlnTEdWZlp0UkQwU2lXYjc2dElaeXNyOWxRVDgzTmVTSkliazZiNldEVmZlT0t4S0NJd01Ga1B1SDNfdFNBZ0lzTEJ6WHgxN19UNkRzUlZwVm9IdE5RellFYWczVEFsX2k?oc=5",
+      "published": "2026-04-10T10:40:00Z",
+      "summary": "YPF Sets April 30, 2026 Shareholder Votes on 2025 Result"
+    },
+    {
+      "id": "MELI-ba03f27ac1",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "MercadoLibre (MELI) to Discontinue Mercado Coin Cryptocurrency - Yahoo Finance",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMiqwFBVV95cUxNVS01eGdoMlhzMENkak92SFdLbTJ3anFiRTdRdDNFSWZuWWZEM2ppVm5PTmxvSUF3d1NqaVpmT256dWtBamwySUNBdEhWSlJGWVdDeC02RTV2RnBsM3pQcktYYV9rSlZ4X1g0RHFlVUNWdEJ0LWo4ajNXYm9mdFVHU3pFekM1bGduaGloNXcxUElVdERGNXIwWTAzRjJDLU54Ym4xbE5pMGRreUk?oc=5",
+      "published": "2026-04-10T05:03:00Z",
+      "summary": "MercadoLibre (MELI) to Discontinue Mercado Coin Cryptocurrency&nbsp;&nbsp;Yahoo Finance"
+    },
+    {
+      "id": "BKUCF-483b42dcf1",
+      "ticker": "BKUCF",
+      "kind": "news",
+      "title": "AIRBAG EN VELEZ - All Access",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMiX0FVX3lxTE5yaHNGTmlHMjNCczE1SGl5eTByV09XcFJJTVBTNW1SRDM3eDZuS3RjUGcyVk5RVzZjV0UtVnRZLXI1M1NxTDlWcVlyTVlqd3o5Nm9BaVk2MGloejg1bUZz?oc=5",
+      "published": "2026-04-09T22:17:44Z",
+      "summary": "AIRBAG EN VELEZ&nbsp;&nbsp;All Access"
+    },
+    {
+      "id": "BKUCF-1c600780af",
+      "ticker": "BKUCF",
+      "kind": "news",
+      "title": "BBVA Argentina posts 2025 Form 20-F, offers free hard copies - Stock Titan",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMivAFBVV95cUxQTmw4Q0RfYTNPS3dfQmJpUThwalItV2pkUFVtQ1dSUzBIaDVnRjBfNjV5ZkJfaHR0WFpuX3BQZnNaUUgtNW9BLXVlbld4dVcxVElKSm9NeWhGWW91RDFvZXMwb2JfVF9icXEtaFhLV3ZDZGQtWlJjU0JTU0FGU0hwUlBGekI5cjNsb2Vrc3QzX3RXUnVQeXhPR2p6LUZuV0VFU0s1ci1oRGFaRjByS3pPbHdQVmJRMnBPRmZNLQ?oc=5",
+      "published": "2026-04-09T20:14:00Z",
+      "summary": "BBVA Argentina posts 2025 Form 20-F, offers free hard copies&nbsp;&nbsp;Stock Titan"
+    },
+    {
+      "id": "BKUCF-c4d785ab84",
+      "ticker": "BKUCF",
+      "kind": "news",
+      "title": "[IRANNOTICE] Banco BBVA Argentina S.A. SEC Filing - Stock Titan",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMirAFBVV95cUxOeWpsNXZuUzhfb0tjNjktZVVKVDUyV2FfOGVDN05ac2RheHIxdE1vb0RSY01HOFlJRzlqbXdvenpqQmtZdExTdF9vVmdpQ2puMFNBeDVXNTk1dm4ydnFYQXgydnZJY2dDX0dZSGpHRnlTT21Lb1JjWXQyR01ZQTdEZ1BqYzRyZ0ZlU2VwUzR3OW1xZG1HUTdMbVJpOU43RmtBZG5BU0FiQUZiSFpl?oc=5",
+      "published": "2026-04-09T20:07:41Z",
+      "summary": "[IRANNOTICE] Banco BBVA Argentina S.A. SEC Filing&nbsp;&nbsp;Stock Titan"
+    },
+    {
+      "id": "BKUCF-d9969573c1",
+      "ticker": "BKUCF",
+      "kind": "news",
+      "title": "Net income from continuing operations of Banco BBVA Argentina SA – BCBA:BBAR - TradingView — Track All Markets",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMimwFBVV95cUxNWDk4RW54dXZubEVqVkFWOS1Gb3JRNnRvUmc2YUdsNXVuaHZuV2FoT2NXenhtb1JheDhDTU1iOHc0MUQ3emd2NTZqb0FNdVpKMjlZd2JVQ0E1Mk80ckhVdi16TTVpa1pUc1BEWll5bTJTVzUyLVRjbkRMSTZEcXdMeWx1X0tEMmVuZXhKNGctNjdNTDFWNm5YbHJYQQ?oc=5",
+      "published": "2026-04-09T19:33:34Z",
+      "summary": "Net income from continuing operations of Banco BBVA Argentina SA – BCBA:BBAR&nbsp;&nbsp;TradingView — Track All Markets"
+    },
+    {
+      "id": "BKUCF-525498faaf",
+      "ticker": "BKUCF",
+      "kind": "news",
+      "title": "Net revenue de Banco BBVA Argentina SA – BCBA:BBAR - TradingView: siga todos los mercados",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMijgFBVV95cUxPUlNDQUppWEZ6S3FLRmJ4blVGaTdGNGlWci1HbmlJR0h1ZTR6TDJrUWdKci1BRWFOdFFFX2lMWUdyV0NlWTBuZ2VzVmwwQVM1SWRsem9uU0Y3N1UyMllITGhyQTc2NzE5NVlyLXVhRUxjVzUtSE1MYmJDZkItTGtKTE85bGg3eHEzeHdlZWln?oc=5",
+      "published": "2026-04-09T18:28:43Z",
+      "summary": "Net revenue de Banco BBVA Argentina SA – BCBA:BBAR&nbsp;&nbsp;TradingView: siga todos los mercados"
+    },
+    {
+      "id": "MELI-faf59360ef",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "Esta es la batería para autos más vendida de MercadoLibre: cuánto sale - Diario UNO",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMiqwFBVV95cUxOYUNKWG12ZkZ1Z0VGekVzYVdLLVEtRkRnTldBbmc2b0VJVGxYSFB5R1pDUTJoOUNnRDZTazUtSjNQajcySUZ2MDJsbjFpUVZBdlZ4RWQ1N05JaEFFTFY1bEJTTlhsTGUtZEZtR1dPOV9aVnFDeTBKRUxrOWR1ZWM1X200TUZEVVZPS3I2cmNFdFg1dzU4UHBnTXNJcjNPZ09kX1dleHBXSEtQdzTSAbABQVVfeXFMUFV0b18zLWNtbVhhUzNoMFpGU0k2WmFEWDVNX25aTFoybTdySkxMQ3kyTk5WMi14Z2ZKRk5WOXNoT240SXlmR1I5cmZneFJ2dVhacGJfVDVRNWdpUk1VTHpqT0RySmo5OHFFRDNFMThqWjhnS0JkUjhCc3pTaGpUMHA2OU5PUDA2V0R2SEJ2bUhuY3dPTTJXV0JCdklhX09NZGtVWm9FZUVxbm84VVZDOUo?oc=5",
+      "published": "2026-04-09T15:15:00Z",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMiqwFBVV95cUxOYUNKWG12ZkZ1Z0VGekVzYVdLLVEtRkRnTldBbmc2b0VJVGxYSFB5R1pDUTJoOUNnRDZTazUtSjNQajcySUZ2MDJsbjFpUVZBdlZ4RWQ1N05JaEFFTFY1bEJTTlhsTGUtZEZtR1dPOV9aVnFDeTBKRUxrOWR1ZWM1X200TUZEVVZPS3I2cmNFdFg1dzU4UHBnTXNJcjNPZ09kX1dleHBXSEtQdzTSAbABQVVfeXFMUFV0b1"
+    },
+    {
+      "id": "EDN-602d349934",
+      "ticker": "EDN",
+      "kind": "news",
+      "title": "(EDN) and the Role of Price-Sensitive Allocations - Stock Traders Daily",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMixwFBVV95cUxNajNTd1hhTF9wcS13N1M4eHBaUUNKWktfYy01VG5HQmR0VjBOVmxCdGhQVnlNelp5Y0NGemdBSTlueEllcXFnNXUtdmg5SVZEZnNudHpmamlzYmhpZUNOM0ZKSE9ESXh3UDhkNWk0eUxVbUhaNzhNZWp0bHlMcE90Vzd6Q0tBQWtwZERaM2xFMGNpc0VhREJraTFtM05YT2RjRkZ6ZG5SVHlGTjFYQl9pQmNZMnNOazhHSXV2eHVxWXpBc3NNRmE4?oc=5",
+      "published": "2026-04-09T15:08:02Z",
+      "summary": "(EDN) and the Role of Price-Sensitive Allocations&nbsp;&nbsp;Stock Traders Daily"
+    },
+    {
+      "id": "YPFD-a05757c8ed",
+      "ticker": "YPFD",
+      "kind": "filing",
+      "title": "6-K — YPF (2026-04-09)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/904851/000155485526000542/MainDocument.htm",
+      "published": "2026-04-09T00:00:00Z",
+      "summary": "Filing 6-K presentado por YPF el 2026-04-09."
+    },
+    {
+      "id": "IBM-337e6883cf",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "Las acciones de IBM caen mientras tres firmas recortan objetivos antes de resultados - MEXC",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMiTEFVX3lxTE1HZ1Itc1R6Z213TUg3b1RXdmxNVGRQQ1cxWG5CUFJqRnRIendQOUoyb3dOM3pLUHhWaDNMWnExWlhOUXI0b1h1ZE9pNmw?oc=5",
+      "published": "2026-04-08T18:29:22Z",
+      "summary": "Las acciones de IBM caen mientras tres firmas recortan objetivos antes de resultados&nbsp;&nbsp;MEXC"
+    },
+    {
+      "id": "IBM-2164c7e07f",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "International Business Machines acción: Lo que debes saber antes de sus resultados - AD HOC NEWS",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMiwgFBVV95cUxQblJYT185VDZtSGZVWlhkRG9iSkkyVllOblEySXVuZzlvRk1RZWVvSXAxZ1JUOE5PUzNjTTQwTXN2a3dPdU40SV96TDItQ3BMTjQ1V0ZSZ0QxcHE1NHdlVmptS3Z2dVNrUDZtcFlOU2FXSndRM2lHSk1PS1NfdnlFSVg4TlowWWpWNnBkdHlqamk3YnNDWUMzTnlRbS1uV09kUURNb2p2c05XeUFoTE1xMlVfM0tGQ2xkblkxSnZHM1hrQQ?oc=5",
+      "published": "2026-04-08T18:03:46Z",
+      "summary": "International Business Machines acción: Lo que debes saber antes de sus resultados&nbsp;&nbsp;AD HOC NEWS"
+    },
+    {
+      "id": "ORCL-70c6a51397",
+      "ticker": "ORCL",
+      "kind": "filing",
+      "title": "8-K — ORCL (2026-04-06)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/1341439/000119312526142939/d132760d8k.htm",
+      "published": "2026-04-06T00:00:00Z",
+      "summary": "Filing 8-K presentado por ORCL el 2026-04-06."
+    },
+    {
+      "id": "IBM-9c37374492",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "¿Deberías considerar invertir en acciones de IBM a medida que aumentan las revisiones de estimaciones? - Bitget",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMiYkFVX3lxTFBkTk5BMFFrcWZuWW9sUmM0OU14V2dwSHZLQk1PRlFTUlJJTXd1aTZoYmlMeU0yXzkybTE5anRtdGhEdGJKRGJ1N0EwOFA2ZEx6UmtuWTRTWHVMNlR0dnFDLVJn0gFnQVVfeXFMUHRmczlyUEF2TWNqOHRpenB2X1FaUWtSMlk2Z3M5dVAyVnhUaWMxVHFybmVHUnc4VG5uMTlBNVlTNGEwd1FPU1d4TEZoWTk5UGdFT1dFMlJiclZqZ2Z5NzROeUd5Qmk1Zw?oc=5",
+      "published": "2026-04-05T23:43:52Z",
+      "summary": "¿Deberías considerar invertir en acciones de IBM a medida que aumentan las revisiones de estimaciones?&nbsp;&nbsp;Bitget"
+    },
+    {
+      "id": "IBM-6637a8fe18",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "Is IBM a good investment in 2026? Its buy-and-hold prospects explained - thestreet.com",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMigwFBVV95cUxOQUxLOERvazgwRWVEQ1V1c2FXMFJOV1J2S094Y1lZVlNiTUdubkE3MGMtRHdpbTZ2YW5tWWM3N041VFpzWmltOE83NnFpVWNnclA4cmQ3U3ZfM1k1cjRFbzR3bnBiMjQzZkJ4WE1VeFlYbXE3RnBjUUt1bGJFd1Q4RXl6bw?oc=5",
+      "published": "2026-04-03T07:00:00Z",
+      "summary": "Is IBM a good investment in 2026? Its buy-and-hold prospects explained&nbsp;&nbsp;thestreet.com"
+    },
+    {
+      "id": "MELI-9ee48bff0a",
+      "ticker": "MELI",
+      "kind": "filing",
+      "title": "8-K — MELI (2026-04-03)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/1099590/000199937126007656/meli_8k-033126.htm",
+      "published": "2026-04-03T00:00:00Z",
+      "summary": "Filing 8-K presentado por MELI el 2026-04-03."
+    },
+    {
+      "id": "IBM-8e16b5be08",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "IBM da pasos importantes en computación cuántica: ¿Podría esto mejorar las oportunidades futuras? - Bitget",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMiYkFVX3lxTE5mQVp4bVZ5LVRhdkkwdm5sVGdyR0VvVUVybjlDR2h4cmF3VXFuRGl1cE9vOW1DalBZMUw1b28xd2RrQ0JEVjUzMVh2SW43MzF0Q3V1WmljenBXOEhzYW5BMWN30gFnQVVfeXFMTWNNZ0dfZkIyYWpyckJoT2J2eUhtc1ZjNG4tYlRpZm83UzYyMTdhMjhWNkdEbnZTRTdGTVctVVRzTDJnTDZiX3pNSDhGcTEyOW03UWI0c2xiQW1zUHlKT3NkaWMteDlaTQ?oc=5",
+      "published": "2026-04-01T08:18:50Z",
+      "summary": "IBM da pasos importantes en computación cuántica: ¿Podría esto mejorar las oportunidades futuras?&nbsp;&nbsp;Bitget"
+    },
+    {
+      "id": "ORCL-50b1a17275",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Oracle echó a mas de 20 mil empleados por correo electrónico para invertir en inteligencia artificial - La Voz del Interior",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMizwFBVV95cUxNNk5DNldLUDBFQjE4ZFNRYUFUMThvZ2E0aHJuY1BuRXp3cG1uOS0wZXdkN1hLY0M2U3JJc3NjcmpvX0tIQjIxVkxNVV9HMzlYclpPdGRpdlpoQUtlRm03WnFYUWhrRjduZm1JejVlTm91WFlSV2pxVlhJUWtoZVlfdnYtSWY0a2pSTVNOSmhNNy1sY0Q4RVRLQmNraDAwUl9vY213T2hlWWpMUnNoM1V0U2VkbDh5SzVQSTlWem1ZcVNWZXN2OGJLZVVRc2F3Rk0?oc=5",
+      "published": "2026-04-01T07:00:00Z",
+      "summary": "Oracle echó a mas de 20 mil empleados por correo electrónico para invertir en inteligencia artificial&nbsp;&nbsp;La Voz de"
+    },
+    {
+      "id": "MELI-1021370aea",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "Mercado Libre se muda de la capital cordobesa a sus nuevas oficinas en Villa Allende - Perfil",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMiygFBVV95cUxQYjJxMDBmSFlTTjhWT2NuNWlnQi0ySjNWOWotczNMWFlMZ0R5d3hqY1RyN1I5dmtHZzZWaVp3VU1Oc3BfMlZhWmhsTk1UTjZ6eGxXa3dHTXhYUTY3THZ2YTFERmFYWHpiTDlxODdOanF5eERWdzR5WDhfemszME5GOXEybWlsTS1aaVhwSUxsbGl6bjlWSWdiaThXRlN4TnpOM3lzNVktU0paVlhxNHpMQlAzLXlqNnJxU0ROaGpKbDFXOFRSS001dEdB?oc=5",
+      "published": "2026-04-01T07:00:00Z",
+      "summary": "Mercado Libre se muda de la capital cordobesa a sus nuevas oficinas en Villa Allende&nbsp;&nbsp;Perfil"
+    },
+    {
+      "id": "YPFD-c4db0c167f",
+      "ticker": "YPFD",
+      "kind": "filing",
+      "title": "6-K — YPF (2026-04-01)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/904851/000155485526000499/MainDocument.htm",
+      "published": "2026-04-01T00:00:00Z",
+      "summary": "Filing 6-K presentado por YPF el 2026-04-01."
+    },
+    {
+      "id": "ORCL-749354fafc",
+      "ticker": "ORCL",
+      "kind": "news",
+      "title": "Oracle Lays Off Employees As It Curbs Costs During AI Buildout - Business Insider",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMilAFBVV95cUxQWFg5d2FmLXJIbEVYWWZYX1FxQUR4WEdQNlVLUGtkTUhuOTEzYnBqaEJUcUJyV1UtaE5rUHBPc0J5MmUxZGw1MERhSlZ3bGJHT3pGcWJ2Y0J2WkZITmdhWmdtVlRpTU5BeTBvQUEtVWEyNURUQTNseXRCWktGLTB1dF9ELW43bTV3a1o1NjFzY1RibHNV?oc=5",
+      "published": "2026-03-31T07:00:00Z",
+      "summary": "Oracle Lays Off Employees As It Curbs Costs During AI Buildout&nbsp;&nbsp;Business Insider"
+    },
+    {
+      "id": "MELI-672a467e3b",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "Mercado Libre reabriría su centro de software en Villa Allende - Cadena 3 Argentina",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMitwFBVV95cUxNb3ZfWkxfd1IyNkNHdGhNU0xtVDJWbmNLV3BTSVlyN25RMVNDVDYxMU5ac3VRYm94UkNFVGEzb182NWpldUpHVHFFN0F6b0tTMnZIYkd0V3I2NVFMWk9kd1dHTTItM3YyRTdDLVdYbHpMd3lvTVBtUXJlSkZlOXdoMVJ4a3BPZHlTMEZvNEIyTmZQeFJ6c2otNnk0MmhmWk1BVG5SMHdja29WQTVKN1hELXJSbXRwU1U?oc=5",
+      "published": "2026-03-31T07:00:00Z",
+      "summary": "Mercado Libre reabriría su centro de software en Villa Allende&nbsp;&nbsp;Cadena 3 Argentina"
+    },
+    {
+      "id": "YPFD-3d17e88716",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "Morgan Stanley upgrades YPF stock rating on cash flow outlook - Investing.com",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMivgFBVV95cUxONTN4NzJNSnctMUhWQ3VWRF9JRE1DdVhjUTdNQm9hazhfb1hUV19GVHYtYmpjY3ZiYVBWNDBIeU9FTFFCdnVTNk5ua0Vnb0hONDNjV2FmcW05YjlQbWNiSnVKeDZ2WFN4d3F3UlF5WDBXZnVUdEFtN2dZcGI0QkxmXzdjd25DdWJaYndiUFVkZWhSS3VzdjZ2U2FiOWNXSmd4Vmg2aXYwQU9WVDdNSl9ib2lhWXBpZGxtbUw4dzJn?oc=5",
+      "published": "2026-03-30T07:00:00Z",
+      "summary": "Morgan Stanley upgrades YPF stock rating on cash flow outlook&nbsp;&nbsp;Investing.com"
+    },
+    {
+      "id": "YPFD-609bcdf628",
+      "ticker": "YPFD",
+      "kind": "filing",
+      "title": "6-K — YPF (2026-03-30)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/904851/000155485526000471/MainDocument.htm",
+      "published": "2026-03-30T00:00:00Z",
+      "summary": "Filing 6-K presentado por YPF el 2026-03-30."
+    },
+    {
+      "id": "YPFD-609bcdf628",
+      "ticker": "YPFD",
+      "kind": "filing",
+      "title": "6-K — YPF (2026-03-30)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/904851/000155485526000444/MainDocument.htm",
+      "published": "2026-03-30T00:00:00Z",
+      "summary": "Filing 6-K presentado por YPF el 2026-03-30."
+    },
+    {
+      "id": "YPFD-609bcdf628",
+      "ticker": "YPFD",
+      "kind": "filing",
+      "title": "6-K — YPF (2026-03-30)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/904851/000155485526000442/MainDocument.htm",
+      "published": "2026-03-30T00:00:00Z",
+      "summary": "Filing 6-K presentado por YPF el 2026-03-30."
+    },
+    {
+      "id": "EDN-5b77c3516f",
+      "ticker": "EDN",
+      "kind": "news",
+      "title": "Responsive Playbooks and the EDN Inflection - Stock Traders Daily",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMiwgFBVV95cUxOOE5xcThkX1ZWd1oteTN2NFI2V0JneExEVGwzQWpxZHpOaHZzdlRsUUdEYVlBVjJlU2FTNlhJQVFBclZ0SWhqQmlUYkk2bnE0U1k5d0F6SFozaC1SMXp5am5lN0lZSWFhRnlmQjFaWUk2UHZyZERqXzJMSWhrOWlGODZlVzhmSGZNS01LOURrREVDc0lJUTZ4UzF1RnRrdC16NTRRM0U5MGpPTExLNk9PWnliemplOE00UkJ3WVBOMTNSUQ?oc=5",
+      "published": "2026-03-29T07:00:00Z",
+      "summary": "Responsive Playbooks and the EDN Inflection&nbsp;&nbsp;Stock Traders Daily"
+    },
+    {
+      "id": "YPFD-8c40379b8d",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "La Corte de Apelaciones de Nueva York revoca el fallo que obligaba a Argentina a pagar más de 16.000 millones de dólares por la expropiación de YPF - EL PAÍS",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMinwJBVV95cUxNSktQcXdOTDZCWjkxbnhFMFdlMTBkRlVhNWEwMEkxLWVMNGVZX25TcVpEdHVUM3hQbE5hRTM3eVdoNWlZS1A2MUpHUG9neGhZU1JtV2tHSlVHclVOV3EtaFE1cUhaTVFJbDJXX2l2a3Vhc2FsU05KRWFSQ0ttRm5XQmREWkpqMVJVei11SFl6QWxvZUdvVGdtZExXMWhFNENHSEhWbW5Ua051VjJJWWF2cENBejgzMFpPelpzSmxGVGFvTm1wbEpGZS0xdC1hcmg1Y2VVTVB6RnVIUkFLT2pWS0x5Qmh6LWNHOGtyU3BjLWNYNUQ5anJXc1pvUGpPSHN2Y0t3dGR5aHVydjhyYmVIZHNmRlU0dHp2X2otODVUa9IBswJBVV95cUxNOURtcnhZMWU4YklOcXphcG1VSk5EM3Rucy1ZMFpoRTZuM3pPcUNnNE9JeXZaQUNZb01aYmxIV3hMWlZLNGIwZDVvMzFoM3QtUnd6SE9reml3NWl5OWVNNV9rUk5kTlhDZHYyXzhISk1YVUYtNUMtZTlLRW5oWXlMUGhHbkp1N3NkT2E5bUlqUFVrOUg1TS1UOXpXQVQ5N1NxT2xMQUtuUEgxV2hRWlp5SzFwTXBzbDBXb05LU2hXbFdMU0FmeVJ4X2tSd1VSRkhvcHFLMkNlazAyS0ZjcEtRLTlQbllVWkZ1YUh3Y0E4Szk2aXBHWGpPQ1dqM1dmZHZOdDR5TzVBZE5MNnJzbjlsSWhReERnRTRQWFl0QmlDVUEzNWliTDZVWUhvV24teVA1M1c4?oc=5",
+      "published": "2026-03-27T07:00:00Z",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMinwJBVV95cUxNSktQcXdOTDZCWjkxbnhFMFdlMTBkRlVhNWEwMEkxLWVMNGVZX25TcVpEdHVUM3hQbE5hRTM3eVdoNWlZS1A2MUpHUG9neGhZU1JtV2tHSlVHclVOV3EtaFE1cUhaTVFJbDJXX2l2a3Vhc2FsU05KRWFSQ0ttRm5XQmREWkpqMVJVei11SFl6QWxvZUdvVGdtZExXMWhFNENHSEhWbW5Ua051VjJJWWF2cENBejgzMFpPel"
+    },
+    {
+      "id": "YPFD-cd18a94cbb",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "Victoria para la Argentina: la Justicia de Estados Unidos anuló la condena por el caso YPF que obligaba al país a pagar USD 16 mil millones - Infobae",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMizwFBVV95cUxPUkxHQWpuX1JFbzFRNmRYNVVnaGNod1VmcFBQaGxwN1o0OEozRXdqcEZrbmdXcWxJNWdmaFY5Zjc2bWRJLWlXTlVib0xqYnVQaXFiM1JGUF9ucl9HbVkwMFVJWlpGYUtnZ2w5T200VWNJVVZrX0RHWW9oVl9IUXF1QkZwNnB4RGtPd1Z6V29uRU9rQTZib3VPdjhKUFpPQkZpWHhVR0NKNThOd0ZudDhQYkdiMzgxV3NVbWxtNW5DeS1HMVpkQlRJcDFpXzc0Q0nSAeoBQVVfeXFMTXZSejJGU1A1UGlvSnozbC14LVJHS0FiYzU4cS1vejZTYlA5d3JUTXZYLUYyb0ZOXzRKU3VFNEo1cmJFZi1QMjV0VS1GSko5UmdKVWEtT0UwNjNGRHdYNXdSN3RMSHFDSm9xNFg4R0ZweG1UbnZHZk52UXBwaVljUUhsbTZiOENWUWRRYUN1Y3V5UFRfc01IZ1BPRV9zTFhjVEVuN3pPYV8wRjA4b214a2tselh6aWJwdzFQcmU5UHpZQnczMVVzTHN0Q0NRNk5oUzJ0NG5zME8tVTU2RnlaSURVd2JUb1RqZHp3?oc=5",
+      "published": "2026-03-27T07:00:00Z",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMizwFBVV95cUxPUkxHQWpuX1JFbzFRNmRYNVVnaGNod1VmcFBQaGxwN1o0OEozRXdqcEZrbmdXcWxJNWdmaFY5Zjc2bWRJLWlXTlVib0xqYnVQaXFiM1JGUF9ucl9HbVkwMFVJWlpGYUtnZ2w5T200VWNJVVZrX0RHWW9oVl9IUXF1QkZwNnB4RGtPd1Z6V29uRU9rQTZib3VPdjhKUFpPQkZpWHhVR0NKNThOd0ZudDhQYkdiMzgxV3NVbW"
+    },
+    {
+      "id": "MELI-fb8f681584",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "Mercado Libre apuesta fuerte con un edificio que transformará Saavedra y el Polo DOT - iProfesional",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMitwFBVV95cUxNcmlmOVg5bFcyUU12ZFhjUHUzbUJidFA2Y3dVck5VMl9pSXdvUEFpZzBWakk1ampDdWptU19CbzRIY2Q1aVhmYmxMNkdrLWo5Q0VLOXRlaFRnVy1tZ0Q0YS1QUzk1ZGd0ZkpTR1VRM19LSVptVVRaNlk5dVgyYlEwVEVwTjhuOUttTlctaEZLMkR2R2RIM2FSbVR1RjhmOFVyLTdQTUdiVEoxRHhuTnZvM3lkTnMtUEXSAbwBQVVfeXFMTzRHamd4OGpYZ2EwVDRrbmNFRHB4LTBfUDNhZWNETkxYTXgybUdTNUtxaER3bkZjNmxEXzNJY3VkSWNsR3BmUUQxTWFtX3EyWVZtWkgxREFkZzJMd3lLc1M0RGEwRkR4LUxqWmV0Z0YxSkdYekQzWEtMbDNuWTdlaXFrbklGRmZ0c3FrRzA2Y1hGalZkTUNmZWY1b1VyUUx2OTVIM0lHeE5jN2RWU3Z6d0pZMkkzZ1E2UXdQRm8?oc=5",
+      "published": "2026-03-27T07:00:00Z",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMitwFBVV95cUxNcmlmOVg5bFcyUU12ZFhjUHUzbUJidFA2Y3dVck5VMl9pSXdvUEFpZzBWakk1ampDdWptU19CbzRIY2Q1aVhmYmxMNkdrLWo5Q0VLOXRlaFRnVy1tZ0Q0YS1QUzk1ZGd0ZkpTR1VRM19LSVptVVRaNlk5dVgyYlEwVEVwTjhuOUttTlctaEZLMkR2R2RIM2FSbVR1RjhmOFVyLTdQTUdiVEoxRHhuTnZvM3lkTnMtUEXSAb"
+    },
+    {
+      "id": "EDN-8914ef23ad",
+      "ticker": "EDN",
+      "kind": "news",
+      "title": "Empresa Distribuidora Y Comercializadora Norte S.A. (Edenor) (NYSE:EDN) Sees Strong Trading Volume - Time to Buy? - MarketBeat",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMi7gFBVV95cUxNTUhMU0VPZG1KU2UtakpibF8wMUxHNGloU1k5S1dVci10eUdZR1R0ZkZiNGNLR25VSHdCTERqenQ2cl9CVWlqeEN1MmdudkdPWnpobFlyTEZrOGM5dUlETnpOa2xpbEJpeFV0SnBESjFDV2JfRm5zdzdUaUpqTDVGaTNKREg4VWNaeWZWODlvT0N2WFp3RURpUWNmN2NaMHp3Qm1DcjdQb011dmFveHZGM0ZMcTE5VEk4d1pBUnBZTzRaWEltejNBTW1ubnFrY2lYYWJVVWRkeDlXQTBYcG95VHd3dHBaSWdGbkpEd1RR?oc=5",
+      "published": "2026-03-27T07:00:00Z",
+      "summary": "Empresa Distribuidora Y Comercializadora Norte S.A. (Edenor) (NYSE:EDN) Sees Strong Trading Volume - Time t"
+    },
+    {
+      "id": "YPFD-ca31e6bcf7",
+      "ticker": "YPFD",
+      "kind": "filing",
+      "title": "6-K — YPF (2026-03-27)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/904851/000155485526000419/MainDocument.htm",
+      "published": "2026-03-27T00:00:00Z",
+      "summary": "Filing 6-K presentado por YPF el 2026-03-27."
+    },
+    {
+      "id": "YPFD-6d4e5fc237",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "YPF posts 2025 annual report online with audited financials - Stock Titan",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMibEFVX3lxTFBLSjJIeUp4dkZoLU1SclFDdEJ4MlhrdXV2bFF4Nmx1aHcyX3NqYWVDY1ZpOWZ5SFBJLWp2VlJ1VUxhNUF2c0dLT2NNYWpwOXFmZXVaMURjT19XWk1lTVpOUXlVUVF2bk04UHdidg?oc=5",
+      "published": "2026-03-26T07:00:00Z",
+      "summary": "YPF posts 2025 annual report online with audited financials&nbsp;&nbsp;Stock Titan"
+    },
+    {
+      "id": "EDN-3bb529e23a",
+      "ticker": "EDN",
+      "kind": "news",
+      "title": "New EDENOR (NYSE: EDN) director files initial insider ownership form - Stock Titan",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMitwFBVV95cUxOWkIzR096SW9yLVYwU1lxY01yRkRPSFN2MUZ2VmJ0LVUydzFtS29XWFktYnRoR3hpRnJmYlNKRnU4TTYwLXcwSjN0eUFQYlFrNmplb1NlVXNnYkFWYjQxMEszYk9RMkRoQjJzM1JlUmQyTXZyZzYwTUdTOTkybzBFOTlJOG43OXVmT2JIcG5vTTBWNi1qZnpvSzNDMktVRHd1ZU8yeHR3RThGcmZudEk0cVdyRXE3REk?oc=5",
+      "published": "2026-03-26T07:00:00Z",
+      "summary": "New EDENOR (NYSE: EDN) director files initial insider ownership form&nbsp;&nbsp;Stock Titan"
+    },
+    {
+      "id": "BKUCF-8386ba69cd",
+      "ticker": "BKUCF",
+      "kind": "news",
+      "title": "Banco BBVA Argentina: Operational Excellence At The Worst Point In The Cycle (NYSE:BBAR) - Seeking Alpha",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMitwFBVV95cUxNSzNqZ1B5cmZRQTRhS3YxWDkzYnFKdXJBaFpIV3VlbW82aDZDQ0xYeTFqaHFSMEQxNll6aE5PeWQ5NnRJOUFxVHVZVF9uR0FzSWo0ckhxWjZZRi0xMHg4NjdmbFlraE5VbjNCb0I4VmdKN21LYjkwYlVnamVCcnl5dHFKbjNKSFVjY09aVUVLbnYyZ3hqamJqQlJCUGpBMVEtd3JvTjAxbDVsM2J4blJUbENKNzZTdGM?oc=5",
+      "published": "2026-03-26T07:00:00Z",
+      "summary": "Banco BBVA Argentina: Operational Excellence At The Worst Point In The Cycle (NYSE:BBAR)&nbsp;&nbsp;Seeking Alpha"
+    },
+    {
+      "id": "EDN-42448c2ba7",
+      "ticker": "EDN",
+      "kind": "news",
+      "title": "Edenor Secures Upgrade to A+ Long-Term Credit Rating - TipRanks",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMipgFBVV95cUxQSUVIZndOc0VhbDF4MHNyZWx4cVJmdnhvRGdLNVRxZTVDcDhxdlFXc2JFLWlDRUEyOG9pUU5HdjhuTGFEa2lqZjZCQXNBam1vWGlQZUlqY1JjTV9RLWtPZFgtNnl4aXpsVFhFWE1PZkJXcEhvT284ajlTbmVqMmVLUmtGVm9GbHZvMl9iWEVkXzlJMGJQbU1xM0lCTDRTUFdPNDYyY01n?oc=5",
+      "published": "2026-03-25T07:00:00Z",
+      "summary": "Edenor Secures Upgrade to A+ Long-Term Credit Rating&nbsp;&nbsp;TipRanks"
+    },
+    {
+      "id": "EDN-b996db051e",
+      "ticker": "EDN",
+      "kind": "filing",
+      "title": "6-K — EDN (2026-03-25)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/1395213/000129281426001759/edn20260325_6k.htm",
+      "published": "2026-03-25T00:00:00Z",
+      "summary": "Filing 6-K presentado por EDN el 2026-03-25."
+    },
+    {
+      "id": "IBM-63d43ba07c",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "Should You Buy IBM Stock on the Dip? - The Motley Fool",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMihAFBVV95cUxQaU9DUUozaTY2eGNXbUpKdHJkMGpIUjAtWUtvNkEyX0Q2TkowYmRYUnFHQ0MxYmRGNHM2eUxjTVJwMUFJQXhqZDFwa01DMVFwWUZNVVhCZmxEb285cEJpUHczZm56NWZ1cFhyQnJ3R3h5RXZUV1RSdF85cmI2X0RMeWs2ems?oc=5",
+      "published": "2026-03-22T07:00:00Z",
+      "summary": "Should You Buy IBM Stock on the Dip?&nbsp;&nbsp;The Motley Fool"
+    },
+    {
+      "id": "YPFD-fd5de6f33e",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "Insider Sale: Labor Relations VP of $YPF Sells 12,719 Shares - Quiver Quantitative",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMioAFBVV95cUxPdnlkSTJFM2J6Z2dWeFJBVHdkZlBMVUM1cHJiVWFCc3RDcU9GdU0xcDlaUVUxcnJvcVZWXzJScElwajR4bllmNUQ2UmY4Tzh0OFJ2c2dqTElmV0dBZGRuT2RwREdFVG1VTnVCeFpHQm9IMk44M19kb0RSVkp4SnlCWUFObm84Zkh0MEZhYTY1eDZjT08taF9XaWVSZ2h2S1Vt?oc=5",
+      "published": "2026-03-20T07:00:00Z",
+      "summary": "Insider Sale: Labor Relations VP of $YPF Sells 12,719 Shares&nbsp;&nbsp;Quiver Quantitative"
+    },
+    {
+      "id": "BKUCF-c4b454a2fe",
+      "ticker": "BKUCF",
+      "kind": "news",
+      "title": "BBVA Argentina reunió a clientes para analizar las perspectivas de la economía local e internacional - BBVA",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMi4gFBVV95cUxOWU1fMmV4Zkl6WE1Nck91dTNHRnUtNno5OV85MXRFM21wVlZNNUxiMTlXUWZwTS10N1NmSjJsWW1FanVPMlozcEZ2RENpaXVHMXhydlR0V0NXNzA4Qk9aNXVfQU01dURIenplaHB6NGJuVmhndVlXYmpseDFLdU5QODhRTm5QaVIxdUtsa1BFSTlBZ3AxYTF3clgtcVdEc3ByR1JMSmtiVDlQWlU4QUZmY01ZcjRKdi1VeFBMQ0RnSFdGWGhhRlRSY3Z6Ry0xQ2hMRGh3anhBNnc3alljUDk0aHV3?oc=5",
+      "published": "2026-03-20T07:00:00Z",
+      "summary": "BBVA Argentina reunió a clientes para analizar las perspectivas de la economía local e internacional&nbsp;&nbsp;<font c"
+    },
+    {
+      "id": "YPFD-628fc40832",
+      "ticker": "YPFD",
+      "kind": "news",
+      "title": "HSBC Raises Its Price Target on YPF Sociedad Anonima (YPF) As Analyst Turn Bullish On The Stock - Yahoo Finance",
+      "source": "google_news_us",
+      "url": "https://news.google.com/rss/articles/CBMif0FVX3lxTE9CRDE0WlJHVkxuTVNtaVNqY1VDdEU5NndMYkhDekdUNGVUYzlGYkV5SzUwblJnM3VUUkRuUS0tV2g5QW1vYk9wYTlQLXFtUXVXTjBpajA0NFF3ckoxa2FOa1hPZy1EamRsVTBuRmtoaS02VUtRV0MyLVJRVWVTa0U?oc=5",
+      "published": "2026-03-18T07:00:00Z",
+      "summary": "HSBC Raises Its Price Target on YPF Sociedad Anonima (YPF) As Analyst Turn Bullish On The Stock&nbsp;&nbsp;Yahoo Finance"
+    },
+    {
+      "id": "BKUCF-97f7bf44c5",
+      "ticker": "BKUCF",
+      "kind": "news",
+      "title": "Argentina celebró su 1° Cumbre de Sostenibilidad de BBVA - BBVA",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMigwJBVV95cUxOYWZhb3lPS2Y1WVNUa09VdllHeVFqbGc3RjJTb3ZORWdGMmVKTGxKeUVwa3NfaVdHQXlWV2dxS2gzZm1mcmNkaUVYR2dzQkVPREloVW5YQzNtSFQtWEI3R2xlMkJTWE1rMUktV2lsc05UNEpGOUtfbVZwUHBCVXdnbjRLRWdkdjR4QWxTemtNNnI0V3Q3YmszVHE2aTRBQW5HNHppOFhhNlVpMkRsUGdCVmlramhkdnI5X1NvR0YzNm1zXzlGM2hrY0VTQ1lLWVpid1A2V3BlRTd4bkNhQ0JKNmVFRmJVR0RpdG9wR3FLUVdyNDQzelNTWndNOVNFTTd6NzFz?oc=5",
+      "published": "2026-03-12T07:00:00Z",
+      "summary": "Argentina celebró su 1° Cumbre de Sostenibilidad de BBVA&nbsp;&nbsp;<font c"
+    },
+    {
+      "id": "ORCL-5fe1cb4449",
+      "ticker": "ORCL",
+      "kind": "filing",
+      "title": "10-Q — ORCL (2026-03-11)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/1341439/000119312526101045/orcl-20260228.htm",
+      "published": "2026-03-11T00:00:00Z",
+      "summary": "Filing 10-Q presentado por ORCL el 2026-03-11."
+    },
+    {
+      "id": "EDN-75f92d5faf",
+      "ticker": "EDN",
+      "kind": "filing",
+      "title": "6-K — EDN (2026-03-11)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/1395213/000129281426000785/edn20260309_6k2.htm",
+      "published": "2026-03-11T00:00:00Z",
+      "summary": "Filing 6-K presentado por EDN el 2026-03-11."
+    },
+    {
+      "id": "EDN-75f92d5faf",
+      "ticker": "EDN",
+      "kind": "filing",
+      "title": "6-K — EDN (2026-03-11)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/1395213/000129281426000783/edn20260309_6k1.htm",
+      "published": "2026-03-11T00:00:00Z",
+      "summary": "Filing 6-K presentado por EDN el 2026-03-11."
+    },
+    {
+      "id": "EDN-75f92d5faf",
+      "ticker": "EDN",
+      "kind": "filing",
+      "title": "6-K — EDN (2026-03-11)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/1395213/000129281426000782/edn20260309_6k.htm",
+      "published": "2026-03-11T00:00:00Z",
+      "summary": "Filing 6-K presentado por EDN el 2026-03-11."
+    },
+    {
+      "id": "EDN-75f92d5faf",
+      "ticker": "EDN",
+      "kind": "filing",
+      "title": "6-K — EDN (2026-03-11)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/1395213/000129281426000778/ednfs4q25_6k.htm",
+      "published": "2026-03-11T00:00:00Z",
+      "summary": "Filing 6-K presentado por EDN el 2026-03-11."
+    },
+    {
+      "id": "ORCL-c4d3d164f4",
+      "ticker": "ORCL",
+      "kind": "filing",
+      "title": "8-K — ORCL (2026-03-10)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/1341439/000119312526100148/orcl-20260310.htm",
+      "published": "2026-03-10T00:00:00Z",
+      "summary": "Filing 8-K presentado por ORCL el 2026-03-10."
+    },
+    {
+      "id": "IBM-173f41e469",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "IBM (IBM): Buy, Sell, or Hold Post Q4 Earnings? - TradingView: siga todos los mercados",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMiowFBVV95cUxOSGkwcmh4TWNkZ2VlYVRnZzVuR1c1dWV2YVdCQndfbld1WTVXU1BlcXVxNXZ2SVN6MTFxZXN5QnlwRWFBUUdTZ1ZEYmRlR0xwQXcyeEhDb1hRdC11UjhQbThoNzAxbEtfdkhwZ2QwSlY4U1h4bmFsTTdLc2lBbk5kMWtwSzZUNmJBcmdJQ0dPWlNTa3Ewd0JlR1l4aEgyZmpvQ0tn?oc=5",
+      "published": "2026-03-09T07:00:00Z",
+      "summary": "IBM (IBM): Buy, Sell, or Hold Post Q4 Earnings?&nbsp;&nbsp;TradingView: siga todos los mercados"
+    },
+    {
+      "id": "BKUCF-9dd91206af",
+      "ticker": "BKUCF",
+      "kind": "news",
+      "title": "Obligaciones negociables Clase 41 de Banco BBVA Argentina S.A. - Abogados.com.ar",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMilAFBVV95cUxQTDlwQlM1aFJ6MjgwQ2pDcUhrVXdMZ3M1Y1NYd1NmTk8tS1BQa3RhM1hpQXVoTVhSRmtKMW9tMGdzYVRQdE1QcUtES09XMHM5dHVpZTBBSjlRN0xadmhjTFJ6WnFxZE42eFBnWUJRMXVRLUlEZGE3N0wyUmFTajhSMFJfeHV3aGptVVdUUjRuRk1RRGlO?oc=5",
+      "published": "2026-03-06T08:00:00Z",
+      "summary": "Obligaciones negociables Clase 41 de Banco BBVA Argentina S.A.&nbsp;&nbsp;Abogados.com.ar"
+    },
+    {
+      "id": "EDN-e04f6d3b1e",
+      "ticker": "EDN",
+      "kind": "filing",
+      "title": "6-K — EDN (2026-03-06)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/1395213/000129281426000717/ednpr4q25_6k.htm",
+      "published": "2026-03-06T00:00:00Z",
+      "summary": "Filing 6-K presentado por EDN el 2026-03-06."
+    },
+    {
+      "id": "IBM-7af488434e",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "IBM Rose 7% This Week. Here’s Where the Stock Could Go in 2026 - TIKR.com",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMikgFBVV95cUxOYzZvQ3NBQndiSnh4akFOVm5zLXViOTduUU1lUzhyN1pmMWgzWUNueVdacmMxT0hocFBpVHpqSWFOVjNNT284M0hPZUJTeGZGN2FWVkJEaWx3dzAyY3FOV3VYdFV5QUQwTWkzOVNFeTU1Z0xUN2hPU1lySFdWa19xSlZDMzNZQk5jaDc4VzhSVWNuZw?oc=5",
+      "published": "2026-03-03T08:00:00Z",
+      "summary": "IBM Rose 7% This Week. Here’s Where the Stock Could Go in 2026&nbsp;&nbsp;TIKR.com"
+    },
+    {
+      "id": "IBM-09f4e93a62",
+      "ticker": "IBM",
+      "kind": "filing",
+      "title": "8-K — IBM (2026-03-03)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/51143/000005114326000015/ibm-20260301.htm",
+      "published": "2026-03-03T00:00:00Z",
+      "summary": "Filing 8-K presentado por IBM el 2026-03-03."
+    },
+    {
+      "id": "BKUCF-bf32aed259",
+      "ticker": "BKUCF",
+      "kind": "news",
+      "title": "Obligaciones negociables Clase 40 de Banco BBVA Argentina S.A. - Abogados.com.ar",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMilAFBVV95cUxQaFJETU1lLUo3Sl9VNHlZeG10Y0R1YWtKVE9wbC1sbW1nRVFFSkphREYyVklBVGxBSWZ0QmlodVJMLTd3Q2lya29xeFdpS1RVamEzZzJqX0YzWkNzcEpZUjIzOEJZOERQdVIydGw1VFMydFI0R0JQZFRkR1dLUkdsZ29TRm0yLUR2WnRvcDNfb1JSWHh3?oc=5",
+      "published": "2026-03-02T08:00:00Z",
+      "summary": "Obligaciones negociables Clase 40 de Banco BBVA Argentina S.A.&nbsp;&nbsp;Abogados.com.ar"
+    },
+    {
+      "id": "BKUCF-492f79c842",
+      "ticker": "BKUCF",
+      "kind": "news",
+      "title": "BBVA es el primer banco en permitir transferencias con adelanto en tarjetas de crédito - BBVA",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMiwwFBVV95cUxNWkJoZ2YxU0VKVHhsRlJpbi1qR1hUSnN4M1dnYjR4YnJCbVVoRl9qU0MyT0V5UkszeFlQNHdjbnJsNC1McXRLb0FpbnFzcXhlbDhVZTlGd2xqX3V3cDJLUjBDYXJVX3BHeFdvdmlMTmhpdXFTa1JJSlBHaUt2UUpDaTM4c1NVVFZNdVBuVDZVOVFLSkxlb25pNXJoeTJWQUZETGx3ellqVnBfSGREOWNsdmZkNDUzdU92ZkhGRzhGUjJBdHc?oc=5",
+      "published": "2026-03-02T08:00:00Z",
+      "summary": "BBVA es el primer banco en permitir transferencias con adelanto en tarjetas de crédito&nbsp;&nbsp;BBVA"
+    },
+    {
+      "id": "EDN-86e1962249",
+      "ticker": "EDN",
+      "kind": "news",
+      "title": "Asesoramos a los colocadores internacionales y locales en la emisión internacional de ONs de Edenor por US$90.000.000 - Bruchou & Funes de Rioja",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMi2gFBVV95cUxOb21vS1lZcjRnSXlGNl9TNVBXSkplYWdveC1KcmsxclptT0dtS2VLbzg4bzc2ZXM2WThmcmw2dUF0RzI4VVMxOEdJVk5SYUNCUzJGR05vTDFiY2hFcGFTWVRGaGJMRkhlWm1ISDlSd3pLbGpFSUlnOGFZUWdad2FoZnAybk1aUko3VDQ1WnI5TVlzX1picmUzX0d6V3Qzc2tMTnZCN3RFRFQwdUZXaDEyTGJDWTBDSjJfQThmeWV2YVU3SDRfZ3J5SWtXX0ZqU3Z4RG5DX1dNdTNJUQ?oc=5",
+      "published": "2026-02-25T08:00:00Z",
+      "summary": "Asesoramos a los colocadores internacionales y locales en la emisión internacional de ONs de Edenor por US$90.000.000&nbsp;&nbsp;"
+    },
+    {
+      "id": "MELI-e530529ce9",
+      "ticker": "MELI",
+      "kind": "filing",
+      "title": "10-K — MELI (2026-02-25)",
+      "source": "SEC EDGAR",
+      "url": "https://www.sec.gov/Archives/edgar/data/1099590/000109959026000006/meli-20251231.htm",
+      "published": "2026-02-25T00:00:00Z",
+      "summary": "Filing 10-K presentado por MELI el 2026-02-25."
+    },
+    {
+      "id": "MELI-3f7511e911",
+      "ticker": "MELI",
+      "kind": "news",
+      "title": "Ventas de MercadoLibre se dispararon un 45% al cierre de 2025 por envíos gratuitos - Bloomberg Línea",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMi0wFBVV95cUxNdGcycXZCZzkyc0xiTE56cmFVWXMyUmY4SVlLcmlwQW1tZ1ktakxnN0Yxd2I1T0JEOExRNWRDTDBpbW1mbmxYY2F0NGtaQWNfVlY3bG5adVY4d3NrajRDcnVYazRRcVM2X25faHVvUWdKZDVaM3ZNemlnakV5aFZWUWkyX3FnUkpVNG5JLWpZR3I0aUtueDIzbVFEQnpzaE5jNmlHVlFTVG1fOGZYbzdaeVVaVFl4cWNtNVBKVVo1YW12Zl84emV5SmtZTEMwUEdSZk040gHnAUFVX3lxTE9uRk1zNGRmVHpiTmhEMFhKZjVXdDlJbFUxcko4MXJXMUdBSFFacWhHdGZ6cm15TGx1VmlGcGlQdnMyQlpFSUNfTjFhUGhFbnd6Q3dXLXdUMTYwbjRFZkJhaWFJTDJuZHc2UWF4U1dRbXhnNnM0NU5WczMtaVVVUGRpYUdad0V3UXdNcVNSbHp4eFlJUzlFa0k3dkt5VF94bno1ZFBkS185VDdMSUxsTGlUX3lPSEV3SHFZQUhvQTAwNEF3WHFCZ3IwZ3o1QnRUYTNQXzQtZ2JZNEtSM2tVNnVkQlUzelZIaw?oc=5",
+      "published": "2026-02-24T08:00:00Z",
+      "summary": "<a href=\"https://news.google.com/rss/articles/CBMi0wFBVV95cUxNdGcycXZCZzkyc0xiTE56cmFVWXMyUmY4SVlLcmlwQW1tZ1ktakxnN0Yxd2I1T0JEOExRNWRDTDBpbW1mbmxYY2F0NGtaQWNfVlY3bG5adVY4d3NrajRDcnVYazRRcVM2X25faHVvUWdKZDVaM3ZNemlnakV5aFZWUWkyX3FnUkpVNG5JLWpZR3I0aUtueDIzbVFEQnpzaE5jNmlHVlFTVG1fOGZYbzdaeVVaVFl4cWNtNV"
+    },
+    {
+      "id": "IBM-d29e923454",
+      "ticker": "IBM",
+      "kind": "news",
+      "title": "Acciones IBM, Eli Lilly y Domino’s: claves de la sesión - ig.com",
+      "source": "google_news_ar",
+      "url": "https://news.google.com/rss/articles/CBMisgFBVV95cUxOT1VNWXdtS3F4b1p4RUxUb2JIb0dWNkktSHR5b0ZrSzVmbjc3aUpKZWFBMHdubE5EeXJ6U1o4am5reHpaa2FnSTJpSU1nb2Z6Z1d1MXN3c3FQb0pKYVFHVVo4cFhDOVZ6cXdXeWpKRXA3Mk5aYkJ5YzdJYVAtTGNkUVVpV095eHpEUVVfTWNIbVV6TkZ1V0wyTG5UY1lJQTFybXYwX2VnMlYta2ktRXh5S053?oc=5",
+      "published": "2026-02-24T08:00:00Z",
+      "summary": "Acciones IBM, Eli Lilly y Domino’s: claves de la sesión&nbsp;&nbsp;ig.com"
+    }
+  ]
+}
