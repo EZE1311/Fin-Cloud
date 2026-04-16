@@ -19,6 +19,7 @@ input,select,button{font-family:inherit}
 input,select{background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:8px 12px;font-size:14px;outline:none;-webkit-appearance:none}
 input:focus,select:focus{border-color:#2563eb}
 input::placeholder{color:#475569}
+input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.7);cursor:pointer}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:#0f1117}
 ::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}
@@ -52,6 +53,9 @@ const fmt=(n,d=0)=>{if(n==null||isNaN(n))return"—";return new Intl.NumberForma
 const fU=n=>{if(n==null||isNaN(n))return"—";const abs=Math.abs(n);const d=abs<0.01?6:abs<1?4:2;return`USD ${fmt(n,d)}`;};
 const fP=n=>n==null||isNaN(n)?"—":`${n>=0?"+":""}${fmt(n,2)}%`;
 const today=()=>{const d=new Date();return`${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getFullYear()).slice(2)}`};
+const todayISO=()=>{const d=new Date();return d.toISOString().split("T")[0]};
+const toISO=(ddmmyy)=>{if(!ddmmyy)return"";const p=ddmmyy.split("-");if(p.length!==3)return"";const yy=parseInt(p[2],10);const yyyy=yy<50?2000+yy:1900+yy;return`${yyyy}-${p[1].padStart(2,"0")}-${p[0].padStart(2,"0")}`};
+const fromISO=(iso)=>{if(!iso)return"";const p=iso.split("-");if(p.length!==3)return"";return`${p[2]}-${p[1]}-${p[0].slice(2)}`};
 
 /* ── SVG Charts ──────────────────────────── */
 /* 3D Pie with labels near slices + leader lines */
@@ -1235,10 +1239,10 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
 function Operaciones({ops,setOps,macro,enriched}){
   const [showForm,setShowForm]=useState(false);
   const [editId,setEditId]=useState(null);
-  const [form,setForm]=useState({ticker:"",tipo:"COMPRA",cantidad:"",precio:"",mercado:"BYMA",broker:"BM",moneda:"ARS",fecha:"",ccl:""});
+  const [form,setForm]=useState({ticker:"",tipo:"COMPRA",cantidad:"",precio:"",mercado:"BYMA",broker:"BM",moneda:"ARS",fecha:todayISO(),ccl:""});
   const [filter,setFilter]=useState("");
   const [confirmDel,setConfirmDel]=useState(null);
-  const emptyForm={ticker:"",tipo:"COMPRA",cantidad:"",precio:"",mercado:"BYMA",broker:"BM",moneda:"ARS",fecha:"",ccl:""};
+  const emptyForm={ticker:"",tipo:"COMPRA",cantidad:"",precio:"",mercado:"BYMA",broker:"BM",moneda:"ARS",fecha:todayISO(),ccl:""};
   const montoUSD=(op)=>{
     if(op.moneda==="USD") return op.cantidad*op.precio;
     if(op.ccl&&op.ccl>0) return (op.cantidad*op.precio)/op.ccl;
@@ -1246,7 +1250,7 @@ function Operaciones({ops,setOps,macro,enriched}){
   };
   const startEdit=(op)=>{
     setEditId(op.id);
-    setForm({ticker:op.ticker,tipo:op.tipo,cantidad:String(op.cantidad),precio:String(op.precio),mercado:op.mercado,broker:op.broker,moneda:op.moneda,fecha:op.fecha,ccl:op.ccl?String(op.ccl):""});
+    setForm({ticker:op.ticker,tipo:op.tipo,cantidad:String(op.cantidad),precio:String(op.precio),mercado:op.mercado,broker:op.broker,moneda:op.moneda,fecha:toISO(op.fecha)||op.fecha,ccl:op.ccl?String(op.ccl):""});
     setShowForm(true);
   };
   const deleteOp=(id)=>{
@@ -1257,7 +1261,7 @@ function Operaciones({ops,setOps,macro,enriched}){
     e.preventDefault();if(!form.ticker||!form.cantidad||!form.precio)return;
     const isARS=form.moneda==="ARS";
     const cclVal=isARS?(form.ccl?parseFloat(form.ccl):macro.dolarCCL):null;
-    const opData={ticker:form.ticker.toUpperCase(),tipo:form.tipo,cantidad:parseFloat(form.cantidad),precio:parseFloat(form.precio),mercado:form.mercado,broker:form.broker,moneda:form.moneda,fecha:form.fecha||today(),ccl:cclVal};
+    const opData={ticker:form.ticker.toUpperCase(),tipo:form.tipo,cantidad:parseFloat(form.cantidad),precio:parseFloat(form.precio),mercado:form.mercado,broker:form.broker,moneda:form.moneda,fecha:form.fecha?fromISO(form.fecha):today(),ccl:cclVal};
     if(editId){
       setOps(ops.map(o=>o.id===editId?{...o,...opData}:o));
       setEditId(null);
@@ -1285,7 +1289,7 @@ function Operaciones({ops,setOps,macro,enriched}){
         <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Precio</label><input type="number" step="0.0001" value={form.precio} onChange={e=>setForm({...form,precio:e.target.value})} required style={{width:"100%"}}/></div>
         <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Broker</label><select value={form.broker} onChange={e=>{const b=e.target.value;setForm({...form,broker:b,mercado:b==="CS"?"NYSE":"BYMA",moneda:b==="CS"?"USD":"ARS"})}} style={{width:"100%"}}><option value="BM">Bull Market (BYMA/ARS)</option><option value="CS">Charles Schwab (USA/USD)</option></select></div>
         <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Mercado</label><div style={{padding:"8px 12px",background:"#111827",borderRadius:6,fontSize:13,color:"#94a3b8"}}>{form.broker==="CS"?"NYSE":"BYMA"} · {form.broker==="CS"?"USD":"ARS"}</div></div>
-        <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Fecha</label><input value={form.fecha} onChange={e=>setForm({...form,fecha:e.target.value})} placeholder="DD-MM-AA" style={{width:"100%"}}/></div>
+        <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Fecha</label><input type="date" value={form.fecha} onChange={e=>setForm({...form,fecha:e.target.value})} style={{width:"100%",colorScheme:"dark"}}/></div>
         <div style={{display:"flex",flexDirection:"column",gap:4}}>
           {(form.moneda==="ARS")&&<div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>CCL {!editId&&<span style={{color:"#60a5fa"}}>(auto: ${fmt(macro.dolarCCL)})</span>}</label><input type="number" step="0.01" value={form.ccl} onChange={e=>setForm({...form,ccl:e.target.value})} placeholder={String(macro.dolarCCL)} style={{width:"100%"}}/></div>}
           <div style={{display:"flex",alignItems:"flex-end",gap:8,flex:1,marginTop:4}}><Btn variant="success" onClick={submit} style={{flex:1}}>{editId?"Actualizar":"Guardar"}</Btn><Btn variant="ghost" onClick={cancelForm}>✕</Btn></div>
