@@ -19,6 +19,7 @@ input,select,button{font-family:inherit}
 input,select{background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:8px 12px;font-size:14px;outline:none;-webkit-appearance:none}
 input:focus,select:focus{border-color:#2563eb}
 input::placeholder{color:#475569}
+input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.7);cursor:pointer}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:#0f1117}
 ::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}
@@ -49,9 +50,13 @@ input::placeholder{color:#475569}
 const {useState,useEffect,useMemo,useCallback}=React;
 /* ── helpers ─────────────────────────────── */
 const fmt=(n,d=0)=>{if(n==null||isNaN(n))return"—";return new Intl.NumberFormat("es-AR",{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)};
-const fU=n=>{if(n==null||isNaN(n))return"—";const abs=Math.abs(n);const d=abs<0.01?6:abs<1?4:2;return`USD ${fmt(n,d)}`;};
+const fU=n=>n==null||isNaN(n)?"—":`USD ${fmt(n,2)}`;
 const fP=n=>n==null||isNaN(n)?"—":`${n>=0?"+":""}${fmt(n,2)}%`;
 const today=()=>{const d=new Date();return`${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getFullYear()).slice(2)}`};
+const todayISO=()=>{const d=new Date();return d.toISOString().split("T")[0]};
+/* DD-MM-YY ↔ YYYY-MM-DD converters */
+const toISO=(ddmmyy)=>{if(!ddmmyy)return"";const p=ddmmyy.split("-");if(p.length!==3)return"";const yy=parseInt(p[2],10);const yyyy=yy<50?2000+yy:1900+yy;return`${yyyy}-${p[1].padStart(2,"0")}-${p[0].padStart(2,"0")}`};
+const fromISO=(iso)=>{if(!iso)return"";const p=iso.split("-");if(p.length!==3)return"";return`${p[2]}-${p[1]}-${p[0].slice(2)}`};
 
 /* ── SVG Charts ──────────────────────────── */
 /* 3D Pie with labels near slices + leader lines */
@@ -152,26 +157,19 @@ const SECTOR_MAP={"Technology":"Tecnología","Energy":"Energía","Healthcare":"S
 /* Buscar sector + nombre de empresa de Yahoo Finance */
 async function fetchProfileYahoo(symbol){
   const usaSym=d912Sym(symbol,D912_USA_ALIAS);
-  /* Intentar múltiples variantes del símbolo: original, alias USA, y con sufijo .BA (BYMA) */
-  const candidates=[usaSym];
-  if(usaSym===symbol.toUpperCase()&&!usaSym.includes("."))candidates.push(usaSym+".BA");
-  for(const sym of candidates){
-    const url=`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=assetProfile,price`;
-    try{
-      let r;
-      try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
-      if(!r||!r.ok)continue;
-      const data=await r.json();
-      const res=data?.quoteSummary?.result?.[0];
-      if(!res)continue;
-      const profile=res?.assetProfile;
-      const price=res?.price;
-      const sector=profile?.sector?SECTOR_MAP[profile.sector]||profile.sector:null;
-      const name=price?.shortName||price?.longName||null;
-      const country=profile?.country||null;
-      if(sector||name)return{sector,name,country};
-    }catch(e){}
-  }
+  const url=`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(usaSym)}?modules=assetProfile,price`;
+  try{
+    let r;
+    try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+    const data=await r.json();
+    const res=data?.quoteSummary?.result?.[0];
+    const profile=res?.assetProfile;
+    const price=res?.price;
+    const sector=profile?.sector?SECTOR_MAP[profile.sector]||profile.sector:null;
+    const name=price?.shortName||price?.longName||null;
+    const country=profile?.country||null;
+    return{sector,name,country};
+  }catch(e){}
   return{sector:null,name:null,country:null};
 }
 
@@ -186,77 +184,16 @@ function inferMeta(ticker,broker,mercado,d912Info){
     else if(d912Info.isArgStock){tipo="Acción";pais="Argentina";}
     else if(d912Info.isUsaStock){tipo="Acción";pais="USA";}
   } else {
-    /* Fallback por broker/mercado + Yahoo country */
-    const cache=loadMetaCache();
-    const yahooCountry=(cache[tu]?.country||"").toLowerCase();
-    if(mercado==="BYMA"){
-      pais="Argentina";
-      /* Si Yahoo dice que es de Argentina → acción local, sino → CEDEAR */
-      tipo=(yahooCountry.includes("argentin"))?"Acción":"CEDEAR";
-    }
+    /* Fallback por broker/mercado */
+    if(mercado==="BYMA"){pais="Argentina";tipo="CEDEAR";}
     else{pais="USA";tipo="Acción";}
   }
   return{tipo,pais};
 }
 
-/* ── Comisiones Bull Market — Active Trader Plus ── */
-/* Calcula comisión total (broker + derecho mercado + IVA si aplica) sobre un monto */
-function calcComision(monto, broker, tipo){
-  if(broker!=="BM") return 0; /* CS u otros brokers USA: sin comisión */
-  const IVA=1.21;
-  /* Bonos, Letras, ONs → exentos de IVA */
-  const exento=tipo==="Bono"||tipo==="Letra"||tipo==="ON";
-  let comBroker, derechoMercado;
-  if(tipo==="Bono"||tipo==="ON"){
-    comBroker=0.0010; derechoMercado=0.0001; /* 0.10% + 0.01% */
-  } else if(tipo==="Letra"){
-    comBroker=0.0010; derechoMercado=0.00001; /* 0.10% + 0.001% */
-  } else {
-    /* Acciones, CEDEARs */
-    comBroker=0.0010; derechoMercado=0.0008; /* 0.10% + 0.08% */
-  }
-  const subtotal=monto*(comBroker+derechoMercado);
-  return exento?subtotal:subtotal*IVA;
-}
-
-/* ── Caución calculation (shared by Caucion tab + Resumen) ── */
-const CAUCION_DER_MERCADO_DIARIO=0.00045/90;
-const CAUCION_GTO_GTIA_DIARIO=0.00045/90;
-const CAUCION_IVA=0.21;
-const CAUCION_COM_TOMADORA_MENSUAL=0.005;
-const CAUCION_COM_COLOCADORA_MENSUAL=0.00083;
-
-function calcCaucion(m,tna,d,esColocadora){
-  if(m<=0||d<=0)return null;
-  const tasaDecimal=tna/100;
-  const tasa=tasaDecimal*d/365;
-  const interes=m*tasa;
-  const montoFuturo=m+interes;
-  const comMensual=esColocadora?CAUCION_COM_COLOCADORA_MENSUAL:CAUCION_COM_TOMADORA_MENSUAL;
-  const comision=montoFuturo*comMensual*d/30;
-  const derMercado=montoFuturo*CAUCION_DER_MERCADO_DIARIO*d;
-  const gtoGtia=esColocadora?0:montoFuturo*CAUCION_GTO_GTIA_DIARIO*d;
-  const gastos=comision+derMercado+gtoGtia;
-  const iva=gastos*CAUCION_IVA;
-  const totalGastos=gastos+iva;
-  const hoy=new Date();const venc=new Date(hoy);venc.setDate(venc.getDate()+d);
-  const fmtDate=dt=>`${String(dt.getDate()).padStart(2,"0")}/${String(dt.getMonth()+1).padStart(2,"0")}/${dt.getFullYear()}`;
-  if(esColocadora){
-    const montoCobrar=montoFuturo-totalGastos;
-    const ganNeta=montoCobrar-m;
-    const tasaNeta=m>0?(ganNeta/m)*(365/d)*100:0;
-    const tePeriodo=m>0?(ganNeta/m)*100:0;
-    return{monto:m,tna,dias:d,tasa:tasa*100,interes,montoFuturo,comision,derMercado,gtoGtia,gastos,iva,totalGastos,montoCobrar,ganNeta,tasaNeta,tePeriodo,fechaOp:fmtDate(hoy),fechaVenc:fmtDate(venc)};
-  }else{
-    const montoPagar=montoFuturo+totalGastos;
-    const cft=m>0?(montoPagar-m)/m*(365/d)*100:0;
-    const tePeriodo=m>0?((montoPagar-m)/m)*100:0;
-    return{monto:m,tna,dias:d,tasa:tasa*100,interes,montoFuturo,comision,derMercado,gtoGtia,gastos,iva,totalGastos,montoPagar,costoNeto:-totalGastos,cft,tePeriodo,fechaOp:fmtDate(hoy),fechaVenc:fmtDate(venc)};
-  }
-}
-
-/* Sector seed eliminado — sectores se obtienen dinámicamente via refreshMetaCache (Yahoo Finance) */
-/* Si un ticker no tiene sector en cache, se muestra "Sin clasificar" hasta que Yahoo responda */
+/* Seed inicial: sectores conocidos para no depender de Yahoo en la primera carga */
+const SECTOR_SEED={EDN:"Energía",YPFD:"Petróleo",MELI:"Tecnología",ORCL:"Tecnología",IBM:"Tecnología",FISV:"Fintech",BKUCF:"Uranio",TSLA:"Automotriz",UNH:"Salud",AL30:"Renta Fija"};
+(function seedMeta(){const c=loadMetaCache();let u=false;Object.entries(SECTOR_SEED).forEach(([t,s])=>{if(!c[t]||!c[t].sector){c[t]={...c[t],sector:s};u=true;}});if(u)saveMetaCache(c);})();
 
 /* Actualizar cache de metadata con sectores y nombres (async, no bloquea render) */
 async function refreshMetaCache(tickers,priceData){
@@ -309,17 +246,32 @@ function applyMeta(positions,prices,metaCache){
   });
 }
 
-/* Operaciones iniciales vacías — los datos reales se cargan de localStorage/Gist */
-/* El usuario agrega operaciones desde el tab Operaciones del dashboard */
-const INIT_OPS=[];
+const INIT_OPS=[
+  {id:1,fecha:"13-12-24",ticker:"IBM",tipo:"COMPRA",cantidad:12,precio:230,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
+  {id:2,fecha:"13-12-24",ticker:"BKUCF",tipo:"COMPRA",cantidad:750000,precio:0.0461,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
+  {id:3,fecha:"11-12-24",ticker:"BKUCF",tipo:"COMPRA",cantidad:250000,precio:0.0395,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
+  {id:4,fecha:"26-03-25",ticker:"MELI",tipo:"COMPRA",cantidad:3000,precio:19940,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1423.37},
+  {id:5,fecha:"26-03-25",ticker:"ORCL",tipo:"COMPRA",cantidad:250,precio:69500,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1419.29},
+  {id:6,fecha:"26-03-25",ticker:"YPFD",tipo:"VENTA",cantidad:1460,precio:63800,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1444.40},
+  {id:7,fecha:"13-08-25",ticker:"TSLA",tipo:"COMPRA",cantidad:1000,precio:30100,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1317.00},
+  {id:8,fecha:"13-08-25",ticker:"UNH",tipo:"COMPRA",cantidad:2500,precio:10850,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1317.00},
+  {id:9,fecha:"24-09-25",ticker:"EDN",tipo:"COMPRA",cantidad:40000,precio:1369.03,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1393.35},
+  {id:10,fecha:"19-09-25",ticker:"AL30",tipo:"COMPRA",cantidad:700,precio:70260,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1534.20},
+  {id:11,fecha:"30-10-25",ticker:"FISV",tipo:"COMPRA",cantidad:15,precio:66.085,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
+  {id:12,fecha:"30-10-25",ticker:"FISV",tipo:"COMPRA",cantidad:91,precio:67.44,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
+  {id:13,fecha:"07-11-25",ticker:"YPFD",tipo:"VENTA",cantidad:800,precio:62900,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1470.04},
+  {id:14,fecha:"07-11-25",ticker:"YPFD",tipo:"COMPRA",cantidad:2500,precio:54000,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1493.94},
+  {id:15,fecha:"11-12-25",ticker:"ORCL",tipo:"COMPRA",cantidad:500,precio:97000,mercado:"BYMA",broker:"BM",moneda:"ARS",ccl:1498.47},
+  {id:16,fecha:"02-02-26",ticker:"IBM",tipo:"COMPRA",cantidad:18,precio:248.26,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
+  {id:17,fecha:"24-02-26",ticker:"IBM",tipo:"COMPRA",cantidad:28,precio:232,mercado:"NYSE",broker:"CS",moneda:"USD",ccl:null},
+];
 
 /* ── Fallback data dinámico — usa último precio guardado en localStorage, o vacío ── */
 const PRICE_CACHE_KEY="eid_price_cache";
 function loadPriceCache(){try{return JSON.parse(localStorage.getItem(PRICE_CACHE_KEY)||"{}");}catch(e){return{};}}
 function savePriceCache(prices){try{localStorage.setItem(PRICE_CACHE_KEY,JSON.stringify(prices));}catch(e){}}
 const LIVE_FALLBACK=loadPriceCache();
-/* Macro fallback: valores a 0 — se llenan en la primera carga desde APIs */
-const MACRO_FALLBACK={dolarOficial:0,dolarMEP:0,dolarCCL:0,dolarBlue:0,dolarTarjeta:0,riesgoPais:0,inflacion:0,inflacionIA:0,tasa:0,uva:0,uvaVar30d:0,reservas:0,sp500Chg:0,mervalChg:0};
+const MACRO_FALLBACK={dolarOficial:1415,dolarMEP:1380,dolarCCL:1395,dolarBlue:1405,dolarTarjeta:1885,riesgoPais:617,inflacion:2.9,inflacionIA:33.1,tasa:29,uva:1858.61,uvaVar30d:0,reservas:28500};
 /* Noticias: cache dinámico en localStorage, fallback vacío */
 const NEWS_CACHE_KEY="eid_news_cache";
 function loadNewsCache(){try{return JSON.parse(localStorage.getItem(NEWS_CACHE_KEY)||"[]");}catch(e){return[];}}
@@ -378,7 +330,7 @@ async function fetchMacroReal(){
     }catch(e){}
 
     /* Inflación mensual desde ArgentinaDatos */
-    let inflacion=0;
+    let inflacion=2.9;
     try{
       const infRes=await fetch("https://api.argentinadatos.com/v1/finanzas/indices/inflacion");
       const infData=await infRes.json();
@@ -386,93 +338,33 @@ async function fetchMacroReal(){
     }catch(e){}
 
     /* ── BCRA API — Tasa Política Monetaria, Inflación Interanual, Reservas ── */
-    /* v3.0 deprecada 28/02/2026 — migrado a v4.0 */
-    /* NOTA: BCRA dejó de publicar "Tasa de política monetaria" (IDs 6/160/161) en jul-2025.
-       Se usa rango amplio (2 años) para capturar último valor conocido si no hay datos recientes. */
-    const BCRA_BASE="https://api.bcra.gob.ar/estadisticas/v4.0/monetarias";
+    const BCRA_BASE="https://api.bcra.gob.ar/estadisticas/v3.0/monetarias";
     const hoy=new Date();
     const hace60=new Date(hoy);hace60.setDate(hoy.getDate()-60);
-    const hace2y=new Date(hoy);hace2y.setFullYear(hoy.getFullYear()-2);
     const fmtD=(d)=>d.toISOString().split("T")[0];
-    const bcraFetch=async(idVar,desde)=>{
+    const bcraFetch=async(idVar)=>{
       try{
-        const url=BCRA_BASE+"/"+idVar+"?desde="+fmtD(desde||hace60)+"&hasta="+fmtD(hoy)+"&limit=1000";
+        const url=BCRA_BASE+"/"+idVar+"?desde="+fmtD(hace60)+"&hasta="+fmtD(hoy)+"&limit=100";
         /* Intentar directo primero, si falla CORS usar proxy */
         let r;
         try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
-        if(r&&r.ok){
-          const j=await r.json();
-          const res=j.results||j.data||j;
-          /* v4.0 devuelve [{idVariable, detalle:[{fecha,valor}]}] */
-          let arr=res;
-          if(Array.isArray(res)&&res.length>0&&res[0].detalle) arr=res[0].detalle;
-          if(Array.isArray(arr)&&arr.length>0){const last=arr[arr.length-1];return last.v??last.valor??last.value??null;}
-        }
-      }catch(e){}
-      return null;
-    };
-    /* Fallback: datos.gob.ar series API (no requiere auth, sin CORS issues) */
-    const datosFetch=async(serieId)=>{
-      try{
-        const url="https://apis.datos.gob.ar/series/api/series/?ids="+serieId+"&last=1&format=json";
-        let r;
-        try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
-        if(r&&r.ok){const j=await r.json();if(j.data&&j.data.length>0)return j.data[0][1];}
+        const j=await r.json();
+        const arr=j.results||j.data||j;
+        if(Array.isArray(arr)&&arr.length>0){const last=arr[arr.length-1];return last.v??last.valor??last.value??null;}
       }catch(e){}
       return null;
     };
 
-    /* ArgentinaDatos: inflación interanual (fuente primaria, más confiable que BCRA API) */
-    const adFetch=async(path)=>{
-      try{
-        const url="https://api.argentinadatos.com/v1/"+path;
-        let r;
-        try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
-        if(r&&r.ok){const j=await r.json();if(Array.isArray(j)&&j.length>0)return j[j.length-1].valor||null;}
-      }catch(e){}
-      return null;
-    };
-
-    /* Fuentes en paralelo: BCRA v4 (BADLAR, Reservas) + ArgentinaDatos (Infl IA) + BCRA v4 Infl IA */
-    /* BCRA dejó de publicar "Tasa de política monetaria" (IDs 6/160/161) tras jul-2025.
-       Se usa BADLAR bancos privados (ID 7) como referencia de tasa — se actualiza diariamente. */
-    let tasa=0,inflacionIA=0,reservas=0;
+    /* BCRA: Tasa PM (6), Inflación IA (28), Reservas (1) — en paralelo */
+    let tasa=29,inflacionIA=33.1,reservas=28500;
     try{
-      const [vBadlar,vRes,vIA_ad,vIA_bcra]=await Promise.allSettled([
-        bcraFetch(7),                                     /* BCRA v4: BADLAR bancos privados (TNA) */
-        bcraFetch(1),                                     /* BCRA v4: Reservas */
-        adFetch("finanzas/indices/inflacionInteranual"),   /* ArgentinaDatos: Infl IA */
-        bcraFetch(28)                                     /* BCRA v4: Infl IA (backup) */
-      ]);
-      if(vBadlar.status==="fulfilled"&&vBadlar.value) tasa=vBadlar.value;
+      const [vTasa,vIA,vRes]=await Promise.allSettled([bcraFetch(6),bcraFetch(28),bcraFetch(1)]);
+      if(vTasa.status==="fulfilled"&&vTasa.value) tasa=vTasa.value;
+      if(vIA.status==="fulfilled"&&vIA.value) inflacionIA=vIA.value;
       if(vRes.status==="fulfilled"&&vRes.value) reservas=Math.round(vRes.value);
-      /* Inflación IA: preferir ArgentinaDatos, fallback BCRA */
-      if(vIA_ad.status==="fulfilled"&&vIA_ad.value) inflacionIA=vIA_ad.value;
-      else if(vIA_bcra.status==="fulfilled"&&vIA_bcra.value) inflacionIA=vIA_bcra.value;
-    }catch(e){}
-    /* Si reservas quedó en 0, intentar fallback datos.gob.ar */
-    try{
-      const fb=[];
-      if(!reservas) fb.push(datosFetch("92.2_RESERVAS_IRES_0_0_32_40").then(v=>{if(v)reservas=Math.round(v);}));
-      if(fb.length>0)await Promise.allSettled(fb);
     }catch(e){}
 
-    /* Índices de mercado: S&P 500 y Merval (para contexto de movimientos) */
-    /* Índices: usar v8/chart (v7/quote requiere auth desde ~2025) */
-    let sp500Chg=0,mervalChg=0;
-    try{
-      const chartIdx=async(sym)=>{
-        const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=1d&interval=1d`;
-        let r;try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
-        if(r&&r.ok){const j=await r.json();const m=j.chart?.result?.[0]?.meta;if(m){const p=m.regularMarketPrice,prev=m.chartPreviousClose||m.previousClose;return prev?((p-prev)/prev*100):0;}}
-        return 0;
-      };
-      const [spR,mvR]=await Promise.allSettled([chartIdx("^GSPC"),chartIdx("^MERV")]);
-      if(spR.status==="fulfilled")sp500Chg=spR.value;
-      if(mvR.status==="fulfilled")mervalChg=mvR.value;
-    }catch(e){}
-
-    return{dolarOficial:oficial||0,dolarMEP:mep||0,dolarCCL:ccl||0,dolarBlue:blue||0,dolarTarjeta:tarjeta||0,riesgoPais,inflacion,inflacionIA,tasa,uva,uvaVar30d,reservas,sp500Chg,mervalChg};
+    return{dolarOficial:oficial||1415,dolarMEP:mep||1380,dolarCCL:ccl||1395,dolarBlue:blue||1405,dolarTarjeta:tarjeta||1885,riesgoPais,inflacion,inflacionIA,tasa,uva,uvaVar30d,reservas};
   }catch(e){
     console.warn("Macro API fallback:",e);
     return MACRO_FALLBACK;
@@ -535,32 +427,16 @@ async function fetchPricesReal(tickers){
     });
 
     /* Yahoo Finance fallback para tickers no encontrados en data912 */
-    /* NOTA: Yahoo v7/finance/quote requiere auth desde ~2025. Usar v8/finance/chart (público). */
-    /* BKUCF: se usa el ticker OTC directo (igual que TradingView). Yahoo devuelve precio OTC real. */
     const missing=tickers.filter(t=>!prices[t]);
     if(missing.length>0){
-      const yfChartFetch=async(ticker)=>{
-        const sym=d912Sym(ticker,D912_USA_ALIAS);
-        try{
-          const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=5d&interval=1d`;
-          let r;try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
-          if(r&&r.ok){
-            const j=await r.json();
-            const meta=j.chart?.result?.[0]?.meta;
-            if(meta&&meta.regularMarketPrice){
-              const price=meta.regularMarketPrice;
-              const prev=meta.chartPreviousClose||meta.previousClose||price;
-              const change=prev?((price-prev)/prev*100):0;
-              const isArg=(meta.exchangeName||"").includes("Buenos")||(meta.currency||"")==="ARS";
-              return{ticker,price:isArg?0:price,change:isArg?0:change,prev:isArg?0:prev,priceARS:isArg?price:null,changeARS:isArg?change:null,d912:{isCedear:false,isArgStock:isArg,isBond:false,isUsaStock:!isArg}};
-            }
-          }
-        }catch(e){}
-        return null;
-      };
       try{
-        const results=await Promise.allSettled(missing.map(t=>yfChartFetch(t)));
-        results.forEach(r=>{if(r.status==="fulfilled"&&r.value){const d=r.value;prices[d.ticker]=d;}});
+        const syms=missing.map(t=>d912Sym(t,D912_USA_ALIAS)).join(",");
+        const yfUrl=PROXY+encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms}&fields=regularMarketPrice,regularMarketChangePercent,regularMarketPreviousClose`);
+        const yfRes=await fetch(yfUrl);const yfData=await yfRes.json();
+        (yfData.quoteResponse?.result||[]).forEach(q=>{
+          const ticker=missing.find(t=>d912Sym(t,D912_USA_ALIAS)===q.symbol)||q.symbol;
+          if(q.regularMarketPrice)prices[ticker]={price:q.regularMarketPrice,change:q.regularMarketChangePercent||0,prev:q.regularMarketPreviousClose||0,priceARS:null,changeARS:null,d912:{isCedear:false,isArgStock:false,isBond:false,isUsaStock:true}};
+        });
       }catch(e){}
     }
     return prices;
@@ -571,147 +447,93 @@ async function fetchPricesReal(tickers){
 }
 
 /* ── KEYWORDS para detección de tickers en noticias ── */
-/* 100% dinámico — genera keywords desde metaCache (nombre empresa via Yahoo) + alias conocidos */
+/* Seed de keywords conocidos + auto-generación para tickers nuevos */
+const TICKER_KW_SEED={
+  YPFD:["YPF","YPFD","VACA MUERTA","SHALE","NEUQUÉN","NEUQUEN"],
+  MELI:["MERCADO LIBRE","MELI","MERCADOLIBRE","MERCADO PAGO"],
+  EDN:["EDENOR","EDN","DISTRIBUIDORA","TARIFAS ELÉCTRICAS"],
+  TSLA:["TESLA","TSLA","ELON MUSK","CYBERTRUCK","MODEL"],
+  IBM:["IBM","WATSON","RED HAT","HASHICORP"],
+  ORCL:["ORACLE","ORCL","ORACLE CLOUD","OCI","LARRY ELLISON"],
+  UNH:["UNITEDHEALTH","UNH","OPTUM","CHANGE HEALTHCARE"],
+  FISV:["FISERV","FISV","CLOVER","FINTECH FISERV"],
+  AL30:["AL30","BONO SOBERANO","BONOS ARGENTINOS","RIESGO PAÍS","RIESGO PAIS","DEUDA ARGENTINA"],
+  BKUCF:["BLUE SKY URANIUM","BKUCF","AMARILLO GRANDE","URANIO","URANIUM"]
+};
+/* Devuelve keywords para un ticker: seed si existe, sino genera [TICKER, USA_ALIAS] + nombre de empresa del metaCache */
 function getTickerKW(ticker){
   const tu=ticker.toUpperCase();
+  if(TICKER_KW_SEED[tu])return TICKER_KW_SEED[tu];
   const kws=[tu];
-  /* Alias USA (d912) */
   const alias=d912Sym(tu,D912_USA_ALIAS);
   if(alias!==tu)kws.push(alias);
-  /* Nombre de empresa desde metaCache (populado por refreshMetaCache vía Yahoo Finance) */
+  /* Buscar nombre de empresa en metaCache (guardado por refreshMetaCache) */
   const cache=loadMetaCache();
-  if(cache[tu]?.name){
-    const name=cache[tu].name.toUpperCase();
-    kws.push(name);
-    /* Agregar primera palabra del nombre si es significativa (>3 chars) para match parcial */
-    const firstWord=name.split(/[\s,\.]+/)[0];
-    if(firstWord.length>3&&firstWord!==tu&&!kws.includes(firstWord))kws.push(firstWord);
-  }
-  /* Bonos AR — agregar keywords genéricos si parece bono */
-  if(/^(AL|GD|AE|BA)\d{2}/.test(tu))kws.push("BONO SOBERANO","BONOS ARGENTINOS","DEUDA ARGENTINA");
+  if(cache[tu]?.name)kws.push(cache[tu].name.toUpperCase());
   return kws;
-}
-
-/* ── Portfolio News JSON — curado server-side por finance-briefing ──
- * Fuente: EDGAR filings (8-K/10-Q/10-K/6-K) + Google News dirigido por ticker
- * + RSS AR/global filtrados. Ya viene filtrado por los tickers del Gist,
- * pero acá igual aplicamos el filtro local (defensa) y dejamos pasar sólo
- * los tickers que están en esta cartera actual. Cache 5 min en max-age del raw.
- */
-const PORTFOLIO_NEWS_URL="https://raw.githubusercontent.com/EZE1311/Fin-Cloud/main/portfolio_news.json";
-async function fetchPortfolioNewsJSON(tickers){
-  try{
-    const res=await fetch(PORTFOLIO_NEWS_URL+"?t="+Math.floor(Date.now()/300000)); /* bust cada 5 min */
-    if(!res.ok)return[];
-    const data=await res.json();
-    const tkSet=new Set(tickers.map(t=>t.toUpperCase()));
-    const out=(data.news||[]).filter(n=>n.ticker&&tkSet.has(n.ticker.toUpperCase()));
-    return out;
-  }catch(e){console.warn("portfolio_news.json fetch failed:",e);return[];}
 }
 
 /* Noticias — Bloomberg-style deep search across global + local portals */
 async function fetchNewsReal(tickers){
   try{
-    const R2J="https://api.rss2json.com/v1/api.json?rss_url=";
-    const allNews=[];
-    const seen=new Set();
-    const posWords=["SUBE","CRECE","POSITIV","RÉCORD","AVANZ","GANA","SUPERA","BEAT","SURGE","RALLY","GAIN","PROFIT","RECORD","EXPAND","RISE","SOAR","UPGRADE"];
-    const negWords=["BAJA","CAE","NEGATIV","PIERDE","CAÍDA","RECORT","PRESIÓN","LOSS","DROP","FALL","CUT","DECLINE","WARN","RISK","SLUMP","DOWN","CRASH","DOWNGRADE"];
-
-    const addItem=(ticker,item,source)=>{
-      /* Dedup: normalizar título (sin puntuación, espacios extra) para detectar duplicados */
-      const norm=item.title.replace(/[^a-zA-Z0-9\s]/g,"").replace(/\s+/g," ").trim().toUpperCase().slice(0,60);
-      if(seen.has(norm))return;seen.add(norm);
-      const text=(item.title+" "+(item.description||"")).toUpperCase();
-      let sentiment="neutral";
-      if(posWords.some(w=>text.includes(w)))sentiment="positive";
-      if(negWords.some(w=>text.includes(w)))sentiment=sentiment==="positive"?"positive":"negative";
-      allNews.push({
-        id:`${ticker}-${norm.slice(0,30)}-${allNews.length}`,ticker,title:item.title,source,
-        sentiment,summary:item.description?item.description.replace(/<[^>]*>/g,"").slice(0,250):"",
-        link:item.link,pubDate:item.pubDate
-      });
-    };
-
-    /* ── 0) Portfolio News JSON (server-side, curado por finance-briefing) ──
-     * Estas entradas vienen ya asociadas a un ticker del portfolio, con
-     * filings SEC EDGAR marcados con kind="filing". Tienen prioridad por
-     * calidad: sin CORS-proxy, sin rate-limit, y filings únicos. */
-    const portfolioJSON=await fetchPortfolioNewsJSON(tickers);
-    portfolioJSON.forEach(n=>{
-      const source=n.source+(n.kind==="filing"?" 📄":"");
-      addItem(n.ticker,{
-        title:n.title,
-        description:n.summary||"",
-        link:n.url,
-        pubDate:n.published
-      },source);
-    });
-
-    /* ── 1) Feeds POR TICKER — noticias específicas de cada activo ── */
-    const tickerFeeds=[];
-    tickers.forEach(tk=>{
-      const sym=d912Sym(tk,D912_USA_ALIAS);
-      /* Yahoo Finance por ticker */
-      tickerFeeds.push({tk,url:`https://feeds.finance.yahoo.com/rss/2.0/headline?s=${sym}&region=US&lang=en-US`,source:"Yahoo Finance"});
-      /* Google News por ticker (busca nombre empresa o ticker) */
-      const kws=getTickerKW(tk);
-      const q=encodeURIComponent(kws[0]||tk);
-      tickerFeeds.push({tk,url:`https://news.google.com/rss/search?q=${q}+stock&hl=en-US&gl=US&ceid=US:en`,source:"Google News"});
-    });
-
-    const tickerResults=await Promise.allSettled(tickerFeeds.map(async f=>{
-      const res=await fetch(R2J+encodeURIComponent(f.url));
-      return{...f,data:await res.json()};
-    }));
-    tickerResults.forEach(r=>{
-      if(r.status!=="fulfilled"||!r.value.data?.items)return;
-      const{tk,source,data}=r.value;
-      data.items.slice(0,5).forEach(item=>addItem(tk,item,source));
-    });
-
-    /* ── 2) Feeds ARGENTINOS generales — para bonos, CEDEARs arg, mercado local ── */
-    const argFeeds=[
+    /* Feeds globales + argentinos — cobertura amplia tipo Bloomberg Terminal */
+    const feeds=[
+      /* Argentina */
       {url:"https://www.ambito.com/rss/economia.xml",source:"Ámbito"},
       {url:"https://www.cronista.com/files/rss/news.xml",source:"Cronista"},
       {url:"https://www.iprofesional.com/rss/finanzas",source:"iProfesional"},
+      {url:"https://www.infobae.com/feeds/rss/",source:"Infobae"},
+      /* Internacionales */
+      {url:"https://feeds.bloomberg.com/markets/news.rss",source:"Bloomberg"},
+      {url:"https://feeds.reuters.com/reuters/businessNews",source:"Reuters"},
+      {url:"https://www.cnbc.com/id/100003114/device/rss/rss.html",source:"CNBC"},
+      {url:"https://feeds.marketwatch.com/marketwatch/topstories/",source:"MarketWatch"},
+      {url:"https://seekingalpha.com/market_currents.xml",source:"Seeking Alpha"},
+      {url:"https://finance.yahoo.com/news/rssindex",source:"Yahoo Finance"},
+      {url:"https://www.ft.com/?format=rss",source:"Financial Times"},
+      {url:"https://feeds.wsj.com/xml/rss/3_7085.xml",source:"WSJ"},
     ];
-    const argResults=await Promise.allSettled(argFeeds.map(async f=>{
-      const res=await fetch(R2J+encodeURIComponent(f.url));
-      return{...f,data:await res.json()};
+    const allNews=[];
+    const seen=new Set();
+    /* Fetch en paralelo para velocidad */
+    const results=await Promise.allSettled(feeds.map(async feed=>{
+      const r2jUrl=`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.url)}&count=12`;
+      const res=await fetch(r2jUrl);
+      return{feed,data:await res.json()};
     }));
-    argResults.forEach(r=>{
-      if(r.status!=="fulfilled"||!r.value.data?.items)return;
-      const{source,data}=r.value;
+    results.forEach(r=>{
+      if(r.status!=="fulfilled"||!r.value.data.items)return;
+      const{feed,data}=r.value;
       data.items.forEach(item=>{
         const text=(item.title+" "+(item.description||"")).toUpperCase();
+        /* Solo incluir si menciona algún ticker del portfolio */
         let matched=null;
         for(const tk of tickers){
           const kws=getTickerKW(tk);
-          if(kws.some(kw=>{const esc=kw.toUpperCase().replace(/[.*+?^${}()|[\]\\]/g,"\\$&");return new RegExp("\\b"+esc+"\\b").test(text);})){matched=tk;break;}
+          if(kws.some(kw=>text.includes(kw.toUpperCase()))){matched=tk;break;}
         }
-        if(matched)addItem(matched,item,source);
+        if(!matched)return; /* Descartamos noticias no relevantes */
+        /* Dedup por título similar */
+        const key=item.title.slice(0,50).toUpperCase();
+        if(seen.has(key))return;seen.add(key);
+        const posWords=["SUBE","CRECE","POSITIV","RÉCORD","AVANZ","GANA","SUPERA","RÉCORD","BEAT","SURGE","RALLY","UP","GAIN","PROFIT","RECORD","EXPAND"];
+        const negWords=["BAJA","CAE","NEGATIV","PIERDE","CAÍDA","RECORT","PRESIÓN","LOSS","DROP","FALL","CUT","DECLINE","WARN","RISK","SLUMP","DOWN"];
+        let sentiment="neutral";
+        if(posWords.some(w=>text.includes(w)))sentiment="positive";
+        if(negWords.some(w=>text.includes(w)))sentiment=sentiment==="positive"?"positive":"negative";
+        allNews.push({
+          id:`${feed.source}-${item.title.slice(0,20)}`,ticker:matched,title:item.title,
+          source:feed.source,
+          sentiment,
+          summary:item.description?item.description.replace(/<[^>]*>/g,"").slice(0,250):"",
+          link:item.link,pubDate:item.pubDate
+        });
       });
     });
-
-    /* ── 3) Si no hay nada, noticias generales de mercado ── */
-    if(allNews.length===0){
-      const genFeeds=[{url:"https://feeds.reuters.com/reuters/businessNews",source:"Reuters"},{url:"https://www.cnbc.com/id/100003114/device/rss/rss.html",source:"CNBC"}];
-      const genResults=await Promise.allSettled(genFeeds.map(async f=>{
-        const res=await fetch(R2J+encodeURIComponent(f.url));
-        return{...f,data:await res.json()};
-      }));
-      genResults.forEach(r=>{
-        if(r.status!=="fulfilled"||!r.value.data?.items)return;
-        r.value.data.items.slice(0,5).forEach(item=>addItem("MERCADO",item,r.value.source));
-      });
-    }
-
     allNews.sort((a,b)=>new Date(b.pubDate||0)-new Date(a.pubDate||0));
     return allNews.length>0?allNews.slice(0,40):null;
   }catch(e){
-    console.warn("News fetch error:",e);
+    console.warn("News API fallback:",e);
     return null;
   }
 }
@@ -722,211 +544,6 @@ function timeAgo(dateStr){
   if(mins<1)return"ahora";if(mins<60)return`${mins} min`;
   const hrs=Math.floor(mins/60);if(hrs<24)return`${hrs} hs`;
   return`${Math.floor(hrs/24)} días`;
-}
-
-/* ── IOL API — Tasa de Caución ────────────── */
-/* IOL error state — visible to UI */
-window._iolLastError=null;
-
-/* ── CORS proxy helpers ── */
-const CORS_PROXIES=[
-  url=>"https://corsproxy.io/?url="+encodeURIComponent(url),
-  url=>"https://api.allorigins.win/raw?url="+encodeURIComponent(url),
-];
-/* Smart fetch: intenta directo, si CORS falla reintenta con proxy */
-async function iolFetch(url,opts={}){
-  /* Intento directo */
-  try{
-    const res=await fetch(url,opts);
-    return res;
-  }catch(e){
-    console.log("[IOL] Directo falló (CORS), probando proxies...",e.message);
-  }
-  /* Intentar con cada proxy */
-  for(const mkProxy of CORS_PROXIES){
-    const proxyUrl=mkProxy(url);
-    try{
-      console.log("[IOL] Proxy →",proxyUrl.substring(0,80)+"...");
-      const res=await fetch(proxyUrl,{
-        ...opts,
-        headers:{...(opts.headers||{}),"x-requested-with":"XMLHttpRequest"}
-      });
-      if(res.ok||res.status===400||res.status===401){
-        console.log("[IOL] Proxy OK, status:",res.status);
-        return res;
-      }
-    }catch(e2){
-      console.log("[IOL] Proxy falló:",e2.message);
-    }
-  }
-  return null;
-}
-
-async function iolGetToken(){
-  const creds=loadLS("iol_creds",null);
-  if(!creds||!creds.user||!creds.pass){
-    window._iolLastError="Sin credenciales configuradas";
-    return null;
-  }
-  /* Check cached token */
-  const cached=loadLS("iol_token",null);
-  if(cached&&cached.access_token&&cached.expires_at>Date.now()+60000){
-    return cached.access_token;
-  }
-  const tokenUrl="https://api.invertironline.com/token";
-  /* Try refresh token first */
-  if(cached&&cached.refresh_token){
-    console.log("[IOL] Refreshing token...");
-    const res=await iolFetch(tokenUrl,{
-      method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
-      body:`grant_type=refresh_token&refresh_token=${encodeURIComponent(cached.refresh_token)}`
-    });
-    if(res&&res.ok){
-      try{
-        const d=await res.json();
-        const tokenData={access_token:d.access_token,refresh_token:d.refresh_token,expires_at:Date.now()+(d.expires_in||900)*1000};
-        saveLS("iol_token",tokenData);
-        console.log("[IOL] Token refreshed OK");
-        window._iolLastError=null;
-        return d.access_token;
-      }catch(e){console.log("[IOL] Error parsing refresh response")}
-    }
-  }
-  /* Fresh login */
-  console.log("[IOL] Fresh login...");
-  const res=await iolFetch(tokenUrl,{
-    method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
-    body:`username=${encodeURIComponent(creds.user)}&password=${encodeURIComponent(creds.pass)}&grant_type=password`
-  });
-  if(!res){
-    window._iolLastError="No se pudo conectar a IOL (CORS + proxies fallaron)";
-    return null;
-  }
-  if(!res.ok){
-    let errDetail="";try{errDetail=await res.text()}catch(x){}
-    console.error("[IOL] Login failed:",res.status,errDetail);
-    window._iolLastError=res.status===400||res.status===401
-      ?"Credenciales inválidas o API no activada"
-      :`Error ${res.status}`;
-    return null;
-  }
-  try{
-    const d=await res.json();
-    const tokenData={access_token:d.access_token,refresh_token:d.refresh_token,expires_at:Date.now()+(d.expires_in||900)*1000};
-    saveLS("iol_token",tokenData);
-    console.log("[IOL] Login OK, token válido por",d.expires_in,"s");
-    window._iolLastError=null;
-    return d.access_token;
-  }catch(e){
-    window._iolLastError="Error parseando respuesta de login";
-    return null;
-  }
-}
-
-async function iolFetchCaucionRate(){
-  const token=await iolGetToken();
-  if(!token){
-    console.log("[IOL] No token, abortando fetch de caución");
-    return null;
-  }
-  const base="https://api.invertironline.com/api/v2";
-  const hdrs={"Authorization":"Bearer "+token};
-
-  /* Helper: intenta un endpoint vía iolFetch (con fallback proxy) */
-  async function tryEndpoint(url,label){
-    console.log("[IOL]",label,"→",url);
-    const res=await iolFetch(url,{headers:hdrs});
-    if(!res){console.log("[IOL]",label,"→ sin respuesta");return null;}
-    console.log("[IOL]",label,"status:",res.status);
-    if(!res.ok){
-      let body="";try{body=await res.text()}catch(x){}
-      console.log("[IOL]",label,"error:",body.substring(0,200));
-      return null;
-    }
-    try{
-      const d=await res.json();
-      console.log("[IOL]",label,"OK:",JSON.stringify(d).substring(0,500));
-      return d;
-    }catch(e){
-      console.log("[IOL]",label,"JSON parse error");
-      return null;
-    }
-  }
-
-  /* ── Helper: classify titulo by moneda and plazo ── */
-  function classifyTitulo(t,forceMoneda){
-    const s=((t.simbolo||"")+" "+(t.descripcion||"")).toLowerCase();
-    const isDollar=forceMoneda==="USD"||s.includes("dólar")||s.includes("dolar")||s.includes("usd")||s.includes("dollar");
-    const moneda=isDollar?"USD":(forceMoneda||"ARS");
-    /* Parse plazo: T0=1, T1=2, T2=3 or number from text/fields */
-    let plazo=null;
-    const rawPlazo=t.plazo||t.dias||t.duracion||null;
-    if(typeof rawPlazo==="number"&&rawPlazo>0)plazo=rawPlazo;
-    else if(typeof rawPlazo==="string"){
-      const tMatch=rawPlazo.match(/^T(\d+)$/i);
-      if(tMatch)plazo=parseInt(tMatch[1])+1; /* T0=1day, T1=2days */
-      else{const n=parseInt(rawPlazo);if(n>0)plazo=n;}
-    }
-    if(!plazo){
-      if(s.match(/30\s*d/i))plazo=30;
-      else if(s.match(/7\s*d/i))plazo=7;
-      else if(s.match(/1\s*d/i))plazo=1;
-    }
-    const tna=t.ultimoPrecio||t.puntas?.precioCompra||0;
-    return{moneda,plazo,tna,sym:t.simbolo};
-  }
-
-  /* ── Helper: assign classified titulos to result slots ── */
-  function assignRates(classified,result){
-    for(const c of classified){
-      if(c.tna<=0)continue;
-      if(c.moneda==="ARS"&&c.plazo!=null&&c.plazo<=7&&result.pesos1d==null)result.pesos1d=c.tna;
-      if(c.moneda==="ARS"&&c.plazo!=null&&c.plazo>=28&&c.plazo<=35&&result.pesos30d==null)result.pesos30d=c.tna;
-      if(c.moneda==="USD"&&c.plazo!=null&&c.plazo<=7&&result.usd1d==null)result.usd1d=c.tna;
-      if(c.moneda==="USD"&&c.plazo!=null&&c.plazo>=28&&c.plazo<=35&&result.usd30d==null)result.usd30d=c.tna;
-    }
-    /* Fallback: if exactly 1 ARS with no plazo, assume 1D */
-    const arsNoplazo=classified.filter(c=>c.moneda==="ARS"&&c.tna>0&&c.plazo==null);
-    if(result.pesos1d==null&&arsNoplazo.length===1)result.pesos1d=arsNoplazo[0].tna;
-    const usdNoplazo=classified.filter(c=>c.moneda==="USD"&&c.tna>0&&c.plazo==null);
-    if(result.usd1d==null&&usdNoplazo.length===1)result.usd1d=usdNoplazo[0].tna;
-  }
-
-  /* ── Helper: fetch and classify a panel ── */
-  async function fetchPanel(panel,label,forceMoneda){
-    const d=await tryEndpoint(base+"/Cotizaciones/cauciones/argentina/"+panel,label);
-    if(!d)return[];
-    const titulos=d.titulos||d;
-    if(!Array.isArray(titulos)||titulos.length===0)return[];
-    console.log("[IOL] "+label+" ("+titulos.length+"):",JSON.stringify(titulos.map(t=>({s:t.simbolo,d:t.descripcion,p:t.ultimoPrecio,plazo:t.plazo}))));
-    const classified=titulos.map(t=>classifyTitulo(t,forceMoneda));
-    console.log("[IOL] Clasificadas:",classified.map(c=>c.sym+"|"+c.moneda+"|"+c.plazo+"d|"+c.tna+"%").join(" · "));
-    return classified;
-  }
-
-  const result={pesos1d:null,pesos30d:null,usd1d:null,usd30d:null};
-
-  /* ── Fetch panel "Todos" — the only panel IOL reliably supports ── */
-  const allClassified=await fetchPanel("Todos","Cauciones Todos",null);
-  assignRates(allClassified,result);
-
-  /* ── Save all rates ── */
-  console.log("[IOL] Resultado final:",JSON.stringify(result));
-  if(result.pesos1d!=null||result.usd1d!=null){
-    saveLS("iol_caucion",{...result,ts:Date.now(),src:"cotizaciones"});
-    return result;
-  }
-
-  /* ── Fallback: Test — portafolio (verificar que el token funciona) ── */
-  const dTest=await tryEndpoint(base+"/portafolio/argentina","Test portafolio");
-  if(dTest){
-    console.log("[IOL] Token OK pero no se encontró caución. Portafolio:",JSON.stringify(dTest).substring(0,500));
-    window._iolLastError="Token OK pero sin datos de caución en los endpoints";
-  }else{
-    window._iolLastError=window._iolLastError||"No se pudo conectar a IOL";
-  }
-
-  return null;
 }
 
 /* ── small components ────────────────────── */
@@ -952,7 +569,7 @@ function Badge({text,color="#60a5fa",bg="#252d3d"}){
 }
 
 /* ── RESUMEN ─────────────────────────────── */
-function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa,casaActual,hipoteca,setHipoteca,deudaUSD,patrimonioNeto,caucion,setCaucion,caucionUSD,portfolioLiquido,portfolioTotal,dailyPL,news,portfolioNeto,totalComVenta}){
+function Resumen({enriched,total,invertido,pl,rend,macro,ops,trigAlerts,prices,casa,setCasa,casaActual,hipoteca,setHipoteca,deudaUSD,patrimonioNeto,caucion,setCaucion,caucionUSD,portfolioLiquido,portfolioTotal,dailyPL,news}){
   const casaNeta=casaActual.valor-deudaUSD;
   const byAsset=useMemo(()=>{
     const items=enriched.map((p,i)=>({name:p.ticker,value:p.montoActual,color:COLORS[i%COLORS.length]}));
@@ -969,6 +586,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
     enriched.forEach(p=>{if(p.broker==="CS")usa+=p.montoActual;else arg+=p.montoActual;});
     return[{name:"USA (CS)",value:usa,flag:"usa"},{name:"Argentina (BM)",value:arg,flag:"arg"}].filter(d=>d.value>0);
   },[enriched]);
+  const movers=useMemo(()=>[...enriched].sort((a,b)=>Math.abs(b.variacion)-Math.abs(a.variacion)).slice(0,5),[enriched]);
   /* Portfolio sort */
   const [sortBy,setSortBy]=useState("montoActual");
   const [sortDir,setSortDir]=useState("desc");
@@ -983,7 +601,12 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
   const relevantNews=news.filter(n=>tickers.includes(n.ticker)||n.ticker==="MACRO").slice(0,15);
 
   return <div style={{display:"flex",flexDirection:"column",gap:20}}>
-    {/* ── KPIs — todos en una fila ── */}
+    {trigAlerts.length>0&&<div style={{background:"#dc262612",border:"1px solid #dc262633",borderRadius:10,padding:"14px 18px"}}>
+      <div style={{fontSize:13,fontWeight:600,color:"#fca5a5",marginBottom:8}}>⚠ Alertas Activadas</div>
+      {trigAlerts.map(a=><div key={a.id} style={{fontSize:12,color:"#fca5a5",padding:"3px 0"}}>{a.ticker} {a.condition==="above"?"superó":"cayó debajo de"} USD {fmt(a.price,2)} → Actual: USD {fmt(prices[a.ticker]?.price,4)}</div>)}
+    </div>}
+
+    {/* ── KPIs principales ── */}
     <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:14}}>
       <Stat label="Patrimonio Neto" value={fU(patrimonioNeto)} sub="Port + Casa - Hipoteca - Caución" color="#a78bfa"/>
       <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
@@ -998,31 +621,19 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
         </div>
       </div>
       <Stat label="Portfolio Líquido" value={fU(portfolioLiquido)} sub={caucionUSD>0?`Caución: ${fU(caucionUSD)}`:"Sin caución"} color="#60a5fa"/>
-      {(()=>{const bCCL=macro.dolarOficial>0?(macro.dolarCCL-macro.dolarOficial)/macro.dolarOficial:0;const portAR=portfolioNeto*(1+bCCL);return <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
-        <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Portfolio Líq. Argentina <span style={{fontSize:9,color:"#475569"}}>(neto com.)</span></div>
+      {(()=>{const bCCL=macro.dolarOficial>0?(macro.dolarCCL-macro.dolarOficial)/macro.dolarOficial:0;const portAR=portfolioLiquido*(1+bCCL);return <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
+        <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Portfolio Líq. Argentina</div>
         <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#60a5fa",fontVariantNumeric:"tabular-nums"}}>{fU(portAR)}</div>
-        <div style={{fontSize:10,color:"#fbbf24",marginTop:4}}>Com. venta: -{fU(totalComVenta)}</div>
       </div>;})()}
       <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
         <div style={{fontSize:11,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Caución Tomada</div>
-        <div style={{display:"flex",alignItems:"center",gap:4}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:11,color:"#f87171"}}>$</span>
-          <input type="text" value={caucion.montoARS?caucion.montoARS.toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setCaucion({...caucion,montoARS:raw?parseInt(raw,10):0});}} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",color:"#f87171",fontSize:18,fontWeight:700,width:"100%",fontVariantNumeric:"tabular-nums",outline:"none"}} placeholder="0"/>
+          <input type="text" value={caucion.montoARS?caucion.montoARS.toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setCaucion({montoARS:raw?parseInt(raw,10):0});}} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",color:"#f87171",fontSize:18,fontWeight:700,width:150,fontVariantNumeric:"tabular-nums",outline:"none"}} placeholder="0"/>
         </div>
         <div style={{fontSize:12,color:"#f87171",marginTop:4}}>≈ {fU(caucionUSD)} <span style={{color:"#475569"}}>(MEP ${fmt(macro.dolarMEP)})</span></div>
       </div>
     </div>
-    {/* ── Caución metrics strip ── */}
-    {(()=>{
-      const tnaRes=caucion.tna??0;
-      const c30=caucion.montoARS>0&&tnaRes>0?calcCaucion(caucion.montoARS,tnaRes,30,false):null;
-      if(!c30)return null;
-      return <div style={{display:"flex",gap:20,justifyContent:"flex-end",marginTop:-2,padding:"0 4px"}}>
-        <span style={{fontSize:11,color:"#94a3b8"}}>C.F.T. <span style={{fontWeight:700,color:"#fbbf24"}}>{c30.cft!=null?c30.cft.toFixed(2)+"%":"—"}</span></span>
-        <span style={{fontSize:11,color:"#94a3b8"}}>T.E. 30d <span style={{fontWeight:700,color:"#f87171"}}>{c30.tePeriodo!=null?c30.tePeriodo.toFixed(2)+"%":"—"}</span></span>
-        <span style={{fontSize:11,color:"#94a3b8"}}>Costo 30d <span style={{fontWeight:700,color:"#f87171"}}>$ {new Intl.NumberFormat("es-AR",{minimumFractionDigits:0,maximumFractionDigits:0}).format(c30.totalGastos)}</span></span>
-      </div>;
-    })()}
 
     {/* ── Tabla Portfolio ── */}
     <Card title="Posiciones del Portfolio">
@@ -1099,65 +710,12 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
 
     {/* ── Movers + News Feed (Bloomberg-style) ── */}
     <div className="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-      {(()=>{
-        /* Evolución histórica del portfolio — datos hardcoded + año actual dinámico */
-        const hist=[
-          {year:2023,capital:152951,pl:21924,rend:16.73},
-          {year:2024,capital:429639,pl:276688,rend:180.90},
-          {year:2025,capital:371436,pl:-58203,rend:-13.55},
-        ];
-        const curYear=new Date().getFullYear();
-        const prevYearCap=hist.length>0?hist[hist.length-1].capital:0;
-        const curPL=patrimonioNeto-prevYearCap;
-        const curRend=prevYearCap>0?((patrimonioNeto-prevYearCap)/prevYearCap*100):0;
-        const curEntry={year:curYear,capital:patrimonioNeto,pl:curPL,rend:curRend};
-        /* Auto-snapshot: si estamos en enero y el año anterior no está en hist, guardarlo */
-        const all=[...hist,curEntry];
-        /* CAGR — retorno anualizado compuesto */
-        const compFactor=all.reduce((acc,d)=>acc*(1+d.rend/100),1);
-        const startOfFirstYear=new Date(all[0].year,0,1);
-        const now=new Date();
-        const nYears=(now-startOfFirstYear)/(365.25*24*60*60*1000);
-        const cagr=nYears>0?(Math.pow(compFactor,1/nYears)-1)*100:0;
-        const maxCap=Math.max(...all.map(d=>d.capital));
-        const barW=260;
-        return <Card title="Evolución del Portfolio" right={<span style={{fontSize:10,color:"#475569",fontWeight:400}}>Cierre anual en USD</span>}>
-          {/* Gráfico de barras */}
-          <svg width="100%" height={all.length*44+10} viewBox={`0 0 440 ${all.length*44+10}`} preserveAspectRatio="xMidYMid meet">
-            {all.map((d,i)=>{
-              const y=i*44+5;const w=maxCap>0?(d.capital/maxCap)*barW:0;
-              const isNeg=d.rend<0;const isCur=d.year===curYear;
-              return <g key={d.year}>
-                <text x={40} y={y+18} textAnchor="end" fill={isCur?"#60a5fa":"#e2e8f0"} fontSize="13" fontWeight="700">{d.year}</text>
-                <rect x={48} y={y} width={w} height={28} rx={4} fill={isCur?"#2563eb":isNeg?"#dc2626":"#059669"} opacity={isCur?.9:.7}/>
-                <text x={54+w} y={y+12} fill="#e2e8f0" fontSize="11" fontWeight="600">{fU(d.capital)}</text>
-                <text x={54+w} y={y+24} fill={d.pl>=0?"#34d399":"#f87171"} fontSize="10" fontWeight="500">{d.pl>=0?"+":""}{fU(d.pl)} ({d.rend>=0?"+":""}{d.rend.toFixed(1)}%)</text>
-              </g>;
-            })}
-          </svg>
-          {/* Tabla resumen */}
-          <table style={{width:"100%",borderCollapse:"collapse",marginTop:12,borderTop:"1px solid #252d3d"}}>
-            <thead><tr>
-              {["Año","Capital","P&L","Rend%"].map(h=><th key={h} style={{padding:"8px 6px",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",textAlign:h==="Año"?"left":"right",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
-            </tr></thead>
-            <tbody>{all.map(d=>{
-              const isCur=d.year===curYear;
-              return <tr key={d.year} style={{borderBottom:"1px solid #1e293b",background:isCur?"#1e293b44":"transparent"}}>
-                <td style={{padding:"6px",fontSize:12,fontWeight:isCur?700:500,color:isCur?"#60a5fa":"#e2e8f0"}}>{d.year}{isCur?" *":""}</td>
-                <td style={{padding:"6px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums",fontWeight:600}}>{fU(d.capital)}</td>
-                <td style={{padding:"6px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums",fontWeight:600,color:d.pl>=0?"#34d399":"#f87171"}}>{d.pl>=0?"+":""}{fU(d.pl)}</td>
-                <td style={{padding:"6px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums",fontWeight:600,color:d.rend>=0?"#34d399":"#f87171"}}>{d.rend>=0?"+":""}{d.rend.toFixed(2)}%</td>
-              </tr>;
-            })}</tbody>
-            <tfoot><tr style={{borderTop:"2px solid #334155"}}>
-              <td style={{padding:"8px 6px",fontSize:12,fontWeight:700,color:"#94a3b8"}}>CAGR</td>
-              <td colSpan={2} style={{padding:"8px 6px",textAlign:"right",fontSize:10,color:"#64748b"}}>Retorno anualizado</td>
-              <td style={{padding:"8px 6px",textAlign:"right",fontSize:13,fontVariantNumeric:"tabular-nums",fontWeight:700,color:cagr>=0?"#34d399":"#f87171"}}>{cagr>=0?"+":""}{cagr.toFixed(2)}%</td>
-            </tr></tfoot>
-          </table>
-          <div style={{fontSize:9,color:"#475569",marginTop:6,fontStyle:"italic"}}>* {curYear} en curso · CAGR = retorno anualizado compuesto desde {all[0].year}</div>
-        </Card>;
-      })()}
+      <Card title="Mayores Movimientos Hoy">
+        {movers.map((p,i)=><div key={p.ticker} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<movers.length-1?"1px solid #252d3d":"none"}}>
+          <div><div style={{fontWeight:600,fontSize:14}}>{p.ticker}</div><div style={{fontSize:11,color:"#64748b"}}>{p.sector} · {p.mercado}</div></div>
+          <div style={{textAlign:"right"}}><div style={{fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fU(p.precioActual)}</div><div style={{fontSize:12,fontWeight:500,color:p.variacion>=0?"#34d399":"#f87171"}}>{fP(p.variacion)}</div></div>
+        </div>)}
+      </Card>
       <Card title="Noticias Relevantes" right={<span style={{fontSize:10,color:"#475569",fontWeight:400}}>LIVE FEED</span>}>
         <div style={{display:"flex",flexDirection:"column",gap:0}}>
           {relevantNews.map((n,i)=><div key={n.id}>
@@ -1232,13 +790,13 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
 }
 
 /* ── OPERACIONES ─────────────────────────── */
-function Operaciones({ops,setOps,macro,enriched}){
+function Operaciones({ops,setOps,macro}){
   const [showForm,setShowForm]=useState(false);
   const [editId,setEditId]=useState(null);
-  const [form,setForm]=useState({ticker:"",tipo:"COMPRA",cantidad:"",precio:"",mercado:"BYMA",broker:"BM",moneda:"ARS",fecha:"",ccl:""});
+  const [form,setForm]=useState({ticker:"",tipo:"COMPRA",cantidad:"",precio:"",mercado:"BYMA",broker:"BM",moneda:"ARS",fecha:todayISO(),ccl:""});
   const [filter,setFilter]=useState("");
   const [confirmDel,setConfirmDel]=useState(null);
-  const emptyForm={ticker:"",tipo:"COMPRA",cantidad:"",precio:"",mercado:"BYMA",broker:"BM",moneda:"ARS",fecha:"",ccl:""};
+  const emptyForm={ticker:"",tipo:"COMPRA",cantidad:"",precio:"",mercado:"BYMA",broker:"BM",moneda:"ARS",fecha:todayISO(),ccl:""};
   const montoUSD=(op)=>{
     if(op.moneda==="USD") return op.cantidad*op.precio;
     if(op.ccl&&op.ccl>0) return (op.cantidad*op.precio)/op.ccl;
@@ -1246,7 +804,7 @@ function Operaciones({ops,setOps,macro,enriched}){
   };
   const startEdit=(op)=>{
     setEditId(op.id);
-    setForm({ticker:op.ticker,tipo:op.tipo,cantidad:String(op.cantidad),precio:String(op.precio),mercado:op.mercado,broker:op.broker,moneda:op.moneda,fecha:op.fecha,ccl:op.ccl?String(op.ccl):""});
+    setForm({ticker:op.ticker,tipo:op.tipo,cantidad:String(op.cantidad),precio:String(op.precio),mercado:op.mercado,broker:op.broker,moneda:op.moneda,fecha:toISO(op.fecha)||op.fecha,ccl:op.ccl?String(op.ccl):""});
     setShowForm(true);
   };
   const deleteOp=(id)=>{
@@ -1257,7 +815,7 @@ function Operaciones({ops,setOps,macro,enriched}){
     e.preventDefault();if(!form.ticker||!form.cantidad||!form.precio)return;
     const isARS=form.moneda==="ARS";
     const cclVal=isARS?(form.ccl?parseFloat(form.ccl):macro.dolarCCL):null;
-    const opData={ticker:form.ticker.toUpperCase(),tipo:form.tipo,cantidad:parseFloat(form.cantidad),precio:parseFloat(form.precio),mercado:form.mercado,broker:form.broker,moneda:form.moneda,fecha:form.fecha||today(),ccl:cclVal};
+    const opData={ticker:form.ticker.toUpperCase(),tipo:form.tipo,cantidad:parseFloat(form.cantidad),precio:parseFloat(form.precio),mercado:form.mercado,broker:form.broker,moneda:form.moneda,fecha:form.fecha?fromISO(form.fecha):today(),ccl:cclVal};
     if(editId){
       setOps(ops.map(o=>o.id===editId?{...o,...opData}:o));
       setEditId(null);
@@ -1285,7 +843,7 @@ function Operaciones({ops,setOps,macro,enriched}){
         <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Precio</label><input type="number" step="0.0001" value={form.precio} onChange={e=>setForm({...form,precio:e.target.value})} required style={{width:"100%"}}/></div>
         <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Broker</label><select value={form.broker} onChange={e=>{const b=e.target.value;setForm({...form,broker:b,mercado:b==="CS"?"NYSE":"BYMA",moneda:b==="CS"?"USD":"ARS"})}} style={{width:"100%"}}><option value="BM">Bull Market (BYMA/ARS)</option><option value="CS">Charles Schwab (USA/USD)</option></select></div>
         <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Mercado</label><div style={{padding:"8px 12px",background:"#111827",borderRadius:6,fontSize:13,color:"#94a3b8"}}>{form.broker==="CS"?"NYSE":"BYMA"} · {form.broker==="CS"?"USD":"ARS"}</div></div>
-        <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Fecha</label><input value={form.fecha} onChange={e=>setForm({...form,fecha:e.target.value})} placeholder="DD-MM-AA" style={{width:"100%"}}/></div>
+        <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Fecha</label><input type="date" value={form.fecha} onChange={e=>setForm({...form,fecha:e.target.value})} style={{width:"100%",colorScheme:"dark"}}/></div>
         <div style={{display:"flex",flexDirection:"column",gap:4}}>
           {(form.moneda==="ARS")&&<div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>CCL {!editId&&<span style={{color:"#60a5fa"}}>(auto: ${fmt(macro.dolarCCL)})</span>}</label><input type="number" step="0.01" value={form.ccl} onChange={e=>setForm({...form,ccl:e.target.value})} placeholder={String(macro.dolarCCL)} style={{width:"100%"}}/></div>}
           <div style={{display:"flex",alignItems:"flex-end",gap:8,flex:1,marginTop:4}}><Btn variant="success" onClick={submit} style={{flex:1}}>{editId?"Actualizar":"Guardar"}</Btn><Btn variant="ghost" onClick={cancelForm}>✕</Btn></div>
@@ -1302,8 +860,8 @@ function Operaciones({ops,setOps,macro,enriched}){
     <Card>
       <div className="table-wrap" style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",minWidth:950}}>
-          <thead><tr>{["Fecha","Ticker","Tipo","Cantidad","Precio","CCL","Monto ARS","Monto USD","Comisión","Broker",""].map(h2=><th key={h2} style={{padding:"10px 8px",textAlign:["Fecha","Ticker","Tipo",""].includes(h2)?"left":"right",fontSize:11,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d",background:"#151a27"}}>{h2}</th>)}</tr></thead>
-          <tbody>{[...fl].reverse().map(op=>{const usd=montoUSD(op);const ep=enriched&&enriched.find(e=>e.ticker===op.ticker);const tipoActivo=ep?ep.tipo:"Acción";const com=usd!=null?calcComision(usd,op.broker,tipoActivo):0;return <tr key={op.id} style={{borderBottom:"1px solid #1e293b",background:editId===op.id?"#2563eb11":"transparent"}} onMouseEnter={e=>{if(editId!==op.id)e.currentTarget.style.background="#252d3d33"}} onMouseLeave={e=>{if(editId!==op.id)e.currentTarget.style.background=editId===op.id?"#2563eb11":"transparent"}}>
+          <thead><tr>{["Fecha","Ticker","Tipo","Cantidad","Precio","CCL","Monto ARS","Monto USD","Broker",""].map(h2=><th key={h2} style={{padding:"10px 8px",textAlign:["Fecha","Ticker","Tipo",""].includes(h2)?"left":"right",fontSize:11,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d",background:"#151a27"}}>{h2}</th>)}</tr></thead>
+          <tbody>{[...fl].reverse().map(op=>{const usd=montoUSD(op);return <tr key={op.id} style={{borderBottom:"1px solid #1e293b",background:editId===op.id?"#2563eb11":"transparent"}} onMouseEnter={e=>{if(editId!==op.id)e.currentTarget.style.background="#252d3d33"}} onMouseLeave={e=>{if(editId!==op.id)e.currentTarget.style.background=editId===op.id?"#2563eb11":"transparent"}}>
             <td style={{padding:"10px 8px",fontSize:13}}>{op.fecha}</td>
             <td style={{padding:"10px 8px",fontWeight:700,fontSize:14}}>{op.ticker}</td>
             <td style={{padding:"10px 8px"}}><Badge text={op.tipo} color={op.tipo==="COMPRA"?"#34d399":"#f87171"} bg={op.tipo==="COMPRA"?"#065f4622":"#7f1d1d22"}/></td>
@@ -1312,7 +870,6 @@ function Operaciones({ops,setOps,macro,enriched}){
             <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,color:op.ccl?"#60a5fa":"#334155"}}>{op.ccl?`$${fmt(op.ccl,2)}`:"—"}</td>
             <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{op.moneda==="ARS"?`$${fmt(op.cantidad*op.precio)}`:"—"}</td>
             <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontWeight:600,color:"#f1f5f9"}}>{usd!=null?fU(usd):"—"}</td>
-            <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,color:com>0?"#fbbf24":"#475569"}}>{com>0?fU(com):"—"}</td>
             <td style={{padding:"10px 8px",textAlign:"right",fontSize:12,color:"#94a3b8"}}>{op.broker}</td>
             <td style={{padding:"10px 8px",whiteSpace:"nowrap"}}>
               <button onClick={()=>startEdit(op)} title="Editar" style={{background:"none",border:"none",cursor:"pointer",padding:"4px 6px",fontSize:14,opacity:.5,transition:"opacity .15s"}} onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=.5}>✏️</button>
@@ -1322,1134 +879,48 @@ function Operaciones({ops,setOps,macro,enriched}){
         </table>
       </div>
     </Card>
+  </div>;
+}
 
-    {/* ── Simulador de Comisiones ── */}
-    {enriched&&enriched.length>0&&<Card title="Comisiones Estimadas" right={<span style={{fontSize:10,color:"#475569"}}>Bull Market · Active Trader Plus</span>}>
-      {(()=>{
-        const totComCompra=enriched.reduce((s,p)=>s+p.comCompra,0);
-        const totComVenta=enriched.reduce((s,p)=>s+p.comVenta,0);
-        const totCom=totComCompra+totComVenta;
-        const totActual=enriched.reduce((s,p)=>s+p.montoActual,0);
-        const pctCost=totActual>0?(totCom/totActual*100):0;
-        return<div>
-          {/* Resumen */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:16}}>
-            <div style={{background:"#111827",borderRadius:8,padding:"12px 14px",textAlign:"center"}}>
-              <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Comisión Compra</div>
-              <div style={{fontSize:18,fontWeight:700,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fU(totComCompra)}</div>
-              <div style={{fontSize:10,color:"#475569"}}>ya pagada</div>
-            </div>
-            <div style={{background:"#111827",borderRadius:8,padding:"12px 14px",textAlign:"center"}}>
-              <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Comisión Venta</div>
-              <div style={{fontSize:18,fontWeight:700,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fU(totComVenta)}</div>
-              <div style={{fontSize:10,color:"#475569"}}>estimada a valor actual</div>
-            </div>
-            <div style={{background:"#111827",borderRadius:8,padding:"12px 14px",textAlign:"center"}}>
-              <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Costo Total</div>
-              <div style={{fontSize:18,fontWeight:700,color:"#f87171",fontVariantNumeric:"tabular-nums"}}>{fU(totCom)}</div>
-              <div style={{fontSize:10,color:"#475569"}}>{fmt(pctCost,3)}% del portfolio</div>
-            </div>
-          </div>
-          {/* Detalle por posición */}
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr>
-              {["Ticker","Tipo","Broker","Compra","Venta","Total","IVA"].map(h=><th key={h} style={{padding:"6px 8px",textAlign:h==="Ticker"||h==="Tipo"||h==="Broker"?"left":"right",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
-            </tr></thead>
-            <tbody>{enriched.map(p=>{
-              const exento=p.tipo==="Bono"||p.tipo==="Letra"||p.tipo==="ON";
-              return<tr key={p.ticker} style={{borderBottom:"1px solid #1e293b"}}>
-                <td style={{padding:"6px 8px",fontWeight:700,fontSize:12}}>{p.ticker}</td>
-                <td style={{padding:"6px 8px",fontSize:11,color:"#94a3b8"}}>{p.tipo}</td>
-                <td style={{padding:"6px 8px",fontSize:11,color:"#94a3b8"}}>{p.broker}</td>
-                <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums",color:p.comCompra>0?"#fbbf24":"#475569"}}>{fU(p.comCompra)}</td>
-                <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums",color:p.comVenta>0?"#fbbf24":"#475569"}}>{fU(p.comVenta)}</td>
-                <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums",fontWeight:600,color:p.comTotal>0?"#f87171":"#475569"}}>{fU(p.comTotal)}</td>
-                <td style={{padding:"6px 8px",textAlign:"right",fontSize:10,color:exento?"#34d399":"#fbbf24"}}>{exento?"Exento":"21%"}</td>
-              </tr>;
-            })}</tbody>
-            <tfoot><tr style={{borderTop:"2px solid #334155"}}>
-              <td colSpan={3} style={{padding:"8px",fontWeight:700,fontSize:12}}>TOTAL</td>
-              <td style={{padding:"8px",textAlign:"right",fontWeight:700,fontSize:12,color:"#fbbf24"}}>{fU(totComCompra)}</td>
-              <td style={{padding:"8px",textAlign:"right",fontWeight:700,fontSize:12,color:"#fbbf24"}}>{fU(totComVenta)}</td>
-              <td style={{padding:"8px",textAlign:"right",fontWeight:700,fontSize:12,color:"#f87171"}}>{fU(totCom)}</td>
-              <td></td>
-            </tr></tfoot>
-          </table>
-          <div style={{fontSize:9,color:"#475569",marginTop:8,fontStyle:"italic"}}>Bonos, Letras y ONs exentos de IVA · Mercado internacional (CS) sin comisión · Fuente: Tarifario BM Marzo 2025</div>
-        </div>;
-      })()}
+/* ── ALERTAS ──────────────────────────────── */
+function Alertas({alerts,setAlerts,prices,pos}){
+  const [showForm,setShowForm]=useState(false);
+  const [form,setForm]=useState({ticker:"",condition:"above",price:""});
+  const add=e=>{e.preventDefault();if(!form.ticker||!form.price)return;setAlerts([...alerts,{id:Date.now(),ticker:form.ticker.toUpperCase(),condition:form.condition,price:parseFloat(form.price),active:true}]);setForm({ticker:"",condition:"above",price:""});setShowForm(false);};
+
+  return <div style={{display:"flex",flexDirection:"column",gap:18}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+      <div><h2 style={{margin:0,fontSize:18,fontWeight:700}}>Alertas de Precio</h2><p style={{margin:"4px 0 0",fontSize:13,color:"#64748b"}}>Configurá alertas para monitorear precios.</p></div>
+      <Btn onClick={()=>setShowForm(!showForm)}>+ Nueva Alerta</Btn>
+    </div>
+    {showForm&&<Card title="Crear Alerta">
+      <form onSubmit={add} style={{display:"flex",gap:12,alignItems:"flex-end",flexWrap:"wrap"}}>
+        <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Ticker</label><select value={form.ticker} onChange={e=>setForm({...form,ticker:e.target.value})} required style={{minWidth:120}}><option value="">Seleccionar...</option>{pos.map(p=><option key={p.ticker} value={p.ticker}>{p.ticker}</option>)}</select></div>
+        <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Condición</label><select value={form.condition} onChange={e=>setForm({...form,condition:e.target.value})} style={{minWidth:160}}><option value="above">Sube por encima de</option><option value="below">Baja por debajo de</option></select></div>
+        <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:4}}>Precio USD</label><input type="number" step="0.0001" value={form.price} onChange={e=>setForm({...form,price:e.target.value})} required style={{width:130}}/></div>
+        <Btn variant="success" onClick={add}>Crear</Btn>
+      </form>
     </Card>}
-  </div>;
-}
-
-/* ── RENDIMIENTO / PERFORMANCE ──────────────── */
-function Performance({snapshots,macro,enriched}){
-  const fU=n=>`USD ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(n)}`;
-  const fPct=n=>n==null||isNaN(n)?"—":`${n>=0?"+":""}${n.toFixed(1)}%`;
-
-  if(!snapshots||snapshots.length<2) return <div>
-    <Card title="📈 Rendimiento">
-      <div style={{color:"#64748b",textAlign:"center",padding:40}}>
-        Se necesitan al menos 2 días de datos para mostrar la curva.<br/>
-        <span style={{fontSize:12}}>Se guarda un snapshot automático cada vez que abrís el dashboard.</span>
-      </div>
-    </Card>
-    <DividendCalendar enriched={enriched}/>
-  </div>;
-
-  /* Normalizar series a base 100 */
-  const normalize=arr=>{if(!arr||arr.length===0)return[];const base=arr[0].v;return arr.map(p=>({d:p.d,v:base!==0?((p.v/base)-1)*100:0}));};
-  const portSeries=normalize(snapshots.map(s=>({d:s.date,v:s.portfolioUSD})));
-  const invSeries=normalize(snapshots.map(s=>({d:s.date,v:s.invertidoUSD})));
-  /* Benchmarks (si hay datos guardados) */
-  const mervalSeries=snapshots[0].merval?normalize(snapshots.map(s=>({d:s.date,v:s.merval||0}))):null;
-  const sp500Series=snapshots[0].sp500?normalize(snapshots.map(s=>({d:s.date,v:s.sp500||0}))):null;
-
-  const allSeries=[portSeries,mervalSeries,sp500Series].filter(Boolean);
-  const allVals=allSeries.flatMap(s=>s.map(p=>p.v));
-  const minV=Math.min(...allVals,0);const maxV=Math.max(...allVals,0);
-  const rangeV=maxV-minV||1;
-
-  const W=800,H=300,PAD=40,PB=30;
-  const chartW=W-PAD*2,chartH=H-PAD-PB;
-  const toX=(i,len)=>PAD+(i/(len-1))*chartW;
-  const toY=v=>PAD+chartH-(((v-minV)/rangeV)*chartH);
-
-  const makePath=(series,color)=>{
-    if(!series||series.length<2)return null;
-    const d=series.map((p,i)=>`${i===0?"M":"L"}${toX(i,series.length).toFixed(1)},${toY(p.v).toFixed(1)}`).join(" ");
-    return React.createElement("path",{d,fill:"none",stroke:color,strokeWidth:2.5,strokeLinejoin:"round",key:color});
-  };
-
-  /* Grid lines */
-  const gridLines=[];
-  const steps=5;
-  for(let i=0;i<=steps;i++){
-    const v=minV+(rangeV/steps)*i;
-    const y=toY(v);
-    gridLines.push(React.createElement("line",{key:"g"+i,x1:PAD,x2:W-PAD,y1:y,y2:y,stroke:"#1e293b",strokeWidth:1}));
-    gridLines.push(React.createElement("text",{key:"t"+i,x:PAD-6,y:y+4,fill:"#475569",fontSize:10,textAnchor:"end"},fPct(v)));
-  }
-  /* Date labels */
-  const dateLabels=[];
-  const labelCount=Math.min(snapshots.length,7);
-  for(let i=0;i<labelCount;i++){
-    const idx=Math.round(i*(snapshots.length-1)/(labelCount-1));
-    const s=snapshots[idx];
-    const x=toX(idx,snapshots.length);
-    dateLabels.push(React.createElement("text",{key:"d"+i,x,y:H-8,fill:"#475569",fontSize:9,textAnchor:"middle"},s.date.slice(5)));
-  }
-  /* Zero line */
-  const zeroY=toY(0);
-
-  /* Stats resumen */
-  const last=snapshots[snapshots.length-1];
-  const first=snapshots[0];
-  const rendTotal=first.portfolioUSD>0?((last.portfolioUSD/first.portfolioUSD)-1)*100:0;
-  const rendMerval=mervalSeries&&mervalSeries.length>0?mervalSeries[mervalSeries.length-1].v:null;
-  const rendSP=sp500Series&&sp500Series.length>0?sp500Series[sp500Series.length-1].v:null;
-
-  const statSt={background:"#1a1f2e",borderRadius:10,padding:"14px 18px",border:"1px solid #252d3d",flex:1,textAlign:"center"};
-  const colors={port:"#60a5fa",merval:"#a78bfa",sp500:"#34d399"};
-
-  return <div>
-    <Card title="📈 Rendimiento del Portfolio" right={<span style={{fontSize:10,color:"#475569"}}>{snapshots.length} días de datos</span>}>
-      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
-        <div style={statSt}>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Portfolio</div>
-          <div style={{fontSize:22,fontWeight:700,color:rendTotal>=0?"#34d399":"#f87171"}}>{fPct(rendTotal)}</div>
-          <div style={{fontSize:11,color:"#94a3b8"}}>{fU(last.portfolioUSD)}</div>
-        </div>
-        {rendMerval!=null&&<div style={statSt}>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Merval (USD)</div>
-          <div style={{fontSize:22,fontWeight:700,color:rendMerval>=0?"#34d399":"#f87171"}}>{fPct(rendMerval)}</div>
-        </div>}
-        {rendSP!=null&&<div style={statSt}>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>S&P 500</div>
-          <div style={{fontSize:22,fontWeight:700,color:rendSP>=0?"#34d399":"#f87171"}}>{fPct(rendSP)}</div>
-        </div>}
-        {rendMerval!=null&&<div style={statSt}>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Alpha vs Merval</div>
-          <div style={{fontSize:22,fontWeight:700,color:(rendTotal-rendMerval)>=0?"#34d399":"#f87171"}}>{fPct(rendTotal-rendMerval)}</div>
-        </div>}
-      </div>
-      <div style={{overflowX:"auto"}}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",maxHeight:320,background:"#0f172a",borderRadius:10,border:"1px solid #1e293b"}}>
-          {gridLines}
-          {dateLabels}
-          {React.createElement("line",{x1:PAD,x2:W-PAD,y1:zeroY,y2:zeroY,stroke:"#334155",strokeWidth:1,strokeDasharray:"4,4"})}
-          {makePath(portSeries,colors.port)}
-          {makePath(mervalSeries,colors.merval)}
-          {makePath(sp500Series,colors.sp500)}
-          {/* Dots en último punto */}
-          {portSeries.length>0&&React.createElement("circle",{cx:toX(portSeries.length-1,portSeries.length),cy:toY(portSeries[portSeries.length-1].v),r:4,fill:colors.port})}
-        </svg>
-      </div>
-      <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:10}}>
-        <span style={{fontSize:11,color:colors.port}}>● Portfolio</span>
-        {mervalSeries&&<span style={{fontSize:11,color:colors.merval}}>● Merval USD</span>}
-        {sp500Series&&<span style={{fontSize:11,color:colors.sp500}}>● S&P 500</span>}
-      </div>
-    </Card>
-
-    {/* ── Dividendos ── */}
-    <DividendCalendar enriched={enriched}/>
-  </div>;
-}
-
-/* ── DIVIDEND TRACKER ── */
-function DividendCalendar({enriched}){
-  const fU=n=>`USD ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(n)}`;
-  const [divData,setDivData]=useState([]);
-  const [loading,setLoading]=useState(false);
-  const [lastFetch,setLastFetch]=useState(null);
-
-  const tickers=[...new Set((enriched||[]).map(e=>e.ticker))];
-
-  /* Fetch dividend data from Yahoo Finance for all portfolio tickers */
-  const fetchDividends=useCallback(async()=>{
-    if(tickers.length===0)return;
-    setLoading(true);
-    const results=[];
-    const now=Math.floor(Date.now()/1000);
-    const oneYearAgo=now-365*86400;
-    const oneYearFwd=now+365*86400;
-
-    for(const ticker of tickers){
-      const pos=enriched.find(e=>e.ticker===ticker);
-      if(!pos)continue;
-      const sym=yfSym(ticker);
-      try{
-        /* Fetch dividend events from Yahoo chart API */
-        const url=`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?period1=${oneYearAgo}&period2=${oneYearFwd}&interval=1mo&events=dividends`;
-        let r;
-        try{r=await fetch(PROXY+encodeURIComponent(url));}catch(e){r=await fetch("https://corsproxy.io/?"+encodeURIComponent(url));}
-        if(!r||!r.ok)continue;
-        const j=await r.json();
-        const divs=j.chart?.result?.[0]?.events?.dividends;
-        if(!divs)continue;
-        const price=pos.precioActual||pos.ppc;
-        Object.values(divs).forEach(d=>{
-          results.push({
-            ticker,sym,
-            date:new Date(d.date*1000).toISOString().split("T")[0],
-            amount:d.amount,
-            cantidad:pos.cantidad,
-            total:d.amount*pos.cantidad,
-            yield:price>0?((d.amount/price)*100):0,
-            isPast:d.date<now
-          });
-        });
-      }catch(e){console.warn("Div fetch error for",ticker,e);}
-    }
-    results.sort((a,b)=>a.date.localeCompare(b.date));
-    setDivData(results);
-    setLastFetch(new Date());
-    setLoading(false);
-  },[enriched,tickers.join(",")]); /* eslint-disable-line */
-
-  useEffect(()=>{if(tickers.length>0&&divData.length===0)fetchDividends();},[tickers.length]); /* eslint-disable-line */
-
-  /* Split into past and upcoming */
-  const today=new Date().toISOString().split("T")[0];
-  const upcoming=divData.filter(d=>d.date>=today);
-  const past=divData.filter(d=>d.date<today);
-
-  /* Annual projection: sum of last 12 months dividends per ticker, projected forward */
-  const annualByTicker={};
-  past.forEach(d=>{
-    if(!annualByTicker[d.ticker])annualByTicker[d.ticker]={ticker:d.ticker,annual:0,cantidad:d.cantidad,price:0,count:0};
-    annualByTicker[d.ticker].annual+=d.amount;
-    annualByTicker[d.ticker].count++;
-  });
-  /* Also include upcoming known dividends */
-  upcoming.forEach(d=>{
-    if(!annualByTicker[d.ticker])annualByTicker[d.ticker]={ticker:d.ticker,annual:0,cantidad:d.cantidad,price:0,count:0};
-  });
-  /* Get price for yield calc */
-  Object.values(annualByTicker).forEach(a=>{
-    const pos=enriched.find(e=>e.ticker===a.ticker);
-    if(pos)a.price=pos.precioActual||pos.ppc;
-  });
-
-  const totalAnnualProjection=Object.values(annualByTicker).reduce((s,a)=>s+a.annual*a.cantidad,0);
-  const portfolioTotal=enriched.reduce((s,p)=>s+p.montoActual,0);
-  const portfolioYield=portfolioTotal>0?(totalAnnualProjection/portfolioTotal)*100:0;
-
-  const totalUpcoming=upcoming.reduce((s,d)=>s+d.total,0);
-  const totalPast=past.reduce((s,d)=>s+d.total,0);
-
-  /* Month names */
-  const monthName=d=>{const m=new Date(d+"T12:00:00").toLocaleDateString("es-AR",{month:"short"});return m.charAt(0).toUpperCase()+m.slice(1);};
-
-  /* Group upcoming by month */
-  const upByMonth={};
-  upcoming.forEach(d=>{const k=d.date.slice(0,7);if(!upByMonth[k])upByMonth[k]=[];upByMonth[k].push(d);});
-
-  const statSt={background:"#1a1f2e",borderRadius:10,padding:"14px 18px",border:"1px solid #252d3d",flex:1,textAlign:"center"};
-
-  return <Card title="💰 Dividendos" right={<button onClick={fetchDividends} disabled={loading} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"4px 12px",fontSize:11,cursor:"pointer",fontWeight:500}}>
-    {loading?"⏳ Cargando...":"🔄 Actualizar"}{lastFetch&&!loading&&<span style={{marginLeft:6,fontSize:9,color:"#475569"}}>{lastFetch.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"})}</span>}
-  </button>}>
-
-    {tickers.length===0&&<div style={{color:"#475569",textAlign:"center",padding:20,fontSize:13}}>Agregá posiciones en tu cartera para ver dividendos.</div>}
-
-    {tickers.length>0&&divData.length===0&&!loading&&<div style={{color:"#475569",textAlign:"center",padding:20,fontSize:13}}>Presioná "Actualizar" para buscar dividendos de tu cartera.</div>}
-
-    {divData.length>0&&<div>
-      {/* ── Resumen cards ── */}
-      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
-        <div style={statSt}>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Proyección Anual</div>
-          <div style={{fontSize:22,fontWeight:700,color:"#34d399"}}>{fU(totalAnnualProjection)}</div>
-          <div style={{fontSize:11,color:"#94a3b8"}}>Dividend yield: {portfolioYield.toFixed(2)}%</div>
-        </div>
-        <div style={statSt}>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Próximos</div>
-          <div style={{fontSize:22,fontWeight:700,color:"#60a5fa"}}>{fU(totalUpcoming)}</div>
-          <div style={{fontSize:11,color:"#94a3b8"}}>{upcoming.length} pago{upcoming.length!==1?"s":""} programado{upcoming.length!==1?"s":""}</div>
-        </div>
-        <div style={statSt}>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Cobrados (12m)</div>
-          <div style={{fontSize:22,fontWeight:700,color:"#a78bfa"}}>{fU(totalPast)}</div>
-          <div style={{fontSize:11,color:"#94a3b8"}}>{past.length} pago{past.length!==1?"s":""}</div>
-        </div>
-        <div style={statSt}>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Mensual Promedio</div>
-          <div style={{fontSize:22,fontWeight:700,color:"#fbbf24"}}>{fU(totalAnnualProjection/12)}</div>
-          <div style={{fontSize:11,color:"#94a3b8"}}>estimado</div>
-        </div>
-      </div>
-
-      {/* ── Proyección por ticker ── */}
-      <div style={{marginBottom:16}}>
-        <div style={{fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:8,textTransform:"uppercase",letterSpacing:".04em"}}>Proyección anual por activo</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
-          {Object.values(annualByTicker).filter(a=>a.annual>0).sort((a,b)=>(b.annual*b.cantidad)-(a.annual*a.cantidad)).map(a=>{
-            const totalTk=a.annual*a.cantidad;
-            const yld=a.price>0?(a.annual/a.price*100):0;
-            return <div key={a.ticker} style={{background:"#111827",borderRadius:8,padding:"10px 14px",border:"1px solid #1e293b"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontWeight:700,color:"#e2e8f0",fontSize:14}}>{a.ticker}</span>
-                <span style={{color:"#34d399",fontWeight:600,fontSize:13}}>{fU(totalTk)}</span>
-              </div>
-              <div style={{fontSize:10,color:"#64748b",marginTop:2}}>${a.annual.toFixed(2)}/acción · {a.cantidad} acc · yield {yld.toFixed(1)}%</div>
-              {/* Barra visual */}
-              <div style={{marginTop:6,height:4,background:"#1e293b",borderRadius:2,overflow:"hidden"}}>
-                <div style={{height:"100%",background:"#34d399",borderRadius:2,width:`${Math.min(100,totalAnnualProjection>0?(totalTk/totalAnnualProjection*100):0)}%`}}/>
-              </div>
-            </div>;
-          })}
-        </div>
-      </div>
-
-      {/* ── Timeline de próximos dividendos ── */}
-      {upcoming.length>0&&<div style={{marginBottom:16}}>
-        <div style={{fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:8,textTransform:"uppercase",letterSpacing:".04em"}}>Calendario de próximos pagos</div>
-        {Object.entries(upByMonth).map(([month,divs])=><div key={month} style={{marginBottom:12}}>
-          <div style={{fontSize:13,fontWeight:700,color:"#60a5fa",marginBottom:6,display:"flex",alignItems:"center",gap:8}}>
-            <span style={{background:"#1e40af33",padding:"2px 10px",borderRadius:12,fontSize:12}}>{monthName(divs[0].date)} {month.slice(0,4)}</span>
-            <span style={{fontSize:11,color:"#475569",fontWeight:400}}>Total: {fU(divs.reduce((s,d)=>s+d.total,0))}</span>
-          </div>
-          {divs.map((d,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 12px",background:"#0f172a",borderRadius:8,marginBottom:4,border:"1px solid #1e293b"}}>
-            <div style={{minWidth:70,fontSize:12,color:"#64748b"}}>{d.date.slice(5)}</div>
-            <div style={{minWidth:60,fontWeight:700,color:"#e2e8f0",fontSize:13}}>{d.ticker}</div>
-            <div style={{fontSize:11,color:"#94a3b8",flex:1}}>${d.amount.toFixed(4)} × {d.cantidad} acc</div>
-            <div style={{fontWeight:700,color:"#34d399",fontSize:13}}>{fU(d.total)}</div>
-          </div>)}
-        </div>)}
-      </div>}
-
-      {/* ── Historial reciente ── */}
-      {past.length>0&&<details style={{marginTop:4}}>
-        <summary style={{fontSize:12,color:"#64748b",cursor:"pointer",marginBottom:8}}>Dividendos cobrados últimos 12 meses ({past.length})</summary>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-          <thead><tr style={{borderBottom:"1px solid #334155"}}>
-            <th style={{textAlign:"left",padding:6,color:"#475569",fontWeight:500}}>Fecha</th>
-            <th style={{textAlign:"left",padding:6,color:"#475569",fontWeight:500}}>Ticker</th>
-            <th style={{textAlign:"right",padding:6,color:"#475569",fontWeight:500}}>$/acc</th>
-            <th style={{textAlign:"right",padding:6,color:"#475569",fontWeight:500}}>Cant.</th>
-            <th style={{textAlign:"right",padding:6,color:"#475569",fontWeight:500}}>Total</th>
-          </tr></thead>
-          <tbody>{[...past].reverse().map((d,i)=><tr key={i} style={{borderBottom:"1px solid #1e293b"}}>
-            <td style={{padding:6,color:"#64748b"}}>{d.date}</td>
-            <td style={{padding:6,fontWeight:600,color:"#94a3b8"}}>{d.ticker}</td>
-            <td style={{padding:6,textAlign:"right",color:"#64748b"}}>${d.amount.toFixed(4)}</td>
-            <td style={{padding:6,textAlign:"right",color:"#64748b"}}>{d.cantidad}</td>
-            <td style={{padding:6,textAlign:"right",fontWeight:600,color:"#a78bfa"}}>{fU(d.total)}</td>
-          </tr>)}</tbody>
-        </table>
-      </details>}
-    </div>}
-  </Card>;
-}
-
-/* ── CALCULADORA CAUCIÓN ──────────────────── */
-function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetchCaucionRate,caucionForm,setCaucionForm}){
-  const fARS=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
-  const fPct=(n,d=2)=>n==null||isNaN(n)?"—":`${n.toFixed(d)} %`;
-
-  /* Form fields lifted to App for persistence across tab switches */
-  const monto=caucionForm.monto;
-  const setMonto=v=>setCaucionForm(f=>({...f,monto:v}));
-  const diasTom=caucionForm.diasTom;
-  const setDiasTom=v=>setCaucionForm(f=>({...f,diasTom:v}));
-  const [showIOLConfig,setShowIOLConfig]=useState(false);
-  const [iolUser,setIolUser]=useState(()=>{const c=loadLS("iol_creds",null);return c?c.user:""});
-  const [iolPass,setIolPass]=useState(()=>{const c=loadLS("iol_creds",null);return c?c.pass:""});
-
-  /* TNA Tomadora is shared with Resumen via caucion state — local string para edición libre */
-  const [tnaTomStr,setTnaTomStr]=useState(String(caucionState.tna??""));
-  const tnaTom=parseFloat(tnaTomStr)||0;
-  const setTnaTom=v=>{setTnaTomStr(v);const n=parseFloat(v);if(!isNaN(n))setCaucionState({...caucionState,tna:n});};
-  /* Sincronizar si cambia desde fuera (IOL auto-fetch) */
-  React.useEffect(()=>{if(caucionState.tna!=null&&caucionState.tna!==parseFloat(tnaTomStr))setTnaTomStr(String(caucionState.tna));},[caucionState.tna]);
-
-  const tom=calcCaucion(parseFloat(monto)||0,tnaTom,parseInt(diasTom)||0,false);
-  const col=calcCaucion(parseFloat(monto)||0,tnaTom,parseInt(diasTom)||0,true);
-
-  const inputSt={background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"8px 12px",color:"#e2e8f0",fontSize:15,fontWeight:600,width:"100%",fontVariantNumeric:"tabular-nums"};
-  const labelSt={fontSize:11,color:"#64748b",display:"block",marginBottom:4,textTransform:"uppercase",letterSpacing:".04em"};
-  const rowSt={display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #1e293b"};
-  const valSt={fontVariantNumeric:"tabular-nums",fontWeight:600,fontSize:13};
-
-  function CaucionPanel({title,color,bg,data,esColocadora}){
-    if(!data)return<div style={{background:"#1a1f2e",borderRadius:10,padding:20,flex:1,border:"1px solid #252d3d"}}><div style={{color:"#475569",textAlign:"center",padding:40}}>Ingresá los valores para calcular</div></div>;
-    return<div style={{background:"#1a1f2e",borderRadius:10,padding:0,flex:1,border:`1px solid ${color}33`,overflow:"hidden"}}>
-      <div style={{background:bg,padding:"12px 18px",borderBottom:`1px solid ${color}33`}}>
-        <div style={{fontSize:14,fontWeight:700,color}}>{title}</div>
-      </div>
-      <div style={{padding:"14px 18px"}}>
-        {/* Datos de la operación */}
-        <div style={{background:"#111827",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
-          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Fecha:</span><span style={valSt}>{data.fechaOp}</span></div>
-          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Monto Contado:</span><span style={{...valSt,color:"#f1f5f9"}}>{fARS(data.monto)}</span></div>
-          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Tasa Bruta (TNA):</span><span style={valSt}>{fPct(data.tna)}</span></div>
-          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Días:</span><span style={valSt}>{data.dias}</span></div>
-          <div style={{...rowSt,borderBottom:"none"}}><span style={{color:"#94a3b8",fontSize:12,fontWeight:600}}>Monto Futuro:</span><span style={{...valSt,color:"#f1f5f9",fontSize:14}}>{fARS(data.montoFuturo)}</span></div>
-        </div>
-        {/* Desglose de gastos */}
-        <div style={{marginBottom:14}}>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:8,letterSpacing:".04em"}}>Desglose de Gastos</div>
-          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Comisión:</span><span style={{...valSt,color:"#fbbf24"}}>{fARS(data.comision)}</span></div>
-          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Derecho Mercado:</span><span style={valSt}>{fARS(data.derMercado)}</span></div>
-          {!esColocadora&&<div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Gto. Adm. Gtías:</span><span style={valSt}>{fARS(data.gtoGtia)}</span></div>}
-          {esColocadora&&<div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Gto. Adm. Gtías:</span><span style={{...valSt,color:"#475569"}}>$ 0,00</span></div>}
-          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>IVA (21%):</span><span style={valSt}>{fARS(data.iva)}</span></div>
-          <div style={{...rowSt,borderBottom:"none",borderTop:"1px solid #334155",paddingTop:8}}><span style={{color:"#94a3b8",fontSize:12,fontWeight:700}}>Total Gastos:</span><span style={{...valSt,color:"#f87171",fontSize:14}}>{fARS(data.totalGastos)}</span></div>
-        </div>
-        {/* Resultado */}
-        <div style={{background:esColocadora?"#065f4622":"#7f1d1d22",borderRadius:8,padding:"12px 14px",border:`1px solid ${esColocadora?"#34d39933":"#f8717133"}`}}>
-          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>Fecha {esColocadora?"cobro":"pago"}:</span><span style={valSt}>{data.fechaVenc}</span></div>
-          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12,fontWeight:700}}>{esColocadora?"Monto a Cobrar":"Monto a Pagar"}:</span><span style={{...valSt,color:esColocadora?"#34d399":"#f87171",fontSize:15}}>{fARS(esColocadora?data.montoCobrar:data.montoPagar)}</span></div>
-          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>{esColocadora?"Tasa Neta":"C.F.T."}:</span><span style={valSt}>{fPct(esColocadora?data.tasaNeta:data.cft)}</span></div>
-          <div style={rowSt}><span style={{color:"#94a3b8",fontSize:12}}>T.E. Período:</span><span style={{...valSt,color:esColocadora?"#34d399":"#f87171",background:esColocadora?"#065f4644":"#fbbf2433",padding:"2px 8px",borderRadius:4}}>{fPct(data.tePeriodo)}</span></div>
-          <div style={{...rowSt,borderBottom:"none"}}><span style={{color:"#94a3b8",fontSize:12,fontWeight:700}}>{esColocadora?"Ganancia Neta":"Costo Neto"}:</span><span style={{...valSt,color:esColocadora?"#34d399":"#f87171",fontSize:15}}>{fARS(esColocadora?data.ganNeta:data.costoNeto)}</span></div>
-        </div>
-      </div>
-    </div>;
-  }
-
-  const statusColor=iolStatus?.status==="ok"?"#34d399":iolStatus?.status==="cached"?"#fbbf24":iolStatus?.status==="error"?"#f87171":"#64748b";
-  const statusDot=<span style={{width:8,height:8,borderRadius:"50%",background:statusColor,display:"inline-block",animation:iolStatus?.status==="fetching"?"pulse 1s infinite":"none"}}/>;
-  const tna1d=iolStatus?.pesos1d;
-  const te1d=tna1d?(tna1d/365):null;
-
-  return <div style={{display:"flex",flexDirection:"column",gap:18}}>
-    {/* ── TASA IOL — Caución Pesos 1D ── */}
-    <div style={{background:"linear-gradient(135deg,#1a1f2e 0%,#0f172a 100%)",border:"1px solid #334155",borderRadius:12,padding:"20px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:14}}>
-      <div style={{display:"flex",alignItems:"center",gap:16}}>
-        <div style={{background:"#111827",borderRadius:10,padding:"12px 16px",border:"1px solid #252d3d",textAlign:"center",minWidth:120}}>
-          {tna1d!=null&&tna1d>0?
-            <div style={{fontSize:28,fontWeight:800,color:"#34d399",fontVariantNumeric:"tabular-nums",lineHeight:1}}>{tna1d}%<span style={{fontSize:13,fontWeight:500,color:"#64748b",marginLeft:4}}>TNA</span></div>:
-            iolStatus?.status==="fetching"?
-              <div style={{fontSize:14,color:"#60a5fa",animation:"pulse 1s infinite"}}>Consultando...</div>:
-              <div style={{fontSize:14,color:"#475569"}}>Sin datos</div>
-          }
-          {te1d!=null&&<div style={{fontSize:10,color:"#64748b",marginTop:4}}>T.E. diaria: {te1d.toFixed(4)}%</div>}
-        </div>
-        <div>
-          <h3 style={{margin:0,fontSize:15,fontWeight:700,color:"#e2e8f0"}}>Caución Pesos 1 Día</h3>
-          <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
-            {statusDot}
-            {iolStatus?.status==="ok"&&<span style={{fontSize:11,color:"#34d399"}}>IOL Conectado</span>}
-            {iolStatus?.status==="cached"&&<span style={{fontSize:11,color:"#fbbf24"}}>Cache</span>}
-            {iolStatus?.status==="error"&&<span style={{fontSize:11,color:"#f87171"}} title={window._iolLastError||iolStatus?.msg||""}>{window._iolLastError?.includes("Credenciales")?"Credenciales inválidas":"Error de conexión"}</span>}
-            {iolStatus?.status==="idle"&&<span style={{fontSize:11,color:"#64748b"}}>No configurado</span>}
-            {iolStatus?.ts&&<span style={{fontSize:10,color:"#475569"}}>· {timeAgo(new Date(iolStatus.ts).toISOString())}</span>}
-          </div>
-        </div>
-      </div>
-      <div style={{display:"flex",gap:8}}>
-        <button onClick={fetchCaucionRate} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"6px 12px",fontSize:12,cursor:"pointer",fontWeight:500}}>🔄 Actualizar</button>
-        <button onClick={()=>setShowIOLConfig(!showIOLConfig)} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"6px 12px",fontSize:12,cursor:"pointer",fontWeight:500}}>⚙️ Config</button>
-      </div>
-    </div>
-
-    {/* IOL Config panel */}
-    {showIOLConfig&&<div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:10,padding:"16px 18px"}}>
-      <div style={{fontSize:13,fontWeight:600,color:"#e2e8f0",marginBottom:10}}>Credenciales InvertirOnline</div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:10,alignItems:"end"}}>
-        <div>
-          <label style={{fontSize:10,color:"#64748b",display:"block",marginBottom:4}}>Email</label>
-          <input value={iolUser} onChange={e=>setIolUser(e.target.value)} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"6px 10px",color:"#e2e8f0",fontSize:13,width:"100%"}} placeholder="tu@email.com"/>
-        </div>
-        <div>
-          <label style={{fontSize:10,color:"#64748b",display:"block",marginBottom:4}}>Contraseña</label>
-          <input type="password" value={iolPass} onChange={e=>setIolPass(e.target.value)} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"6px 10px",color:"#e2e8f0",fontSize:13,width:"100%"}} placeholder="••••"/>
-        </div>
-        <button onClick={()=>{saveLS("iol_creds",{user:iolUser,pass:iolPass});saveLS("iol_token",null);fetchCaucionRate();setShowIOLConfig(false);}} style={{background:"#2563eb",border:"none",color:"#fff",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600,height:34}}>Guardar</button>
-      </div>
-      <div style={{fontSize:10,color:"#475569",marginTop:8}}>Las credenciales se guardan solo en tu browser (localStorage).</div>
-      <div style={{fontSize:10,color:"#fbbf24",marginTop:6,background:"#fbbf2411",padding:"8px 10px",borderRadius:6,lineHeight:1.5}}>
-        <b>Requisitos para usar la API de IOL:</b><br/>
-        1. Logueate en invertironline.com<br/>
-        2. Enviá un mensaje solicitando la activación de APIs<br/>
-        3. Una vez confirmada, aceptá los términos en: <b>Mi Cuenta → Personalización → APIs</b><br/>
-        4. Abrí la consola del browser (F12) para ver los logs detallados [IOL]
-      </div>
-    </div>}
-
-    {/* ── Calculadora de Caución ── */}
-    <Card title="Calculadora de Caución" right={<span style={{fontSize:10,color:"#475569"}}>BYMA · Bull Market Active Trader Plus</span>}>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14,alignItems:"end"}}>
-        <div><label style={labelSt}>Monto Contado ($)</label><input type="text" value={monto?parseInt(monto).toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setMonto(raw);}} style={inputSt}/></div>
-        <div><label style={labelSt}>TNA (%)</label><input type="text" inputMode="decimal" value={tnaTomStr} onChange={e=>setTnaTom(e.target.value)} style={inputSt}/></div>
-        <div><label style={labelSt}>Días</label><input type="number" value={diasTom} onChange={e=>setDiasTom(e.target.value)} style={inputSt}/></div>
-      </div>
-    </Card>
-    {/* Paneles lado a lado */}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-      <CaucionPanel title="CAUCIÓN TOMADORA" color="#f87171" bg="#7f1d1d33" data={tom} esColocadora={false}/>
-      <CaucionPanel title="CAUCIÓN COLOCADORA" color="#34d399" bg="#065f4633" data={col} esColocadora={true}/>
-    </div>
-    <div style={{fontSize:9,color:"#475569",fontStyle:"italic",textAlign:"center"}}>Comisión Tomadora: 0,5% mensual · Colocadora: 0,083% mensual · Derechos+Gtías: 0,045%/90 días · IVA 21% · Fuente: Tarifario BM Marzo 2025 + BYMA</div>
-  </div>;
-}
-
-/* Yahoo Finance symbol mapping: BYMA ticker → NYSE/NASDAQ USD equivalent */
-const YF_SYM_MAP={YPFD:"YPF",GGAL:"GGAL",EDN:"EDN",MELI:"MELI",ORCL:"ORCL",IBM:"IBM",BKUCF:"BKUCF",TSLA:"TSLA",AAPL:"AAPL",MSFT:"MSFT",AMZN:"AMZN",GOOGL:"GOOGL",META:"META",NVDA:"NVDA",UNH:"UNH",FISV:"FISV",JNJ:"JNJ",KO:"KO",DIS:"DIS",GLOB:"GLOB",SUPV:"SUPV",PAMP:"PAM",BMA:"BMA",CEPU:"CEPU",LOMA:"LOMA",TEO:"TEO",CRESY:"CRESY",TGS:"TGS",IRCP:"IRS",DESP:"DESP",CAAP:"CAAP",BIOX:"BIOX",AGRO:"AGRO",VISTA:"VIST"};
-const yfSym=t=>{const u=t.toUpperCase();return YF_SYM_MAP[u]||u;};
-
-/* ── TRADING — Simulador Intraday ────────── */
-function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert,togglePriceAlert,onOpenConfig,tradingForm,setTradingForm}){
-  const fARS=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:0,maximumFractionDigits:0}).format(n)}`;
-  const fARS2=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
-  const fPct=(n,d=2)=>n==null||isNaN(n)?"—":`${n.toFixed(d)}%`;
-  const fUSD=n=>{if(n==null||isNaN(n))return"—";const abs=Math.abs(n);if(abs<1&&abs>0)return`USD ${n.toFixed(2)}`;return`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:0,maximumFractionDigits:0}).format(n)}`;};
-
-  /* Helper: parsear input numérico (soporta 34.800 y 34,50) */
-  const parseNum=s=>{if(!s)return 0;const clean=s.replace(/\./g,"").replace(",",".");return parseFloat(clean)||0;};
-  /* Helper: formatear número para mostrar en input */
-  const fmtInput=(s,decimals)=>{const n=parseNum(s);if(!s||n===0&&s!=="0")return s;return n.toLocaleString("es-AR",{maximumFractionDigits:decimals,minimumFractionDigits:0});};
-
-  /* Operación */
-  /* Form state lifted to App so it persists across tab switches */
-  const tickerInput=tradingForm.tickerInput;
-  const cantidad=tradingForm.cantidad;
-  const precioCompra=tradingForm.precioCompra;
-  const precioVentaManual=tradingForm.precioVentaManual;
-  const mercado=tradingForm.mercado;
-  const setTickerInput=v=>setTradingForm(f=>({...f,tickerInput:v}));
-  const setCantidad=v=>setTradingForm(f=>({...f,cantidad:v}));
-  const setPrecioCompra=v=>setTradingForm(f=>({...f,precioCompra:v}));
-  const setPrecioVentaManual=v=>setTradingForm(f=>({...f,precioVentaManual:v}));
-  const setMercado=v=>setTradingForm(f=>({...f,mercado:v}));
-
-  /* Inline alert inputs */
-  const [inlineTarget,setInlineTarget]=useState("");
-  const [inlineStop,setInlineStop]=useState("");
-
-  /* Ticker: acepta cualquier texto, uppercase */
-  const ticker=tickerInput.trim().toUpperCase();
-
-  /* Auto-detect mercado from portfolio if ticker found */
-  const posInfo=pos.find(p=>p.ticker===ticker);
-  const detectedMercado=posInfo?.mercado||(pos.find(p=>p.ticker===ticker)?"BYMA":null);
-  React.useEffect(()=>{if(detectedMercado)setMercado(detectedMercado);},[ticker,detectedMercado]);
-
-  /* Derive tipo from pos metadata */
-  const tipoActivo=posInfo?.tipo||"";
-  const exento=tipoActivo==="Bono"||tipoActivo==="Letra"||tipoActivo==="ON";
-
-  /* Comisiones según mercado */
-  const isBYMA=mercado==="BYMA";
-  /* BM Active Trader Plus (BYMA) */
-  const comPctBM=0.0010;   /* 0.10% broker */
-  const derPctBM=0.0007;   /* 0.07% der mercado */
-  const intraPctBM=0.0005; /* 0.05% intra venta */
-  /* Allaria/CS (NYSE) — comisiones más bajas, sin der mercado local ni intra */
-  const comPctAT=0.0060;   /* 0.60% all-in approx */
-  const derPctAT=0;
-  const intraPctAT=0;
-
-  const comPct=isBYMA?comPctBM:comPctAT;
-  const derPct=isBYMA?derPctBM:derPctAT;
-  const intraPct=isBYMA?intraPctBM:intraPctAT;
-  const ivaMult=(isBYMA&&!exento)?1.21:1; /* NYSE no paga IVA; BYMA bonos/letras/ONs exentos */
-  const moneda=isBYMA?"ARS":"USD";
-  const monedaSym=isBYMA?"$":"USD ";
-
-  /* On-demand price fetch for tickers not in portfolio */
-  const [tradingPrice,setTradingPrice]=useState(null);
-  const [tradingPriceLoading,setTradingPriceLoading]=useState(false);
-  const fetchTimerRef=React.useRef(null);
-
-  React.useEffect(()=>{
-    /* Reset on ticker change */
-    setPrecioVentaManual("");
-    setTradingPrice(null);
-    if(fetchTimerRef.current)clearTimeout(fetchTimerRef.current);
-    if(!ticker||ticker.length<2)return;
-    /* If already in portfolio prices, no need to fetch */
-    if(prices[ticker])return;
-    /* Debounce 600ms then fetch from data912 + Yahoo */
-    setTradingPriceLoading(true);
-    fetchTimerRef.current=setTimeout(async()=>{
-      try{
-        const fetchD912=async(ep)=>{try{let r;try{r=await fetch(DATA912_BASE+"/"+ep)}catch(e){r=await fetch(PROXY+encodeURIComponent(DATA912_BASE+"/"+ep))}return await r.json()}catch(e){return[]}};
-        const [cedears,argStocks,argBonds,usaStocks]=await Promise.all([fetchD912("arg_cedears"),fetchD912("arg_stocks"),fetchD912("arg_bonds"),fetchD912("usa_stocks")]);
-        const find=(arr)=>(arr||[]).find(x=>(x.symbol||"").toUpperCase()===ticker);
-        const hit=find(cedears)||find(argStocks)||find(argBonds)||find(usaStocks);
-        if(hit&&hit.c){
-          const isArg=!!(find(cedears)||find(argStocks)||find(argBonds));
-          setTradingPrice({priceARS:isArg?hit.c:null,price:isArg?0:hit.c,changeARS:isArg?(hit.pct_change||0):null,change:isArg?0:(hit.pct_change||0)});
-          setTradingPriceLoading(false);return;
-        }
-        /* Yahoo v8/chart fallback (v7/quote requiere auth desde ~2025) */
-        /* BKUCF: ticker OTC directo (igual que TradingView) */
-        try{
-          const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d`;
-          let r;try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
-          if(r&&r.ok){
-            const j=await r.json();const meta=j.chart?.result?.[0]?.meta;
-            if(meta&&meta.regularMarketPrice){
-              const p=meta.regularMarketPrice,prev=meta.chartPreviousClose||meta.previousClose||p;
-              const chg=prev?((p-prev)/prev*100):0;
-              const isArg=(meta.exchangeName||"").includes("Buenos")||(meta.currency||"")==="ARS";
-              setTradingPrice({priceARS:isArg?p:null,price:isArg?0:p,changeARS:isArg?chg:null,change:isArg?0:chg});
-            }
-          }
-        }catch(e){}
-      }catch(e){console.warn("Trading price fetch error:",e);}
-      setTradingPriceLoading(false);
-    },600);
-    return()=>{if(fetchTimerRef.current)clearTimeout(fetchTimerRef.current)};
-  },[ticker]);
-
-  /* Merge portfolio prices with on-demand trading price */
-  const priceData=prices[ticker]||tradingPrice;
-  const precioVentaAuto=isBYMA?(priceData?.priceARS||0):(priceData?.price||0);
-
-  /* Precio venta: usa manual si lo escribió, sino auto */
-  const pvManual=parseNum(precioVentaManual);
-  const pv=pvManual>0?pvManual:precioVentaAuto;
-  const pvIsAuto=pvManual===0&&precioVentaAuto>0;
-
-  /* All available tickers for datalist suggestions */
-  const allTickers=useMemo(()=>{
-    const set=new Set(pos.map(p=>p.ticker));
-    Object.keys(prices).forEach(t=>set.add(t));
-    return[...set].sort();
-  },[pos,prices]);
-
-  const cant=parseNum(cantidad);
-  const pc=parseNum(precioCompra);
-  const montoCompra=cant*pc;
-  const montoVenta=cant*pv;
-  const mep=macro.dolarMEP||1;
-
-  /* Comisiones */
-  const comCompra=montoCompra*(comPct+derPct)*ivaMult;
-  const comVenta=montoVenta*(comPct+derPct+intraPct)*ivaMult;
-  const totalGastos=comCompra+comVenta;
-
-  /* P&L */
-  const bruto=montoVenta-montoCompra;
-  const neto=bruto-totalGastos;
-
-  /* Breakeven */
-  const ventaFactor=(comPct+derPct+intraPct)*ivaMult;
-  const breakeven=cant>0?(montoCompra+comCompra)/(cant*(1-ventaFactor)):0;
-
-  /* Auto-alert prices: solve for pv where neto = +/- alertPL */
-  const alertPL=isBYMA?1000000:1000; /* $1M ARS or USD 1000 */
-  /* neto = cant*pv*(1-ventaFactor) - montoCompra - comCompra → pv = (neto + montoCompra + comCompra) / (cant*(1-ventaFactor)) */
-  const autoTarget=cant>0&&pc>0?(alertPL+montoCompra+comCompra)/(cant*(1-ventaFactor)):0;
-  const autoStop=cant>0&&pc>0?(-alertPL+montoCompra+comCompra)/(cant*(1-ventaFactor)):0;
-
-  /* Auto-fill alert inputs when compra data changes */
-  React.useEffect(()=>{
-    if(cant>0&&pc>0&&autoTarget>0){
-      setInlineTarget(isBYMA?Math.ceil(autoTarget).toString():autoTarget.toFixed(2));
-    }
-    if(cant>0&&pc>0&&autoStop>0){
-      setInlineStop(isBYMA?Math.floor(autoStop).toString():autoStop.toFixed(2));
-    }
-  },[cant,pc,isBYMA]);
-
-  /* Scenarios */
-  const scenarios=pc>0?[-3,-2,-1,-0.5,0.5,1,2,3].map(pct=>{
-    const pvS=pc*(1+pct/100);
-    const mvS=cant*pvS;
-    const cvS=mvS*(comPct+derPct+intraPct)*ivaMult;
-    const netoS=mvS-montoCompra-comCompra-cvS;
-    return{pct,pv:pvS,neto:netoS};
-  }):[];
-
-  /* ── Intraday Trades List (persisted) ── */
-  const [trades,setTrades]=useState(()=>loadLS("intraday_trades",[]));
-  useEffect(()=>{saveLS("intraday_trades",trades)},[trades]);
-
-  const canAdd=ticker&&cant>0&&pc>0&&pv>0;
-  const addTrade=()=>{
-    if(!canAdd)return;
-    const trade={id:Date.now(),fecha:new Date().toISOString().slice(0,10),ticker,mercado,cantidad:cant,precioCompra:pc,precioVenta:pv,montoCompra,montoVenta,comCompra,comVenta,totalGastos,bruto,neto,breakeven,exento,moneda,mep};
-    setTrades(prev=>[trade,...prev]);
-    setTickerInput("");setCantidad("");setPrecioCompra("");setPrecioVentaManual("");
-  };
-
-  const removeTrade=(id)=>setTrades(prev=>prev.filter(t=>t.id!==id));
-  const clearTrades=()=>{if(confirm("Borrar todas las operaciones intraday?"))setTrades([]);};
-
-  /* Totals across all trades */
-  const tradesTotals=useMemo(()=>{
-    let netoARS=0,netoUSD=0,gastosARS=0,gastosUSD=0,montoARS=0,montoUSD=0;
-    trades.forEach(t=>{
-      const m=t.mep||mep;
-      if(t.mercado==="BYMA"){netoARS+=t.neto;gastosARS+=t.totalGastos;netoUSD+=t.neto/m;montoARS+=t.montoCompra;montoUSD+=t.montoCompra/m;}
-      else{netoUSD+=t.neto;gastosUSD+=t.totalGastos;netoARS+=t.neto*m;montoUSD+=t.montoCompra;montoARS+=t.montoCompra*m;}
-    });
-    return{netoARS,netoUSD,gastosARS,gastosUSD,montoARS,montoUSD,count:trades.length};
-  },[trades,mep]);
-
-  const inputSt={background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"8px 12px",color:"#e2e8f0",fontSize:15,fontWeight:600,width:"100%",fontVariantNumeric:"tabular-nums"};
-  const labelSt={fontSize:11,color:"#64748b",display:"block",marginBottom:4,textTransform:"uppercase",letterSpacing:".04em"};
-
-  /* Formatear montos en la moneda del mercado */
-  const fM=n=>{if(n==null||isNaN(n))return"—";if(isBYMA)return fARS(n);const abs=Math.abs(n);const d=abs<0.01?6:abs<1?4:2;return`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)}`;};
-  const fM2=n=>{if(n==null||isNaN(n))return"—";if(isBYMA)return fARS2(n);const abs=Math.abs(n);const d=abs<0.01?6:abs<1?4:2;return`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)}`;};
-  /* Equivalente en la otra moneda */
-  const fAlt=n=>n==null||isNaN(n)?"—":isBYMA?fUSD(n/mep):fARS(n*mep);
-  const fAltLabel=isBYMA?"MEP":"ARS";
-
-  const mercadoBtnSt=(active)=>({background:active?"#2563eb":"#1e293b",border:`1px solid ${active?"#2563eb":"#334155"}`,color:active?"#fff":"#94a3b8",borderRadius:6,padding:"4px 12px",fontSize:11,cursor:"pointer",fontWeight:600});
-
-  return <div style={{display:"flex",flexDirection:"column",gap:18}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
-      <div>
-        <h2 style={{margin:0,fontSize:18,fontWeight:700}}>Simulador de Trading Intraday</h2>
-        <p style={{margin:"4px 0 0",fontSize:13,color:"#64748b"}}>Simulá compra y venta en el día con comisiones reales. {isBYMA?"BYMA · Bull Market Active Trader Plus":"NYSE · Allaria (CS)"}.</p>
-      </div>
-      <div style={{display:"flex",gap:4,alignItems:"center"}}>
-        <button onClick={()=>setMercado("BYMA")} style={mercadoBtnSt(isBYMA)}>🇦🇷 BYMA</button>
-        <button onClick={()=>setMercado("NYSE")} style={mercadoBtnSt(!isBYMA)}>🇺🇸 NYSE</button>
-      </div>
-    </div>
-
-    {/* Operación */}
-    <Card title="Operación" right={<span style={{fontSize:10,color:exento?"#34d399":"#64748b"}}>{tipoActivo?`${tipoActivo} · `:""}{moneda}{exento?" · IVA Exento":isBYMA?" · IVA 21%":" · Sin IVA"}</span>}>
-      <div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 1fr 1fr",gap:14,alignItems:"start"}}>
-        <div><label style={labelSt}>Ticker</label>
-          <div style={{position:"relative"}}>
-            <input type="text" value={tickerInput} onChange={e=>setTickerInput(e.target.value.toUpperCase())} style={inputSt} placeholder={isBYMA?"Ej: GGAL, VIST, MELI":"Ej: IBM, AAPL, TSLA"}/>
-            {ticker&&tradingPriceLoading&&<div style={{fontSize:10,color:"#fbbf24",marginTop:4,position:"absolute",left:0,top:"100%",whiteSpace:"nowrap"}}>Buscando cotización...</div>}
-            {ticker&&priceData&&!tradingPriceLoading&&<div style={{fontSize:10,color:"#34d399",marginTop:4,position:"absolute",left:0,top:"100%",whiteSpace:"nowrap"}}>Cotización: {isBYMA?(priceData.priceARS?`$ ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(priceData.priceARS)}`:"—"):(priceData.price?fM(priceData.price):"—")}</div>}
-            {ticker&&!priceData&&!tradingPriceLoading&&<div style={{fontSize:10,color:"#64748b",marginTop:4,position:"absolute",left:0,top:"100%",whiteSpace:"nowrap"}}>Sin cotización — ingresá precio manual</div>}
-          </div>
-        </div>
-        <div><label style={labelSt}>Cantidad</label><input type="text" value={cantidad} onChange={e=>setCantidad(e.target.value.replace(/[^\d]/g,""))} style={inputSt} placeholder="Nominales"/></div>
-        <div><label style={labelSt}>Precio Compra ({monedaSym.trim()})</label><input type="text" value={precioCompra} onChange={e=>setPrecioCompra(e.target.value.replace(/[^\d.,]/g,""))} style={inputSt} placeholder={isBYMA?"34.800 ó 34800":"232.50"}/></div>
-        <div><label style={labelSt}>Precio Venta ({monedaSym.trim()}) {pvIsAuto?<span style={{color:"#34d399",fontWeight:400,textTransform:"none"}}>— auto</span>:pv>0?<span style={{color:"#60a5fa",fontWeight:400,textTransform:"none"}}>— manual</span>:null}</label>
-          <input type="text" value={precioVentaManual||(precioVentaAuto>0?(isBYMA?new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(precioVentaAuto):precioVentaAuto.toFixed(2)):"")} onChange={e=>setPrecioVentaManual(e.target.value.replace(/[^\d.,]/g,""))} style={{...inputSt,background:pvIsAuto?"#0f172a":"#111827",color:pv>0?"#34d399":tradingPriceLoading?"#fbbf24":"#e2e8f0"}} placeholder={tradingPriceLoading?"Buscando precio...":"Dejá vacío p/auto"}/>
-        </div>
-      </div>
-      {/* Inline Alert: Target / Stop Loss */}
-      {ticker&&(()=>{
-        const curPrice=isBYMA?(priceData?.priceARS||0):(priceData?.price||0);
-        const alertMercado=isBYMA?"BYMA":"NYSE";
-        const tParsed=parseNum(inlineTarget);
-        const sParsed=parseNum(inlineStop);
-        const createInlineAlerts=()=>{
-          if(tParsed<=0&&sParsed<=0)return;
-          const groupId=Date.now();
-          if(tParsed>0)addPriceAlert({ticker,mercado:alertMercado,condition:"above",price:tParsed,label:"Target",groupId});
-          if(sParsed>0)addPriceAlert({ticker,mercado:alertMercado,condition:"below",price:sParsed,label:"Stop Loss",groupId});
-          setInlineTarget("");setInlineStop("");
-        };
-        const existing=priceAlerts.filter(a=>a.ticker===ticker&&a.active);
-        const hasTarget=existing.some(a=>a.condition==="above");
-        const hasStop=existing.some(a=>a.condition==="below");
-        return <div style={{marginTop:14,paddingTop:12,borderTop:"1px solid #1e293b"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-            <span style={{fontSize:11,color:"#64748b",fontWeight:600,minWidth:50}}>🔔 ALERTAS</span>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
-              <label style={{fontSize:10,color:"#34d399"}}>⬆️ Target</label>
-              <input value={inlineTarget} onChange={e=>setInlineTarget(e.target.value.replace(/[^\d.,]/g,""))} placeholder={curPrice>0?Math.round(curPrice*1.05).toLocaleString("es-AR"):"—"} style={{...inputSt,fontSize:12,padding:"4px 8px",width:110,borderColor:inlineTarget?"#34d39966":"#334155"}}/>
-              {tParsed>0&&cant>0&&pc>0&&(()=>{const mv=cant*tParsed;const cv=mv*ventaFactor;const n=mv-montoCompra-comCompra-cv;return <span style={{fontSize:10,color:"#34d399"}}>{isBYMA?fARS(n):`USD ${n.toFixed(0)}`}</span>})()}
+    <div style={{display:"grid",gap:10}}>
+      {alerts.map(a=>{const p=prices[a.ticker];const trig=a.active&&p&&(a.condition==="above"?p.price>=a.price:p.price<=a.price);
+        return <div key={a.id} style={{background:trig?"#dc262612":"#1a1f2e",border:`1px solid ${trig?"#dc262644":"#252d3d"}`,borderRadius:10,padding:"16px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10,animation:trig?"pulse 2s infinite":"none"}}>
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <div style={{width:40,height:40,borderRadius:8,background:trig?"#dc262622":"#252d3d",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{a.condition==="above"?"📈":"📉"}</div>
+            <div>
+              <div style={{fontWeight:700,fontSize:16}}>{a.ticker}</div>
+              <div style={{fontSize:12,color:"#64748b"}}>{a.condition==="above"?"Sube por encima de":"Baja por debajo de"} <strong style={{color:"#e2e8f0"}}>{fU(a.price)}</strong></div>
+              <div style={{fontSize:11,color:"#64748b",marginTop:2}}>Actual: <span style={{color:p?.change>=0?"#34d399":"#f87171",fontWeight:600}}>{fU(p?.price)}</span></div>
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
-              <label style={{fontSize:10,color:"#f87171"}}>⬇️ Stop</label>
-              <input value={inlineStop} onChange={e=>setInlineStop(e.target.value.replace(/[^\d.,]/g,""))} placeholder={curPrice>0?Math.round(curPrice*0.95).toLocaleString("es-AR"):"—"} style={{...inputSt,fontSize:12,padding:"4px 8px",width:110,borderColor:inlineStop?"#f8717166":"#334155"}}/>
-              {sParsed>0&&cant>0&&pc>0&&(()=>{const mv=cant*sParsed;const cv=mv*ventaFactor;const n=mv-montoCompra-comCompra-cv;return <span style={{fontSize:10,color:"#f87171"}}>{isBYMA?fARS(n):`USD ${n.toFixed(0)}`}</span>})()}
-            </div>
-            <button onClick={createInlineAlerts} disabled={tParsed<=0&&sParsed<=0} style={{background:"#2563eb",border:"none",color:"#fff",borderRadius:5,padding:"4px 12px",fontSize:11,cursor:"pointer",fontWeight:600,opacity:(tParsed<=0&&sParsed<=0)?0.4:1}}>+ Alerta</button>
-            {(hasTarget||hasStop)&&<span style={{fontSize:10,color:"#34d399",marginLeft:4}}>{hasTarget?"⬆️ ":""}{hasStop?"⬇️ ":""}activa{hasTarget&&hasStop?"s":""}</span>}
-            {!loadLS("tg_token","")&&<button onClick={onOpenConfig} style={{fontSize:10,color:"#60a5fa",background:"none",border:"none",cursor:"pointer",textDecoration:"underline",marginLeft:"auto"}}>⚙️ Configurar Telegram</button>}
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {trig&&<Badge text="ACTIVADA" color="#fca5a5" bg="#dc262633"/>}
+            <button onClick={()=>setAlerts(alerts.map(x=>x.id===a.id?{...x,active:!x.active}:x))} style={{background:a.active?"#065f4622":"#334155",border:`1px solid ${a.active?"#065f4644":"#475569"}`,color:a.active?"#34d399":"#64748b",borderRadius:6,padding:"6px 12px",fontSize:11,cursor:"pointer",fontWeight:500}}>{a.active?"Activa":"Pausada"}</button>
+            <button onClick={()=>setAlerts(alerts.filter(x=>x.id!==a.id))} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",padding:4,fontSize:16}}>🗑</button>
           </div>
         </div>;
-      })()}
-    </Card>
-
-    {/* Breakeven destacado */}
-    {pc>0&&cant>0&&<div style={{background:"linear-gradient(135deg,#1a1f2e 0%,#0f172a 100%)",border:"1px solid #334155",borderRadius:12,padding:"20px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:14}}>
-      <div style={{display:"flex",alignItems:"center",gap:16}}>
-        <div style={{background:"#111827",borderRadius:10,padding:"12px 16px",border:"1px solid #252d3d",textAlign:"center",minWidth:150}}>
-          <div style={{fontSize:28,fontWeight:800,color:"#fbbf24",fontVariantNumeric:"tabular-nums",lineHeight:1}}>{fM2(breakeven)}</div>
-          <div style={{fontSize:10,color:"#64748b",marginTop:4}}>por acción</div>
-        </div>
-        <div>
-          <h3 style={{margin:0,fontSize:15,fontWeight:700,color:"#e2e8f0"}}>Precio Breakeven</h3>
-          <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>Vendé a este precio o más para no perder plata</div>
-          <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Spread: {fM2(breakeven-pc)} ({fPct((breakeven-pc)/pc*100,3)}) sobre compra</div>
-        </div>
-      </div>
-      <div style={{textAlign:"right"}}>
-        <div style={{fontSize:11,color:"#64748b"}}>Monto Compra</div>
-        <div style={{fontSize:16,fontWeight:700,color:"#e2e8f0",fontVariantNumeric:"tabular-nums"}}>{fM(montoCompra)}</div>
-        <div style={{fontSize:10,color:"#fbbf24",marginTop:2}}>+ {fM2(comCompra)} gastos</div>
-        <div style={{fontSize:10,color:"#60a5fa",marginTop:2}}>{fAlt(montoCompra)} ({fAltLabel})</div>
-      </div>
-    </div>}
-
-    {/* P&L Summary */}
-    {pv>0&&cant>0&&pc>0&&<div style={{background:neto>=0?"#065f4622":"#7f1d1d22",border:`1px solid ${neto>=0?"#34d39955":"#f8717155"}`,borderRadius:12,padding:"20px 24px"}}>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,textAlign:"center"}}>
-        <div>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Bruto</div>
-          <div style={{fontSize:20,fontWeight:800,color:bruto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fM(bruto)}</div>
-          <div style={{fontSize:10,color:"#60a5fa",marginTop:2}}>{fAlt(bruto)}</div>
-        </div>
-        <div>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Total Gastos</div>
-          <div style={{fontSize:20,fontWeight:800,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fM2(totalGastos)}</div>
-          <div style={{fontSize:10,color:"#60a5fa",marginTop:2}}>{fAlt(totalGastos)}</div>
-        </div>
-        <div>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>P&L Neto</div>
-          <div style={{fontSize:24,fontWeight:800,color:neto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fM(neto)}</div>
-          <div style={{fontSize:11,color:"#60a5fa",fontWeight:600,marginTop:2}}>{fAlt(neto)}</div>
-        </div>
-        <div>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Rendimiento</div>
-          <div style={{fontSize:20,fontWeight:800,color:neto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fPct(montoCompra>0?neto/montoCompra*100:0,3)}</div>
-        </div>
-      </div>
-    </div>}
-
-    {/* Cuadro de Sensibilidad */}
-    {scenarios.length>0&&<Card title="Cuadro de Sensibilidad" right={<span style={{fontSize:10,color:"#475569"}}>P&L neto según variación · MEP ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(mep)}</span>}>
-      <table style={{width:"100%",borderCollapse:"collapse"}}>
-        <thead><tr>
-          {["Variación","Precio Venta","Monto Venta","Gastos Totales","P&L Neto",isBYMA?"P&L USD":"P&L ARS"].map(h=><th key={h} style={{padding:"8px 10px",textAlign:h==="Variación"?"left":"right",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
-        </tr></thead>
-        <tbody>{scenarios.map(s=>{
-          const mvS=cant*s.pv;
-          const cvS=mvS*(comPct+derPct+intraPct)*ivaMult;
-          const gastosTotal=comCompra+cvS;
-          return<tr key={s.pct} style={{borderBottom:"1px solid #1e293b",background:s.neto>=0?"#065f4608":"#7f1d1d08"}}>
-            <td style={{padding:"8px 10px",fontWeight:700,fontSize:13,color:s.pct>=0?"#34d399":"#f87171"}}>{s.pct>0?"+":""}{s.pct}%</td>
-            <td style={{padding:"8px 10px",textAlign:"right",fontSize:13,fontVariantNumeric:"tabular-nums"}}>{fM2(s.pv)}</td>
-            <td style={{padding:"8px 10px",textAlign:"right",fontSize:13,fontVariantNumeric:"tabular-nums"}}>{fM(mvS)}</td>
-            <td style={{padding:"8px 10px",textAlign:"right",fontSize:12,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fM2(gastosTotal)}</td>
-            <td style={{padding:"8px 10px",textAlign:"right",fontSize:13,fontWeight:700,color:s.neto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fM(s.neto)}</td>
-            <td style={{padding:"8px 10px",textAlign:"right",fontSize:12,color:"#60a5fa",fontVariantNumeric:"tabular-nums"}}>{fAlt(s.neto)}</td>
-          </tr>;
-        })}</tbody>
-      </table>
-    </Card>}
-
-    {/* Botón Agregar */}
-    {canAdd&&<button onClick={addTrade} style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:8,padding:"12px 24px",fontSize:14,fontWeight:700,cursor:"pointer",alignSelf:"center",transition:"background .15s"}} onMouseOver={e=>e.target.style.background="#1d4ed8"} onMouseOut={e=>e.target.style.background="#2563eb"}>+ Agregar Operación</button>}
-
-    {/* ── Operaciones Intraday Guardadas ── */}
-    {trades.length>0&&<Card title={`Operaciones Intraday (${trades.length})`} right={<div style={{display:"flex",gap:8,alignItems:"center"}}>
-      <span style={{fontSize:11,color:tradesTotals.netoARS>=0?"#34d399":"#f87171",fontWeight:700}}>P&L: {fARS(tradesTotals.netoARS)} / {fUSD(tradesTotals.netoUSD)}</span>
-      <button onClick={clearTrades} style={{background:"#7f1d1d33",border:"1px solid #7f1d1d55",color:"#f87171",borderRadius:6,padding:"3px 8px",fontSize:10,cursor:"pointer"}} title="Borrar todo">🗑</button>
-    </div>}>
-      <table style={{width:"100%",borderCollapse:"collapse"}}>
-        <thead><tr>
-          {["Fecha","Ticker","Mdo","Cant","P.Compra","P.Venta","Gastos","P&L Neto","Rend",""].map(h=><th key={h} style={{padding:"6px 8px",textAlign:h===""||h==="Fecha"||h==="Ticker"||h==="Mdo"?"left":"right",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
-        </tr></thead>
-        <tbody>{trades.map(t=>{
-          const isBM=t.mercado==="BYMA";
-          const fT=n=>isBM?fARS(n):`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
-          const fT2=n=>isBM?fARS2(n):`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:2,maximumFractionDigits:4}).format(n)}`;
-          const fTalt=n=>isBM?fUSD(n/(t.mep||mep)):fARS(n*(t.mep||mep));
-          const rendPct=t.montoCompra>0?(t.neto/t.montoCompra*100):0;
-          return<tr key={t.id} style={{borderBottom:"1px solid #1e293b",background:t.neto>=0?"#065f4608":"#7f1d1d08"}}>
-            <td style={{padding:"6px 8px",fontSize:11,color:"#94a3b8"}}>{t.fecha}</td>
-            <td style={{padding:"6px 8px",fontSize:13,fontWeight:700}}>{t.ticker}</td>
-            <td style={{padding:"6px 8px",fontSize:10,color:"#64748b"}}>{isBM?"🇦🇷":"🇺🇸"}</td>
-            <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums"}}>{t.cantidad.toLocaleString("es-AR")}</td>
-            <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums"}}>{fT2(t.precioCompra)}</td>
-            <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums"}}>{fT2(t.precioVenta)}</td>
-            <td style={{padding:"6px 8px",textAlign:"right",fontSize:11,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fT2(t.totalGastos)}</td>
-            <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
-              <div style={{fontSize:13,fontWeight:700,color:t.neto>=0?"#34d399":"#f87171"}}>{fT(t.neto)}</div>
-              <div style={{fontSize:10,color:"#60a5fa"}}>{fTalt(t.neto)}</div>
-            </td>
-            <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontWeight:600,color:rendPct>=0?"#34d399":"#f87171"}}>{rendPct.toFixed(2)}%</td>
-            <td style={{padding:"6px 8px",textAlign:"right"}}><button onClick={()=>removeTrade(t.id)} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:12,padding:2}} title="Eliminar">✕</button></td>
-          </tr>;
-        })}</tbody>
-        {trades.length>1&&<tfoot><tr style={{borderTop:"2px solid #334155"}}>
-          <td colSpan={7} style={{padding:"8px",fontSize:12,fontWeight:700,color:"#94a3b8"}}>TOTAL ({trades.length} ops)</td>
-          <td style={{padding:"8px",textAlign:"right"}}>
-            <div style={{fontSize:14,fontWeight:800,color:tradesTotals.netoARS>=0?"#34d399":"#f87171"}}>{fARS(tradesTotals.netoARS)}</div>
-            <div style={{fontSize:11,color:"#60a5fa",fontWeight:600}}>{fUSD(tradesTotals.netoUSD)}</div>
-          </td>
-          <td style={{padding:"8px",textAlign:"right",fontSize:12,fontWeight:600,color:tradesTotals.netoARS>=0?"#34d399":"#f87171"}}>{tradesTotals.montoARS>0?(tradesTotals.netoARS/tradesTotals.montoARS*100).toFixed(2)+"%":"—"}</td>
-          <td></td>
-        </tr></tfoot>}
-      </table>
-    </Card>}
-
-    {/* ── Alertas de Precio (solo tabla) ── */}
-    {priceAlerts.length>0&&<Card title="🔔 Alertas Activas" right={loadLS("tg_token","")&&loadLS("tg_chat_id","")?<span style={{fontSize:10,color:"#34d399"}}>📱 Telegram activo</span>:null}>
-      <table style={{width:"100%",borderCollapse:"collapse"}}>
-        <thead><tr>
-          {["Ticker","Tipo","Precio","Nota","Estado",""].map(h=><th key={h} style={{padding:"5px 8px",textAlign:"left",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
-        </tr></thead>
-        <tbody>{priceAlerts.map(a=>{
-          const pd=prices[a.ticker];
-          const isBM=a.mercado==="BYMA";
-          const cur=isBM?(pd?.priceARS||0):(pd?.price||0);
-          const dist=a.price&&cur?((a.price-cur)/cur*100):null;
-          const isTarget=a.condition==="above";
-          return<tr key={a.id} style={{borderBottom:"1px solid #1e293b",opacity:a.active?1:0.5}}>
-            <td style={{padding:"5px 8px",fontWeight:700,fontSize:13}}>{a.ticker} <span style={{fontSize:10,color:"#64748b"}}>{isBM?"🇦🇷":"🇺🇸"}</span></td>
-            <td style={{padding:"5px 8px",fontSize:12}}><span style={{color:isTarget?"#34d399":"#f87171",fontWeight:600}}>{isTarget?"⬆️ Target":"⬇️ Stop Loss"}</span></td>
-            <td style={{padding:"5px 8px",fontSize:13,fontWeight:600,fontVariantNumeric:"tabular-nums"}}>
-              {isBM?fARS(a.price):`USD ${a.price.toFixed(2)}`}
-              {dist!=null&&<span style={{fontSize:10,color:dist>=0?"#34d399":"#f87171",marginLeft:6}}>({dist>=0?"+":""}{dist.toFixed(1)}%)</span>}
-            </td>
-            <td style={{padding:"5px 8px",fontSize:11,color:"#94a3b8"}}>{a.label||"—"}</td>
-            <td style={{padding:"5px 8px",fontSize:11}}>
-              {a.triggeredAt?<span style={{color:"#fbbf24"}}>🔔 Disparada {new Date(a.triggeredAt).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
-              :a.active?<span style={{color:"#34d399"}}>● Activa</span>
-              :<span style={{color:"#64748b"}}>○ Pausada</span>}
-            </td>
-            <td style={{padding:"5px 8px",display:"flex",gap:4}}>
-              <button onClick={()=>togglePriceAlert(a.id)} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:11,padding:2}} title={a.active?"Pausar":"Activar"}>{a.active?"⏸":"▶️"}</button>
-              <button onClick={()=>removePriceAlert(a.id)} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:11,padding:2}} title="Eliminar">✕</button>
-            </td>
-          </tr>;
-        })}</tbody>
-      </table>
-    </Card>}
-
-    <div style={{fontSize:9,color:"#475569",fontStyle:"italic",textAlign:"center"}}>{isBYMA?"Comisión 0,10% + Der. Mercado 0,07% + Intra Venta 0,05% · IVA 21% (Bonos/Letras/ONs exentos) · Fuente: Tarifario BM Marzo 2025 + BYMA":"Comisión 0,60% all-in · Sin IVA · Fuente: Allaria (CS)"} · Equivalencias a MEP ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(mep)}</div>
-  </div>;
-}
-
-/* ── POTENCIAL ──────────────────────────── */
-
-async function fetchHistorical(ticker,range){
-  const sym=yfSym(ticker);
-  /* interval: 1wk for 1y/5y, 1mo for 10y to keep data manageable */
-  const interval=range==="10y"?"1mo":"1wk";
-  const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=${interval}&includePrePost=false`;
-  try{
-    let res;
-    try{res=await fetch(PROXY+encodeURIComponent(url));}catch(e){
-      try{res=await fetch("https://corsproxy.io/?"+encodeURIComponent(url));}catch(e2){return null;}
-    }
-    const data=await res.json();
-    const result=data?.chart?.result?.[0];
-    if(!result)return null;
-    const ts=result.timestamp||[];
-    const closes=result.indicators?.quote?.[0]?.close||[];
-    const currency=result.meta?.currency||"USD";
-    const currentPrice=result.meta?.regularMarketPrice||0;
-    /* Build array of {date, close} filtering nulls */
-    const points=[];
-    for(let i=0;i<ts.length;i++){
-      if(closes[i]!=null&&closes[i]>0){
-        points.push({date:new Date(ts[i]*1000).toISOString().slice(0,10),close:closes[i]});
-      }
-    }
-    return{sym,ticker,currency,currentPrice,points};
-  }catch(e){console.warn("fetchHistorical error:",ticker,e);return null;}
-}
-
-function Potencial({pos,prices,macro}){
-  const [range,setRange]=useState("1y");
-  const [histData,setHistData]=useState({});
-  const [loading,setLoading]=useState(false);
-  const [error,setError]=useState(null);
-  const mep=macro.dolarMEP||1;
-
-  const fARS=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:0,maximumFractionDigits:0}).format(n)}`;
-  const fUSD=n=>n==null||isNaN(n)?"—":`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
-  const fPct=(n)=>n==null||isNaN(n)?"—":`${n>=0?"+":""}${n.toFixed(1)}%`;
-
-  /* Tickers from portfolio (only those with open positions) */
-  const tickers=useMemo(()=>pos.filter(p=>p.cantidad>0).map(p=>p.ticker),[pos]);
-
-  /* Fetch on range or tickers change */
-  useEffect(()=>{
-    if(tickers.length===0)return;
-    let cancelled=false;
-    setLoading(true);setError(null);
-    Promise.all(tickers.map(t=>fetchHistorical(t,range))).then(results=>{
-      if(cancelled)return;
-      const map={};
-      results.forEach((r,i)=>{if(r)map[tickers[i]]=r;});
-      setHistData(map);
-      if(Object.keys(map).length===0)setError("No se pudieron obtener datos históricos");
-      setLoading(false);
-    }).catch(e=>{if(!cancelled){setError("Error al cargar datos");setLoading(false);}});
-    return()=>{cancelled=true;};
-  },[tickers.join(","),range]);
-
-  /* Analyze each ticker */
-  const analysis=useMemo(()=>{
-    return tickers.map(t=>{
-      const hist=histData[t];
-      const posInfo=pos.find(p=>p.ticker===t);
-      if(!hist||!posInfo||hist.points.length===0)return null;
-
-      const closes=hist.points.map(p=>p.close);
-      const maxPrice=Math.max(...closes);
-      const minPrice=Math.min(...closes);
-      const currentUSD=hist.currentPrice;
-      const maxDate=hist.points.find(p=>p.close===maxPrice)?.date||"";
-      const minDate=hist.points.find(p=>p.close===minPrice)?.date||"";
-
-      /* % from current to max/min */
-      const upsidePct=currentUSD>0?((maxPrice-currentUSD)/currentUSD)*100:0;
-      const downsidePct=currentUSD>0?((minPrice-currentUSD)/currentUSD)*100:0;
-
-      /* Current position value in USD */
-      const isBYMA=posInfo.mercado==="BYMA";
-      const priceData=prices[t];
-      let posValueUSD=0;
-      if(isBYMA){
-        posValueUSD=(priceData?.priceARS||0)*posInfo.cantidad/mep;
-      }else{
-        posValueUSD=(priceData?.price||currentUSD)*posInfo.cantidad;
-      }
-
-      /* Projected values at max/min */
-      const valueAtMax=posValueUSD*(1+upsidePct/100);
-      const valueAtMin=posValueUSD*(1+downsidePct/100);
-
-      return{ticker:t,mercado:posInfo.mercado,cantidad:posInfo.cantidad,currentUSD,maxPrice,minPrice,maxDate,minDate,upsidePct,downsidePct,posValueUSD,valueAtMax,valueAtMin,yfSym:hist.sym};
-    }).filter(Boolean);
-  },[tickers,histData,pos,prices,mep]);
-
-  /* Portfolio totals */
-  const totals=useMemo(()=>{
-    let currentTotal=0,maxTotal=0,minTotal=0;
-    analysis.forEach(a=>{currentTotal+=a.posValueUSD;maxTotal+=a.valueAtMax;minTotal+=a.valueAtMin;});
-    const upsidePct=currentTotal>0?((maxTotal-currentTotal)/currentTotal)*100:0;
-    const downsidePct=currentTotal>0?((minTotal-currentTotal)/currentTotal)*100:0;
-    return{currentTotal,maxTotal,minTotal,upsidePct,downsidePct};
-  },[analysis]);
-
-  const rangeBtnSt=(r)=>({background:range===r?"#2563eb":"#1e293b",border:`1px solid ${range===r?"#2563eb":"#334155"}`,color:range===r?"#fff":"#94a3b8",borderRadius:6,padding:"5px 14px",fontSize:12,cursor:"pointer",fontWeight:600});
-  const rangeLabel={"1y":"1 Año","5y":"5 Años","10y":"10 Años"};
-
-  return <div style={{display:"flex",flexDirection:"column",gap:18}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
-      <div>
-        <h2 style={{margin:0,fontSize:18,fontWeight:700}}>Potencial del Portfolio</h2>
-        <p style={{margin:"4px 0 0",fontSize:13,color:"#64748b"}}>Máximos y mínimos históricos de tus activos ({rangeLabel[range]}). Precios en USD vía NYSE/NASDAQ.</p>
-      </div>
-      <div style={{display:"flex",gap:4}}>
-        {["1y","5y","10y"].map(r=><button key={r} onClick={()=>setRange(r)} style={rangeBtnSt(r)}>{rangeLabel[r]}</button>)}
-      </div>
+      })}
     </div>
-
-    {loading&&<div style={{textAlign:"center",padding:40,color:"#fbbf24",fontSize:14}}>Cargando datos históricos de {tickers.length} activos...</div>}
-    {error&&!loading&&<div style={{textAlign:"center",padding:40,color:"#f87171",fontSize:14}}>{error}</div>}
-
-    {/* Portfolio Summary Cards */}
-    {!loading&&analysis.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
-      <div style={{background:"#0f172a",border:"1px solid #334155",borderRadius:12,padding:20,textAlign:"center"}}>
-        <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:6}}>Valor Actual</div>
-        <div style={{fontSize:22,fontWeight:800,color:"#e2e8f0"}}>{fUSD(totals.currentTotal)}</div>
-        <div style={{fontSize:11,color:"#64748b",marginTop:4}}>{fARS(totals.currentTotal*mep)}</div>
-      </div>
-      <div style={{background:"linear-gradient(135deg,#065f4611,#0f172a)",border:"1px solid #34d39933",borderRadius:12,padding:20,textAlign:"center"}}>
-        <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:6}}>Si llega a Máximos ({rangeLabel[range]})</div>
-        <div style={{fontSize:22,fontWeight:800,color:"#34d399"}}>{fUSD(totals.maxTotal)}</div>
-        <div style={{fontSize:14,fontWeight:700,color:"#34d399",marginTop:4}}>{fPct(totals.upsidePct)}</div>
-        <div style={{fontSize:11,color:"#64748b",marginTop:2}}>+{fUSD(totals.maxTotal-totals.currentTotal)}</div>
-      </div>
-      <div style={{background:"linear-gradient(135deg,#7f1d1d11,#0f172a)",border:"1px solid #f8717133",borderRadius:12,padding:20,textAlign:"center"}}>
-        <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:6}}>Si cae a Mínimos ({rangeLabel[range]})</div>
-        <div style={{fontSize:22,fontWeight:800,color:"#f87171"}}>{fUSD(totals.minTotal)}</div>
-        <div style={{fontSize:14,fontWeight:700,color:"#f87171",marginTop:4}}>{fPct(totals.downsidePct)}</div>
-        <div style={{fontSize:11,color:"#64748b",marginTop:2}}>{fUSD(totals.minTotal-totals.currentTotal)}</div>
-      </div>
-    </div>}
-
-    {/* Per-ticker analysis table */}
-    {!loading&&analysis.length>0&&<Card title="Detalle por Activo" right={<span style={{fontSize:10,color:"#475569"}}>{rangeLabel[range]} · USD · Yahoo Finance</span>}>
-      <table style={{width:"100%",borderCollapse:"collapse"}}>
-        <thead><tr>
-          {["Ticker","Precio Actual","Máx Período","Upside","Mín Período","Downside","Valor Actual","→ Máx","→ Mín"].map(h=><th key={h} style={{padding:"8px 8px",textAlign:h==="Ticker"?"left":"right",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>)}
-        </tr></thead>
-        <tbody>{analysis.map(a=>{
-          return<tr key={a.ticker} style={{borderBottom:"1px solid #1e293b"}}>
-            <td style={{padding:"8px",fontWeight:700,fontSize:13}}>
-              <div>{a.ticker}</div>
-              <div style={{fontSize:10,color:"#64748b"}}>{a.yfSym!==a.ticker?`(${a.yfSym}) `:""}{a.mercado==="BYMA"?"🇦🇷":"🇺🇸"} ×{a.cantidad.toLocaleString("es-AR")}</div>
-            </td>
-            <td style={{padding:"8px",textAlign:"right",fontSize:13,fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fUSD(a.currentUSD)}</td>
-            <td style={{padding:"8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
-              <div style={{fontSize:13,fontWeight:600}}>{fUSD(a.maxPrice)}</div>
-              <div style={{fontSize:9,color:"#64748b"}}>{a.maxDate}</div>
-            </td>
-            <td style={{padding:"8px",textAlign:"right",fontSize:14,fontWeight:800,color:"#34d399"}}>{fPct(a.upsidePct)}</td>
-            <td style={{padding:"8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
-              <div style={{fontSize:13,fontWeight:600}}>{fUSD(a.minPrice)}</div>
-              <div style={{fontSize:9,color:"#64748b"}}>{a.minDate}</div>
-            </td>
-            <td style={{padding:"8px",textAlign:"right",fontSize:14,fontWeight:800,color:"#f87171"}}>{fPct(a.downsidePct)}</td>
-            <td style={{padding:"8px",textAlign:"right",fontSize:12,fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fUSD(a.posValueUSD)}</td>
-            <td style={{padding:"8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#34d399"}}>{fUSD(a.valueAtMax)}</div>
-              <div style={{fontSize:10,color:"#34d399"}}>+{fUSD(a.valueAtMax-a.posValueUSD)}</div>
-            </td>
-            <td style={{padding:"8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#f87171"}}>{fUSD(a.valueAtMin)}</div>
-              <div style={{fontSize:10,color:"#f87171"}}>{fUSD(a.valueAtMin-a.posValueUSD)}</div>
-            </td>
-          </tr>;
-        })}</tbody>
-        <tfoot><tr style={{borderTop:"2px solid #334155",background:"#111827"}}>
-          <td style={{padding:"10px 8px",fontWeight:800,fontSize:13}}>TOTAL</td>
-          <td></td><td></td>
-          <td style={{padding:"10px 8px",textAlign:"right",fontSize:15,fontWeight:800,color:"#34d399"}}>{fPct(totals.upsidePct)}</td>
-          <td></td>
-          <td style={{padding:"10px 8px",textAlign:"right",fontSize:15,fontWeight:800,color:"#f87171"}}>{fPct(totals.downsidePct)}</td>
-          <td style={{padding:"10px 8px",textAlign:"right",fontSize:13,fontWeight:800}}>{fUSD(totals.currentTotal)}</td>
-          <td style={{padding:"10px 8px",textAlign:"right"}}>
-            <div style={{fontSize:13,fontWeight:800,color:"#34d399"}}>{fUSD(totals.maxTotal)}</div>
-            <div style={{fontSize:10,color:"#34d399"}}>+{fUSD(totals.maxTotal-totals.currentTotal)}</div>
-          </td>
-          <td style={{padding:"10px 8px",textAlign:"right"}}>
-            <div style={{fontSize:13,fontWeight:800,color:"#f87171"}}>{fUSD(totals.minTotal)}</div>
-            <div style={{fontSize:10,color:"#f87171"}}>{fUSD(totals.minTotal-totals.currentTotal)}</div>
-          </td>
-        </tr></tfoot>
-      </table>
-    </Card>}
-
-    {!loading&&analysis.length>0&&<div style={{fontSize:9,color:"#475569",fontStyle:"italic",textAlign:"center"}}>Datos históricos vía Yahoo Finance (v8 chart). Tickers BYMA mapeados a su equivalente NYSE/NASDAQ en USD. El potencial asume que el % de variación del subyacente aplica proporcionalmente a la posición. MEP ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(mep)}.</div>}
+    {alerts.length===0&&<div style={{textAlign:"center",padding:60,color:"#475569"}}><div style={{fontSize:48}}>🔔</div><p style={{marginTop:12,fontSize:14}}>No tenés alertas configuradas.</p></div>}
   </div>;
 }
 
@@ -2486,10 +957,10 @@ function Noticias({pos,news}){
 function loadLS(key,fallback){try{const v=localStorage.getItem("eid_"+key);return v?JSON.parse(v):fallback}catch(e){return fallback}}
 function saveLS(key,val){try{localStorage.setItem("eid_"+key,JSON.stringify(val))}catch(e){}}
 
-const INIT_CASA={precioCompra:0,anios:0,tasaAnual:0};
-const INIT_HIPOTECA={uvas:0};
-const INIT_CAUCION={montoARS:0,tna:21,dias:1};
-const INIT_CAUCION_FORM={monto:"66521399",diasTom:"4"};
+const INIT_ALERTS=[{id:1,ticker:"YPFD",condition:"above",price:42,active:true},{id:2,ticker:"IBM",condition:"below",price:230,active:true},{id:3,ticker:"MELI",condition:"above",price:15,active:true}];
+const INIT_CASA={precioCompra:398000,anios:1,tasaAnual:4};
+const INIT_HIPOTECA={uvas:200696};
+const INIT_CAUCION={montoARS:0};
 
 /* ── GIST SYNC ENGINE ───────────────────── */
 const GIST_FILENAME="fin-cloud-data.json";
@@ -2517,16 +988,10 @@ async function gistLoad(token,gistId){
 
 /* ── PANEL CONFIG (token + gist id) ──────── */
 function SyncConfigPanel({onClose}){
-  const [activeTab,setActiveTab]=useState("sync");
   const [token,setToken]=useState(loadLS("gh_token",""));
   const [gistId,setGistId]=useState(loadLS("gist_id",""));
   const [status,setStatus]=useState("");
   const [testing,setTesting]=useState(false);
-  /* Telegram */
-  const [tgToken,setTgToken]=useState(loadLS("tg_token",""));
-  const [tgChatId,setTgChatId]=useState(loadLS("tg_chat_id",""));
-  const [tgStatus,setTgStatus]=useState("");
-  const [tgTesting,setTgTesting]=useState(false);
 
   const testConnection=async()=>{
     setTesting(true);setStatus("");
@@ -2541,35 +1006,15 @@ function SyncConfigPanel({onClose}){
     setTesting(false);
   };
 
-  const testTelegram=async()=>{
-    setTgTesting(true);setTgStatus("");
-    try{
-      saveLS("tg_token",tgToken);saveLS("tg_chat_id",tgChatId);
-      const url=`https://api.telegram.org/bot${tgToken}/sendMessage?chat_id=${tgChatId}&text=${encodeURIComponent("✅ Fin-Cloud alertas conectadas!")}`;
-      let ok=false;
-      try{const res=await fetch(url);ok=res.ok;}catch(e){}
-      if(!ok){try{const res=await fetch(PROXY+encodeURIComponent(url));ok=res.ok;}catch(e){}}
-      if(!ok){try{const res=await fetch("https://corsproxy.io/?"+encodeURIComponent(url));ok=res.ok;}catch(e){}}
-      if(ok){setTgStatus("✅ Mensaje enviado, revisá tu Telegram!");}
-      else{setTgStatus("❌ Error de conexión. Verificá el token y chat ID.");}
-    }catch(e){setTgStatus("❌ "+e.message);}
-    setTgTesting(false);
-  };
-
   const btnSt={background:"#2563eb",border:"none",color:"#fff",borderRadius:6,padding:"8px 16px",fontSize:13,cursor:"pointer",fontWeight:600};
   const inpSt={background:"#1e293b",border:"1px solid #334155",borderRadius:6,padding:"8px 12px",color:"#e2e8f0",fontSize:13,width:"100%",outline:"none"};
-  const tabBtnSt=(t)=>({background:activeTab===t?"#2563eb":"transparent",border:"none",color:activeTab===t?"#fff":"#94a3b8",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600});
 
   return <div style={{position:"fixed",inset:0,background:"#000c",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
-    <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:12,padding:24,maxWidth:500,width:"100%"}} onClick={e=>e.stopPropagation()}>
-      <div style={{display:"flex",gap:4,marginBottom:16}}>
-        <button onClick={()=>setActiveTab("sync")} style={tabBtnSt("sync")}>☁️ Sync</button>
-        <button onClick={()=>setActiveTab("telegram")} style={tabBtnSt("telegram")}>📱 Telegram</button>
-      </div>
+    <div style={{background:"#1a1f2e",border:"1px solid #252d3d",borderRadius:12,padding:24,maxWidth:480,width:"100%"}} onClick={e=>e.stopPropagation()}>
+      <h3 style={{margin:"0 0 4px",fontSize:18,fontWeight:700}}>Configurar Sync</h3>
+      <p style={{margin:"0 0 16px",fontSize:13,color:"#94a3b8"}}>Configurá una vez y tus datos se sincronizan automáticamente entre todos tus dispositivos.</p>
 
-      {activeTab==="sync"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
-        <h3 style={{margin:0,fontSize:16,fontWeight:700}}>Configurar Sync</h3>
-        <p style={{margin:0,fontSize:13,color:"#94a3b8"}}>Sincronizá datos entre dispositivos vía GitHub Gist.</p>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
         <div>
           <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>GitHub Personal Access Token</label>
           <input type="password" value={token} onChange={e=>setToken(e.target.value)} placeholder="ghp_xxxxxxxxxxxx" style={inpSt}/>
@@ -2577,41 +1022,19 @@ function SyncConfigPanel({onClose}){
             Crealo en: <a href="https://github.com/settings/tokens/new?scopes=gist&description=Fin-Cloud-Sync" target="_blank" rel="noopener" style={{color:"#60a5fa"}}>github.com/settings/tokens</a> → solo marcá "gist"
           </div>
         </div>
+
         <div>
           <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>Gist ID (se crea solo la primera vez, dejalo vacío)</label>
           <input value={gistId} onChange={e=>{setGistId(e.target.value);saveLS("gist_id",e.target.value)}} placeholder="Se genera automáticamente" style={inpSt}/>
         </div>
+
         {status&&<div style={{fontSize:13,padding:"8px 12px",borderRadius:6,background:status.startsWith("✅")?"#065f4622":"#7f1d1d22",color:status.startsWith("✅")?"#34d399":"#f87171"}}>{status}</div>}
+
         <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:4}}>
           <button onClick={onClose} style={{...btnSt,background:"#334155"}}>Cerrar</button>
           <button onClick={testConnection} disabled={testing||!token} style={{...btnSt,opacity:testing||!token?.5:1}}>{testing?"Probando...":"Probar Conexión"}</button>
         </div>
-      </div>}
-
-      {activeTab==="telegram"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
-        <h3 style={{margin:0,fontSize:16,fontWeight:700}}>Alertas por Telegram</h3>
-        <p style={{margin:0,fontSize:13,color:"#94a3b8"}}>Recibí alertas de precio instantáneas vía tu bot de Telegram.</p>
-        <div style={{background:"#111827",border:"1px solid #334155",borderRadius:8,padding:12,fontSize:12,color:"#94a3b8"}}>
-          <strong style={{color:"#e2e8f0"}}>Setup (una sola vez):</strong><br/>
-          1. Buscá <strong style={{color:"#34d399"}}>@BotFather</strong> en Telegram y mandá <code style={{color:"#fbbf24"}}>/newbot</code><br/>
-          2. Seguí los pasos para crear tu bot y copiá el <strong style={{color:"#e2e8f0"}}>token</strong><br/>
-          3. Abrí tu bot nuevo y mandále un mensaje (ej: "hola")<br/>
-          4. Visitá <code style={{color:"#60a5fa",fontSize:11}}>https://api.telegram.org/bot[TOKEN]/getUpdates</code> para obtener tu <strong style={{color:"#e2e8f0"}}>chat ID</strong>
-        </div>
-        <div>
-          <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>Bot Token</label>
-          <input value={tgToken} onChange={e=>{setTgToken(e.target.value.trim());saveLS("tg_token",e.target.value.trim())}} placeholder="123456789:AAHxyz..." style={inpSt}/>
-        </div>
-        <div>
-          <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>Chat ID</label>
-          <input value={tgChatId} onChange={e=>{setTgChatId(e.target.value.trim());saveLS("tg_chat_id",e.target.value.trim())}} placeholder="8555299838" style={inpSt}/>
-        </div>
-        {tgStatus&&<div style={{fontSize:13,padding:"8px 12px",borderRadius:6,background:tgStatus.startsWith("✅")?"#065f4622":"#7f1d1d22",color:tgStatus.startsWith("✅")?"#34d399":"#f87171"}}>{tgStatus}</div>}
-        <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:4}}>
-          <button onClick={onClose} style={{...btnSt,background:"#334155"}}>Cerrar</button>
-          <button onClick={testTelegram} disabled={tgTesting||!tgToken||!tgChatId} style={{...btnSt,opacity:tgTesting||!tgToken||!tgChatId?.5:1}}>{tgTesting?"Enviando...":"Enviar Mensaje de Prueba"}</button>
-        </div>
-      </div>}
+      </div>
     </div>
   </div>;
 }
@@ -2620,11 +1043,9 @@ function SyncConfigPanel({onClose}){
 function App(){
   const [tab,setTab]=useState("resumen");
   const [ops,setOps]=useState(()=>loadLS("ops",INIT_OPS));
+  const [alerts,setAlerts]=useState(()=>loadLS("alerts",INIT_ALERTS));
   const [prices,setPrices]=useState(LIVE_FALLBACK);
-  const [macro,setMacro]=useState(()=>{
-    /* Intentar cargar macro cacheado de localStorage para no arrancar en 0 */
-    try{const c=JSON.parse(localStorage.getItem("eid_macro_prev")||"{}");return Object.keys(c).length>3?{...MACRO_FALLBACK,...c}:MACRO_FALLBACK;}catch(e){return MACRO_FALLBACK;}
-  });
+  const [macro,setMacro]=useState(MACRO_FALLBACK);
   const [macroPrev,setMacroPrev]=useState(()=>{try{return JSON.parse(localStorage.getItem("eid_macro_prev")||"{}")}catch(e){return{}}});
   const [news,setNews]=useState(NEWS_FALLBACK);
   const [lastUp,setLastUp]=useState(new Date());
@@ -2640,97 +1061,12 @@ function App(){
   const [hipoteca,setHipoteca]=useState(()=>loadLS("hipoteca",INIT_HIPOTECA));
   const [caucion,setCaucion]=useState(()=>loadLS("caucion",INIT_CAUCION));
 
-  /* ── Form states lifted so they persist across tab switches ── */
-  const [tradingForm,setTradingForm]=useState({tickerInput:"",cantidad:"",precioCompra:"",precioVentaManual:"",mercado:"BYMA"});
-  const [caucionForm,setCaucionForm]=useState(()=>loadLS("caucionForm",INIT_CAUCION_FORM));
-
-  /* ── Price Alerts System ── */
-  /* Alert: {id, ticker, mercado, condition:"above"|"below", price, active, label, createdAt, triggeredAt} */
-  const [priceAlerts,setPriceAlerts]=useState(()=>loadLS("price_alerts",[]));
-
-  const addPriceAlert=useCallback((alert)=>{
-    setPriceAlerts(prev=>[{id:Date.now(),...alert,active:true,createdAt:new Date().toISOString(),triggeredAt:null},...prev]);
-  },[]);
-
-  const removePriceAlert=useCallback((id)=>{
-    setPriceAlerts(prev=>prev.filter(a=>a.id!==id));
-  },[]);
-
-  const togglePriceAlert=useCallback((id)=>{
-    setPriceAlerts(prev=>prev.map(a=>a.id===id?{...a,active:!a.active}:a));
-  },[]);
-
-  /* Send Telegram message */
-  const sendTelegram=useCallback(async(msg)=>{
-    const token=loadLS("tg_token","");
-    const chatId=loadLS("tg_chat_id","");
-    if(!token||!chatId)return;
-    const url=`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(msg)}`;
-    try{await fetch(url);return;}catch(e){}
-    try{await fetch(PROXY+encodeURIComponent(url));return;}catch(e){}
-    try{await fetch("https://corsproxy.io/?"+encodeURIComponent(url));}catch(e){console.warn("Telegram send failed — all proxies tried");}
-  },[]);
-
-  /* Send browser notification */
-  const sendBrowserNotif=useCallback((title,body)=>{
-    if(!("Notification" in window))return;
-    if(Notification.permission==="granted"){
-      new Notification(title,{body,icon:"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>"});
-    }else if(Notification.permission!=="denied"){
-      Notification.requestPermission();
-    }
-  },[]);
-
-  /* Check alerts against current prices — runs every 60s */
-  const checkAlerts=useCallback(()=>{
-    if(priceAlerts.length===0)return;
-    const mep=macro.dolarMEP||1;
-    setPriceAlerts(prev=>{
-      let changed=false;
-      const updated=prev.map(a=>{
-        if(!a.active)return a;
-        const pd=prices[a.ticker];
-        if(!pd)return a;
-        const isBYMA=a.mercado==="BYMA";
-        const currentPrice=isBYMA?(pd.priceARS||0):(pd.price||0);
-        if(currentPrice<=0)return a;
-        const triggered=(a.condition==="above"&&currentPrice>=a.price)||(a.condition==="below"&&currentPrice<=a.price);
-        if(triggered){
-          changed=true;
-          const dir=a.condition==="above"?"⬆️ SUBE":"⬇️ BAJA";
-          const priceStr=isBYMA?`$${currentPrice.toLocaleString("es-AR")}`:`USD ${currentPrice.toFixed(2)}`;
-          const targetStr=isBYMA?`$${a.price.toLocaleString("es-AR")}`:`USD ${a.price.toFixed(2)}`;
-          const msg=`${dir} ${a.ticker} ${a.condition==="above"?"superó":"cayó a"} ${targetStr} → Precio actual: ${priceStr}${a.label?" | "+a.label:""}`;
-          /* Browser notification */
-          sendBrowserNotif(`🚨 Alerta ${a.ticker}`,msg);
-          /* Telegram */
-          sendTelegram(`🚨 TRADE ALERT\n${msg}`);
-          /* Play sound */
-          try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator();const g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.frequency.value=880;o.type="sine";g.gain.value=0.3;o.start();setTimeout(()=>{o.stop();ctx.close()},300);}catch(e){}
-          return{...a,active:false,triggeredAt:new Date().toISOString()};
-        }
-        return a;
-      });
-      return changed?updated:prev;
-    });
-  },[prices,macro,sendTelegram,sendBrowserNotif]);
-
-  /* Alert monitoring interval — every 60 seconds */
-  useEffect(()=>{
-    /* Request notification permission on mount */
-    if("Notification" in window&&Notification.permission==="default"){Notification.requestPermission();}
-    const iv=setInterval(checkAlerts,60000);
-    checkAlerts(); /* check immediately on mount/price change */
-    return()=>clearInterval(iv);
-  },[checkAlerts]);
-
   /* Persistir en localStorage siempre */
   useEffect(()=>{saveLS("ops",ops)},[ops]);
-  useEffect(()=>{saveLS("price_alerts",priceAlerts)},[priceAlerts]);
+  useEffect(()=>{saveLS("alerts",alerts)},[alerts]);
   useEffect(()=>{saveLS("casa",casa)},[casa]);
   useEffect(()=>{saveLS("hipoteca",hipoteca)},[hipoteca]);
   useEffect(()=>{saveLS("caucion",caucion)},[caucion]);
-  useEffect(()=>{saveLS("caucionForm",caucionForm)},[caucionForm]);
 
   /* ── Auto-load desde Gist al abrir ──── */
   useEffect(()=>{
@@ -2741,12 +1077,10 @@ function App(){
     gistLoad(token,gistId).then(d=>{
       if(d){
         if(d.ops)setOps(d.ops);
-        if(d.priceAlerts)setPriceAlerts(d.priceAlerts);
-        else if(d.alerts)setPriceAlerts(d.alerts); /* backwards compat with old backups */
+        if(d.alerts)setAlerts(d.alerts);
         if(d.casa)setCasa(d.casa);
         if(d.hipoteca)setHipoteca(d.hipoteca);
         if(d.caucion)setCaucion(d.caucion);
-        if(d.perfSnapshots){setPerfSnapshots(d.perfSnapshots);saveLS("perf_snapshots",d.perfSnapshots);}
       }
       setSyncStatus("ok");setLastSync(new Date());
       setTimeout(()=>{isFirstLoad.current=false},500);
@@ -2754,38 +1088,17 @@ function App(){
   },[]);
 
   /* ── Auto-save a Gist con debounce de 3s ──── */
-  /* Incluye snapshot de portfolio para que tareas programadas puedan leerlo */
   const doGistSave=useCallback(()=>{
     const token=loadLS("gh_token","");
     if(!token)return;
     const gistId=loadLS("gist_id","");
-    /* Portfolio snapshot con precios actuales para consumo externo */
-    const portfolioSnapshot=enriched.map(p=>({
-      ticker:p.ticker,cantidad:p.cantidad,ppc:Math.round(p.ppc*100)/100,
-      precioActual:Math.round(p.precioActual*100)/100,
-      montoInvertido:Math.round(p.montoInvertido*100)/100,
-      montoActual:Math.round(p.montoActual*100)/100,
-      pl:Math.round(p.pl*100)/100,rendimiento:Math.round(p.rendimiento*100)/100,
-      variacion:Math.round((p.variacion||0)*100)/100,
-      broker:p.broker,mercado:p.mercado
-    }));
-    const macroSnap={dolarCCL:macro.dolarCCL,dolarMEP:macro.dolarMEP,dolarBlue:macro.dolarBlue,
-      riesgoPais:macro.riesgoPais,inflacion:macro.inflacion,inflacionIA:macro.inflacionIA,
-      tasa:macro.tasa,reservas:macro.reservas,mervalChg:macro.mervalChg,sp500Chg:macro.sp500Chg};
-    const data={ops,priceAlerts,casa,hipoteca,caucion,perfSnapshots,
-      portfolioSnapshot,macroSnapshot:macroSnap,
-      portfolioTotal:Math.round(portfolioTotal*100)/100,
-      invertido:Math.round(invertido*100)/100,
-      pl:Math.round(pl*100)/100,
-      rend:Math.round(rend*100)/100,
-      caucionUSD:Math.round(caucionUSD*100)/100,
-      lastSaved:new Date().toISOString()};
+    const data={ops,alerts,casa,hipoteca,caucion,lastSaved:new Date().toISOString()};
     setSyncStatus("syncing");
     gistSave(token,gistId,data).then(g=>{
       if(!gistId&&g.id){saveLS("gist_id",g.id)}
       setSyncStatus("ok");setLastSync(new Date());
     }).catch(()=>setSyncStatus("error"));
-  },[ops,priceAlerts,casa,hipoteca,caucion,enriched,macro,portfolioTotal,invertido,pl,rend,caucionUSD]);
+  },[ops,alerts,casa,hipoteca,caucion]);
 
   useEffect(()=>{
     if(isFirstLoad.current)return;
@@ -2794,21 +1107,21 @@ function App(){
     if(syncTimer.current)clearTimeout(syncTimer.current);
     syncTimer.current=setTimeout(doGistSave,3000);
     return()=>{if(syncTimer.current)clearTimeout(syncTimer.current)};
-  },[ops,priceAlerts,casa,hipoteca,caucion,doGistSave]);
+  },[ops,alerts,casa,hipoteca,caucion,doGistSave]);
 
   /* Exportar datos como JSON (backup local) */
   const exportData=useCallback(()=>{
-    const data={ops,priceAlerts,casa,hipoteca,caucion,perfSnapshots,exportDate:new Date().toISOString()};
+    const data={ops,alerts,casa,hipoteca,caucion,exportDate:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");a.href=url;a.download="fin-cloud-backup-"+new Date().toISOString().slice(0,10)+".json";
     a.click();URL.revokeObjectURL(url);
-  },[ops,priceAlerts,casa,hipoteca,caucion,perfSnapshots]);
+  },[ops,alerts,casa,hipoteca,caucion]);
 
-  /* Resetear — limpia todo a vacío */
+  /* Resetear a datos originales */
   const resetData=useCallback(()=>{
-    if(!confirm("¿Estás seguro? Esto borra todas tus operaciones, alertas y configuración."))return;
-    setOps([]);setPriceAlerts([]);setCasa({precioCompra:0,anios:0,tasaAnual:0});setHipoteca({uvas:0});setCaucion({montoARS:0,tna:21,dias:1});setCaucionForm(INIT_CAUCION_FORM);setPerfSnapshots([]);saveLS("perf_snapshots",[]);
+    if(!confirm("¿Estás seguro? Esto borra todos tus cambios y vuelve a los datos iniciales."))return;
+    setOps(INIT_OPS);setAlerts(INIT_ALERTS);setCasa(INIT_CASA);setHipoteca(INIT_HIPOTECA);setCaucion(INIT_CAUCION);
   },[]);
 
   /* Posiciones derivadas 100% de operaciones */
@@ -2828,28 +1141,16 @@ function App(){
     return deudaARS/macro.dolarMEP;
   },[hipoteca,macro]);
 
-  /* ── Helpers: mercado abierto? ──── */
-  const isMarketOpen=useCallback(()=>{
-    const now=new Date();
-    const day=now.getDay();
-    if(day===0||day===6)return{byma:false,nyse:false,any:false};
-    /* BYMA: Lun-Vie 11:00-17:00 ART (UTC-3) */
-    const artH=now.getUTCHours()-3;const artM=now.getUTCMinutes();
-    const artMin=artH*60+artM;
-    const byma=artMin>=660&&artMin<1020; /* 11:00-17:00 */
-    /* NYSE: Lun-Vie 9:30-16:00 ET (UTC-4 o UTC-5 DST) */
-    const etOff=(() => {const jan=new Date(now.getFullYear(),0,1).getTimezoneOffset();const jul=new Date(now.getFullYear(),6,1).getTimezoneOffset();const isDST=now.getTimezoneOffset()<Math.max(jan,jul);return isDST?-4:-5;})();
-    const etH=now.getUTCHours()+etOff;const etM=now.getUTCMinutes();
-    const etMin=etH*60+etM;
-    const nyse=etMin>=570&&etMin<960; /* 9:30-16:00 */
-    return{byma,nyse,any:byma||nyse};
-  },[]);
-
-  /* ── Fetch separados: precios vs macro+noticias ──── */
-  const allTickers=useMemo(()=>[...new Set(ops.map(o=>o.ticker))],[ops]);
-
-  const updateMacro=useCallback((macroData)=>{
+  /* ── Fetch datos reales al cargar y cada 2 min ──── */
+  const fetchAllData=useCallback(async()=>{
+    const allTickers=posRaw.map(p=>p.ticker);
+    const[macroData,priceData,newsData]=await Promise.all([
+      fetchMacroReal(),
+      fetchPricesReal(allTickers),
+      fetchNewsReal(allTickers)
+    ]);
     setMacro(macroData);
+    /* Guardar snapshot previo para variación diaria del header */
     try{
       const todayStr=new Date().toISOString().split("T")[0];
       const prev=JSON.parse(localStorage.getItem("eid_macro_prev")||"{}");
@@ -2860,91 +1161,21 @@ function App(){
       localStorage.setItem("eid_macro_cur",JSON.stringify(macroData));
       setMacroPrev(JSON.parse(localStorage.getItem("eid_macro_prev")||"{}"));
     }catch(e){}
-  },[]);
-
-  const updatePrices=useCallback((priceData)=>{
     if(priceData&&Object.keys(priceData).length>0){
       setPrices(prev=>{const merged={...prev,...priceData};savePriceCache(merged);return merged;});
       setDataSource("live");
+      /* Refresh metadata de sectores async (no bloquea UI) */
       refreshMetaCache(allTickers,priceData).then(cache=>setMetaCache({...cache}));
     }else{setDataSource("fallback")}
-  },[allTickers]);
-
-  /* Fetch completo (carga inicial) */
-  const fetchAllData=useCallback(async()=>{
-    const[macroData,priceData,newsData]=await Promise.all([
-      fetchMacroReal(),fetchPricesReal(allTickers),fetchNewsReal(allTickers)
-    ]);
-    updateMacro(macroData);
-    updatePrices(priceData);
     if(newsData){setNews(newsData);saveNewsCache(newsData);}
     setLastUp(new Date());
-  },[allTickers,updateMacro,updatePrices]);
-
-  /* Fetch solo precios (cada 60s en horario de mercado) */
-  const fetchPricesOnly=useCallback(async()=>{
-    if(!isMarketOpen().any)return;
-    const priceData=await fetchPricesReal(allTickers);
-    updatePrices(priceData);
-    setLastUp(new Date());
-  },[allTickers,updatePrices,isMarketOpen]);
-
-  /* Fetch macro+noticias (cada 5 min en horario de mercado) */
-  const fetchMacroNews=useCallback(async()=>{
-    if(!isMarketOpen().any)return;
-    const[macroData,newsData]=await Promise.all([fetchMacroReal(),fetchNewsReal(allTickers)]);
-    updateMacro(macroData);
-    if(newsData){setNews(newsData);saveNewsCache(newsData);}
-    setLastUp(new Date());
-  },[allTickers,updateMacro,isMarketOpen]);
+  },[posRaw]);
 
   useEffect(()=>{
-    fetchAllData(); /* carga inicial siempre */
-    const ivPrices=setInterval(fetchPricesOnly,60000);    /* precios cada 60s */
-    const ivMacro=setInterval(fetchMacroNews,300000);     /* macro+news cada 5 min */
-    return()=>{clearInterval(ivPrices);clearInterval(ivMacro);};
-  },[fetchAllData,fetchPricesOnly,fetchMacroNews]);
-
-  /* ── IOL: fetch tasas de caución (pesos/USD, 1D/30D) ── */
-  const [iolStatus,setIolStatus]=useState(()=>{
-    const cached=loadLS("iol_caucion",null);
-    if(cached&&(cached.pesos1d!=null||cached.tna!=null)){
-      return{pesos1d:cached.pesos1d||cached.tna,pesos30d:cached.pesos30d,usd1d:cached.usd1d,usd30d:cached.usd30d,ts:cached.ts,status:"cached"};
-    }
-    return{pesos1d:null,pesos30d:null,usd1d:null,usd30d:null,ts:null,status:"idle"};
-  });
-
-  const fetchCaucionRate=useCallback(async()=>{
-    const creds=loadLS("iol_creds",null);
-    if(!creds){
-      setIolStatus(s=>({...s,status:"idle"}));
-      return;
-    }
-    setIolStatus(s=>({...s,status:"fetching"}));
-    try{
-      const rates=await iolFetchCaucionRate();
-      if(rates!=null){
-        setIolStatus({pesos1d:rates.pesos1d,pesos30d:rates.pesos30d,usd1d:rates.usd1d,usd30d:rates.usd30d,ts:Date.now(),status:"ok"});
-        if(rates.pesos1d!=null)setCaucion(c=>({...c,tna:Math.round(rates.pesos1d*10)/10}));
-      }else{
-        const cached=loadLS("iol_caucion",null);
-        if(cached&&(cached.pesos1d||cached.tna)&&(Date.now()-cached.ts)<3600000){
-          setIolStatus({pesos1d:cached.pesos1d||cached.tna,pesos30d:cached.pesos30d,usd1d:cached.usd1d,usd30d:cached.usd30d,ts:cached.ts,status:"cached"});
-        }else{
-          setIolStatus(s=>({...s,status:"error",msg:window._iolLastError||"Sin datos de caución"}));
-        }
-      }
-    }catch(e){
-      setIolStatus(s=>({...s,status:"error",msg:e.message||"Error de conexión"}));
-    }
-  },[setCaucion]);
-
-  useEffect(()=>{
-    fetchCaucionRate();
-    /* Refresh every 5 min during BYMA hours */
-    const iv=setInterval(()=>{if(isMarketOpen().byma)fetchCaucionRate()},300000);
+    fetchAllData();
+    const iv=setInterval(fetchAllData,120000); /* refresh cada 2 min */
     return()=>clearInterval(iv);
-  },[fetchCaucionRate,isMarketOpen]);
+  },[fetchAllData]);
 
   const enriched=useMemo(()=>pos.map(p=>{
     const l=prices[p.ticker]||{price:p.ppc,change:0};
@@ -2953,21 +1184,16 @@ function App(){
     const precioUSD=(p.broker==="BM"&&l.priceARS)?l.priceARS/ccl:l.price;
     const varPct=(p.broker==="BM"&&l.changeARS!=null)?l.changeARS:l.change;
     const mi=p.cantidad*p.ppc;const ma=p.cantidad*precioUSD;const pl=ma-mi;const r=mi>0?(pl/mi)*100:0;
-    const comCompra=calcComision(mi,p.broker,p.tipo);
-    const comVenta=calcComision(ma,p.broker,p.tipo);
-    const comTotal=comCompra+comVenta;
-    const plNeto=pl-comTotal;
-    const rendNeto=mi>0?((ma-comVenta-(mi+comCompra))/(mi+comCompra))*100:0;
-    return{...p,precioActual:precioUSD,variacion:varPct,montoInvertido:mi,montoActual:ma,pl,rendimiento:r,priceARS:l.priceARS||null,changeARS:l.changeARS||null,comCompra,comVenta,comTotal,plNeto,rendNeto};
+    return{...p,precioActual:precioUSD,variacion:varPct,montoInvertido:mi,montoActual:ma,pl,rendimiento:r,priceARS:l.priceARS||null,changeARS:l.changeARS||null};
   }),[pos,prices,macro]);
 
   const portfolioTotal=useMemo(()=>enriched.reduce((s,p)=>s+p.montoActual,0),[enriched]);
   const invertido=useMemo(()=>enriched.reduce((s,p)=>s+p.montoInvertido,0),[enriched]);
   const caucionUSD=caucion.montoARS>0?caucion.montoARS/macro.dolarMEP:0;
   const portfolioLiquido=portfolioTotal-caucionUSD;
-  const totalComVenta=useMemo(()=>enriched.reduce((s,p)=>s+p.comVenta,0),[enriched]);
-  const portfolioNeto=portfolioLiquido-totalComVenta; /* lo que queda en mano si vendés todo */
   const pl=portfolioTotal-invertido;const rend=invertido>0?(pl/invertido)*100:0;
+  const trigAlerts=useMemo(()=>alerts.filter(a=>a.active&&prices[a.ticker]&&(a.condition==="above"?prices[a.ticker].price>=a.price:prices[a.ticker].price<=a.price)),[alerts,prices]);
+
   /* Variación diaria del P&L */
   const dailyPL=useMemo(()=>{
     const monto=enriched.reduce((s,p)=>s+p.montoActual*(p.variacion/100),0);
@@ -2978,39 +1204,7 @@ function App(){
   /* Patrimonio total incluyendo inmueble neto - caución */
   const patrimonioNeto=portfolioTotal+casaActual.valor-deudaUSD-caucionUSD;
 
-  /* ── Snapshots diarios de rendimiento ── */
-  const [perfSnapshots,setPerfSnapshots]=useState(()=>loadLS("perf_snapshots",[]));
-  useEffect(()=>{
-    if(portfolioTotal<=0||!macro.dolarCCL)return;
-    const today=new Date().toISOString().split("T")[0];
-    const existing=perfSnapshots.find(s=>s.date===today);
-    const snap={date:today,portfolioUSD:Math.round(portfolioTotal*100)/100,invertidoUSD:Math.round(invertido*100)/100,portfolioARS:Math.round(portfolioTotal*macro.dolarCCL),dolarCCL:macro.dolarCCL};
-    /* Intentar guardar benchmarks (Merval en USD y S&P) — se obtienen via Yahoo */
-    const fetchBenchmarks=async()=>{
-      try{
-        const url=PROXY+encodeURIComponent("https://query1.finance.yahoo.com/v8/finance/chart/%5EMERV?range=1d&interval=1d");
-        const r=await fetch(url);const j=await r.json();
-        const mervalARS=j.chart?.result?.[0]?.meta?.regularMarketPrice||0;
-        if(mervalARS>0)snap.merval=Math.round((mervalARS/macro.dolarCCL)*100)/100;
-      }catch(e){}
-      try{
-        const url2=PROXY+encodeURIComponent("https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=1d&interval=1d");
-        const r2=await fetch(url2);const j2=await r2.json();
-        snap.sp500=j2.chart?.result?.[0]?.meta?.regularMarketPrice||0;
-      }catch(e){}
-      let updated;
-      if(existing){
-        updated=perfSnapshots.map(s=>s.date===today?{...existing,...snap}:s);
-      }else{
-        updated=[...perfSnapshots,snap].slice(-365); /* max 1 año */
-      }
-      setPerfSnapshots(updated);
-      saveLS("perf_snapshots",updated);
-    };
-    fetchBenchmarks();
-  },[portfolioTotal,invertido,macro.dolarCCL]); /* eslint-disable-line react-hooks/exhaustive-deps */
-
-  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"rendimiento",label:"Rendimiento",emoji:"📈"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"noticias",label:"Noticias",emoji:"📰"},{id:"caucion",label:"Caución",emoji:"🏦"},{id:"trading",label:"Trading",emoji:"⚡"},{id:"potencial",label:"Potencial",emoji:"🎯"}];
+  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"alertas",label:"Alertas",emoji:"🔔"},{id:"noticias",label:"Noticias",emoji:"📰"}];
 
   return <div style={{minHeight:"100vh"}}>
     <header style={{background:"linear-gradient(90deg,#111827,#1e293b)",borderBottom:"1px solid #1e293b",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
@@ -3027,6 +1221,7 @@ function App(){
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+        {trigAlerts.length>0&&<div style={{background:"#dc262622",border:"1px solid #dc262655",borderRadius:6,padding:"4px 10px",fontSize:12,color:"#fca5a5",display:"flex",alignItems:"center",gap:6,animation:"pulse 2s infinite"}}>🔔 {trigAlerts.length} alerta{trigAlerts.length>1?"s":""}</div>}
         <div className="macro-strip" style={{display:"flex",gap:12,fontSize:12}}>
           {(()=>{
             const of1=macro.dolarOficial;
@@ -3047,7 +1242,7 @@ function App(){
               {l:"Reservas",v:`USD ${fmt(macro.reservas,0)}M`,daily:fVar(dVar(macro.reservas,mp.reservas))},
               {l:"Inflación",v:`${fmt(macro.inflacion,1)}%`,sub:"mensual"},
               {l:"Infl. IA",v:`${fmt(macro.inflacionIA,1)}%`,sub:"interanual"},
-              {l:"BADLAR",v:`${fmt(macro.tasa,1)}%`,daily:fVar(dVar(macro.tasa,mp.tasa))},
+              {l:"Tasa PM",v:`${fmt(macro.tasa,1)}%`,daily:fVar(dVar(macro.tasa,mp.tasa))},
               {l:"UVA",v:`$${fmt(macro.uva,2)}`,sub:macro.uvaVar30d?`30d: ${macro.uvaVar30d>0?"+":""}${macro.uvaVar30d.toFixed(1)}%`:null,daily:fVar(dVar(macro.uva,mp.uva))}
             ].map(i=><div key={i.l} style={{textAlign:"center",minWidth:48}}>
               <div style={{color:"#475569",marginBottom:1,whiteSpace:"nowrap"}}>{i.l}</div>
@@ -3075,13 +1270,10 @@ function App(){
     </nav>
     {showConfig&&<SyncConfigPanel onClose={()=>setShowConfig(false)}/>}
     <main className="main-content" style={{padding:24,maxWidth:1400,margin:"0 auto"}}>
-      {tab==="resumen"&&<Resumen enriched={enriched} total={portfolioTotal} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news} portfolioNeto={portfolioNeto} totalComVenta={totalComVenta}/>}
-      {tab==="rendimiento"&&<Performance snapshots={perfSnapshots} macro={macro} enriched={enriched}/>}
-      {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro} enriched={enriched}/>}
-      {tab==="trading"&&<Trading macro={macro} prices={prices} pos={pos} priceAlerts={priceAlerts} addPriceAlert={addPriceAlert} removePriceAlert={removePriceAlert} togglePriceAlert={togglePriceAlert} onOpenConfig={()=>setShowConfig(true)} tradingForm={tradingForm} setTradingForm={setTradingForm}/>}
-      {tab==="potencial"&&<Potencial pos={pos} prices={prices} macro={macro}/>}
+      {tab==="resumen"&&<Resumen enriched={enriched} total={portfolioTotal} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} trigAlerts={trigAlerts} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news}/>}
+      {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro}/>}
+      {tab==="alertas"&&<Alertas alerts={alerts} setAlerts={setAlerts} prices={prices} pos={pos}/>}
       {tab==="noticias"&&<Noticias pos={pos} news={news}/>}
-      {tab==="caucion"&&<Caucion caucion={caucion} setCaucion={setCaucion} iolStatus={iolStatus} fetchCaucionRate={fetchCaucionRate} caucionForm={caucionForm} setCaucionForm={setCaucionForm}/>}
     </main>
   </div>;
 }
