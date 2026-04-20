@@ -2592,6 +2592,276 @@ function SyncConfigPanel({onClose}){
   </div>;
 }
 
+/* ── TESIS ACTIVA ─────────────────────────── */
+const VEREDICTO_COLORS={Comprar:"#22c55e",Mantener:"#60a5fa",Reducir:"#fbbf24",Vender:"#ef4444",Esperar:"#94a3b8"};
+const VEREDICTO_BG={Comprar:"#22c55e22",Mantener:"#60a5fa22",Reducir:"#fbbf2422",Vender:"#ef444422",Esperar:"#94a3b822"};
+
+function TesisBar({stop,entry,target,actual}){
+  /* Bar visual con 4 marcadores: stop (rojo) | entry (gris) | actual (azul) | target (verde) */
+  const nums=[stop,entry,target,actual].filter(n=>typeof n==="number"&&!isNaN(n));
+  if(nums.length<2)return <div style={{fontSize:11,color:"#64748b",fontStyle:"italic"}}>Faltan niveles</div>;
+  const min=Math.min(...nums)*0.98, max=Math.max(...nums)*1.02;
+  const pct=v=>((v-min)/(max-min))*100;
+  const bullish=target>entry; /* asume long; si target < entry, es posición bajista / venta */
+  return <div style={{position:"relative",height:48,marginTop:6,marginBottom:4}}>
+    {/* Zona de riesgo (stop→entry) */}
+    <div style={{position:"absolute",top:18,left:pct(Math.min(stop,entry))+"%",width:(pct(Math.max(stop,entry))-pct(Math.min(stop,entry)))+"%",height:8,background:"#ef444433",borderRadius:2}}/>
+    {/* Zona de recompensa (entry→target) */}
+    <div style={{position:"absolute",top:18,left:pct(Math.min(entry,target))+"%",width:(pct(Math.max(entry,target))-pct(Math.min(entry,target)))+"%",height:8,background:"#22c55e33",borderRadius:2}}/>
+    {/* Línea base */}
+    <div style={{position:"absolute",top:21,left:0,right:0,height:2,background:"#334155"}}/>
+    {/* Stop */}
+    {typeof stop==="number"&&!isNaN(stop)&&<div style={{position:"absolute",top:12,left:`calc(${pct(stop)}% - 1px)`,width:2,height:20,background:"#ef4444"}}/>}
+    {typeof stop==="number"&&!isNaN(stop)&&<div style={{position:"absolute",top:0,left:`calc(${pct(stop)}% - 18px)`,fontSize:9,color:"#ef4444",fontWeight:600,width:36,textAlign:"center"}}>Stop</div>}
+    {/* Entry */}
+    {typeof entry==="number"&&!isNaN(entry)&&<div style={{position:"absolute",top:12,left:`calc(${pct(entry)}% - 1px)`,width:2,height:20,background:"#94a3b8"}}/>}
+    {typeof entry==="number"&&!isNaN(entry)&&<div style={{position:"absolute",top:34,left:`calc(${pct(entry)}% - 18px)`,fontSize:9,color:"#94a3b8",fontWeight:600,width:36,textAlign:"center"}}>Entry</div>}
+    {/* Target */}
+    {typeof target==="number"&&!isNaN(target)&&<div style={{position:"absolute",top:12,left:`calc(${pct(target)}% - 1px)`,width:2,height:20,background:"#22c55e"}}/>}
+    {typeof target==="number"&&!isNaN(target)&&<div style={{position:"absolute",top:0,left:`calc(${pct(target)}% - 22px)`,fontSize:9,color:"#22c55e",fontWeight:600,width:44,textAlign:"center"}}>Target</div>}
+    {/* Actual (marcador más grande, azul) */}
+    {typeof actual==="number"&&!isNaN(actual)&&<div style={{position:"absolute",top:14,left:`calc(${pct(actual)}% - 6px)`,width:12,height:12,background:"#3b82f6",borderRadius:"50%",border:"2px solid #0f172a",boxShadow:"0 0 0 1px #3b82f6"}}/>}
+    {typeof actual==="number"&&!isNaN(actual)&&<div style={{position:"absolute",top:34,left:`calc(${pct(actual)}% - 22px)`,fontSize:9,color:"#3b82f6",fontWeight:700,width:44,textAlign:"center"}}>Actual</div>}
+  </div>;
+}
+
+function TesisCard({p,t,onEdit}){
+  const hasT=t&&t.veredicto;
+  const actual=p.precioActual;
+  const upside=hasT&&t.target?((t.target-actual)/actual*100):null;
+  const downside=hasT&&t.stop?((t.stop-actual)/actual*100):null;
+  const rr=hasT&&t.target&&t.stop&&t.entry?Math.abs((t.target-t.entry)/(t.entry-t.stop)):null;
+  const daysSince=hasT&&t.ultimaActualizacion?Math.floor((Date.now()-new Date(t.ultimaActualizacion).getTime())/86400000):null;
+  const stale=daysSince!==null&&daysSince>30;
+  const vColor=hasT?VEREDICTO_COLORS[t.veredicto]||"#94a3b8":"#475569";
+  const vBg=hasT?VEREDICTO_BG[t.veredicto]||"#94a3b822":"#47556922";
+
+  return <div style={{background:"#0f172a",borderRadius:10,padding:14,border:`1px solid ${hasT?vColor+"44":"#1e293b"}`,display:"flex",flexDirection:"column",gap:10}}>
+    {/* Header */}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+      <div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontWeight:700,fontSize:15,color:"#f1f5f9"}}>{p.ticker}</span>
+          {hasT&&<span style={{background:vBg,color:vColor,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,textTransform:"uppercase",letterSpacing:0.5}}>{t.veredicto}</span>}
+          {stale&&<span style={{background:"#f5973522",color:"#f59735",fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10}}>⚠ VENCIDA {daysSince}d</span>}
+        </div>
+        <div style={{fontSize:10,color:"#64748b",marginTop:2}}>
+          {p.broker}·{p.mercado} · ${actual?.toFixed(2)} · PPC ${p.ppc?.toFixed(2)} · <span style={{color:p.rendimiento>=0?"#34d399":"#f87171"}}>{p.rendimiento>=0?"+":""}{p.rendimiento?.toFixed(1)}%</span>
+        </div>
+      </div>
+      <button onClick={()=>onEdit(p.ticker)} style={{background:"#1e293b",border:"1px solid #334155",color:"#cbd5e1",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer"}}>{hasT?"✏️ Editar":"+ Tesis"}</button>
+    </div>
+
+    {hasT?<>
+      {/* Barra visual */}
+      <TesisBar stop={t.stop} entry={t.entry} target={t.target} actual={actual}/>
+
+      {/* Métricas derivadas */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,fontSize:11}}>
+        <div style={{background:"#1e293b",padding:"6px 8px",borderRadius:6}}>
+          <div style={{color:"#64748b",fontSize:9,textTransform:"uppercase",letterSpacing:0.5}}>Upside</div>
+          <div style={{color:upside>=0?"#34d399":"#f87171",fontWeight:700,fontSize:13}}>{upside!==null?(upside>=0?"+":"")+upside.toFixed(1)+"%":"—"}</div>
+        </div>
+        <div style={{background:"#1e293b",padding:"6px 8px",borderRadius:6}}>
+          <div style={{color:"#64748b",fontSize:9,textTransform:"uppercase",letterSpacing:0.5}}>Downside</div>
+          <div style={{color:"#f87171",fontWeight:700,fontSize:13}}>{downside!==null?downside.toFixed(1)+"%":"—"}</div>
+        </div>
+        <div style={{background:"#1e293b",padding:"6px 8px",borderRadius:6}}>
+          <div style={{color:"#64748b",fontSize:9,textTransform:"uppercase",letterSpacing:0.5}}>R/R</div>
+          <div style={{color:rr>=2?"#34d399":rr>=1?"#fbbf24":"#f87171",fontWeight:700,fontSize:13}}>{rr!==null?rr.toFixed(2):"—"}</div>
+        </div>
+      </div>
+
+      {/* Tesis */}
+      {t.tesis&&<div style={{fontSize:11,color:"#cbd5e1",lineHeight:1.5,background:"#1e293b55",padding:"8px 10px",borderRadius:6,borderLeft:`3px solid ${vColor}`}}>{t.tesis}</div>}
+
+      {/* Catalizadores + Riesgos en columnas */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        {t.catalizadores&&<div>
+          <div style={{fontSize:9,color:"#34d399",fontWeight:700,textTransform:"uppercase",marginBottom:3}}>▲ Catalizadores</div>
+          <div style={{fontSize:10,color:"#94a3b8",lineHeight:1.4,whiteSpace:"pre-wrap"}}>{t.catalizadores}</div>
+        </div>}
+        {t.riesgos&&<div>
+          <div style={{fontSize:9,color:"#f87171",fontWeight:700,textTransform:"uppercase",marginBottom:3}}>▼ Riesgos</div>
+          <div style={{fontSize:10,color:"#94a3b8",lineHeight:1.4,whiteSpace:"pre-wrap"}}>{t.riesgos}</div>
+        </div>}
+      </div>
+
+      {/* Footer */}
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#64748b",borderTop:"1px solid #1e293b",paddingTop:6,marginTop:2}}>
+        <span>{t.horizonte||""}{t.fuente?" · "+t.fuente:""}</span>
+        <span>{t.ultimaActualizacion?new Date(t.ultimaActualizacion).toLocaleDateString("es-AR"):""}</span>
+      </div>
+    </>:<div style={{fontSize:11,color:"#64748b",fontStyle:"italic",padding:"14px 0",textAlign:"center"}}>Sin tesis definida. Clickeá "+ Tesis" para arrancar.</div>}
+  </div>;
+}
+
+function TesisEditor({ticker,p,existing,onSave,onDelete,onClose}){
+  const [veredicto,setVeredicto]=useState(existing?.veredicto||"Mantener");
+  const [entry,setEntry]=useState(existing?.entry??p.ppc??0);
+  const [target,setTarget]=useState(existing?.target??0);
+  const [stop,setStop]=useState(existing?.stop??0);
+  const [horizonte,setHorizonte]=useState(existing?.horizonte||"3-6m");
+  const [fuente,setFuente]=useState(existing?.fuente||"Propia");
+  const [tesisTxt,setTesisTxt]=useState(existing?.tesis||"");
+  const [cat,setCat]=useState(existing?.catalizadores||"");
+  const [ries,setRies]=useState(existing?.riesgos||"");
+
+  const save=()=>{
+    onSave(ticker,{veredicto,entry:+entry,target:+target,stop:+stop,horizonte,fuente,tesis:tesisTxt.trim(),catalizadores:cat.trim(),riesgos:ries.trim(),ultimaActualizacion:new Date().toISOString()});
+    onClose();
+  };
+  const del=()=>{if(confirm("¿Borrar tesis de "+ticker+"?")){onDelete(ticker);onClose();}};
+
+  const inpSt={background:"#0f172a",border:"1px solid #334155",color:"#e2e8f0",padding:"6px 8px",borderRadius:6,fontSize:12,width:"100%"};
+  const lblSt={fontSize:10,color:"#94a3b8",textTransform:"uppercase",letterSpacing:0.5,fontWeight:600,marginBottom:3,display:"block"};
+
+  return <div style={{position:"fixed",inset:0,background:"#000a",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"#1e293b",borderRadius:12,padding:20,maxWidth:560,width:"100%",maxHeight:"90vh",overflow:"auto",border:"1px solid #334155"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <h3 style={{margin:0,fontSize:16}}>🧠 Tesis — {ticker}</h3>
+        <button onClick={onClose} style={{background:"transparent",border:"none",color:"#94a3b8",fontSize:20,cursor:"pointer"}}>×</button>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+        <div><label style={lblSt}>Veredicto</label>
+          <select value={veredicto} onChange={e=>setVeredicto(e.target.value)} style={inpSt}>
+            <option>Comprar</option><option>Mantener</option><option>Reducir</option><option>Vender</option><option>Esperar</option>
+          </select>
+        </div>
+        <div><label style={lblSt}>Horizonte</label>
+          <select value={horizonte} onChange={e=>setHorizonte(e.target.value)} style={inpSt}>
+            <option>1-3m</option><option>3-6m</option><option>6-12m</option><option>&gt;1y</option>
+          </select>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:12}}>
+        <div><label style={lblSt}>Entry</label><input type="number" step="0.01" value={entry} onChange={e=>setEntry(e.target.value)} style={inpSt}/></div>
+        <div><label style={lblSt}>Target</label><input type="number" step="0.01" value={target} onChange={e=>setTarget(e.target.value)} style={inpSt}/></div>
+        <div><label style={lblSt}>Stop</label><input type="number" step="0.01" value={stop} onChange={e=>setStop(e.target.value)} style={inpSt}/></div>
+      </div>
+
+      <div style={{marginBottom:12}}>
+        <label style={lblSt}>Fuente</label>
+        <select value={fuente} onChange={e=>setFuente(e.target.value)} style={inpSt}>
+          <option>Propia</option><option>Claude</option><option>Research Broker</option><option>Analista externo</option>
+        </select>
+      </div>
+
+      <div style={{marginBottom:12}}>
+        <label style={lblSt}>Tesis (por qué comprás/mantenés)</label>
+        <textarea value={tesisTxt} onChange={e=>setTesisTxt(e.target.value)} rows={3} style={{...inpSt,resize:"vertical",fontFamily:"inherit"}} placeholder="Ej: Recuperación de márgenes vía LatAm + ciclo rates bajando..."/>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+        <div><label style={lblSt}>Catalizadores</label>
+          <textarea value={cat} onChange={e=>setCat(e.target.value)} rows={4} style={{...inpSt,resize:"vertical",fontFamily:"inherit"}} placeholder="- Q2 earnings 28/07&#10;- Guidance FY26&#10;- Spin-off Argentina"/>
+        </div>
+        <div><label style={lblSt}>Riesgos</label>
+          <textarea value={ries} onChange={e=>setRies(e.target.value)} rows={4} style={{...inpSt,resize:"vertical",fontFamily:"inherit"}} placeholder="- Devaluación post elecciones&#10;- FX controls&#10;- Litigio Burford"/>
+        </div>
+      </div>
+
+      <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+        <div>{existing&&<button onClick={del} style={{background:"#7f1d1d44",border:"1px solid #7f1d1d",color:"#f87171",borderRadius:6,padding:"7px 14px",fontSize:12,cursor:"pointer"}}>🗑 Borrar</button>}</div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={onClose} style={{background:"#334155",border:"none",color:"#e2e8f0",borderRadius:6,padding:"7px 14px",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+          <button onClick={save} style={{background:"#22c55e",border:"none",color:"#052e16",borderRadius:6,padding:"7px 16px",fontSize:12,cursor:"pointer",fontWeight:700}}>Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>;
+}
+
+function TesisActiva({enriched,tesis,setTesis}){
+  const [editing,setEditing]=useState(null);
+  const [filter,setFilter]=useState("todas");
+
+  /* Stats agregados */
+  const stats=useMemo(()=>{
+    const positions=enriched.length;
+    const withTesis=enriched.filter(p=>tesis[p.ticker]).length;
+    const stale=enriched.filter(p=>{
+      const t=tesis[p.ticker];
+      if(!t?.ultimaActualizacion)return false;
+      return (Date.now()-new Date(t.ultimaActualizacion).getTime())>30*86400000;
+    }).length;
+    const porVeredicto={};
+    Object.values(tesis).forEach(t=>{if(t.veredicto)porVeredicto[t.veredicto]=(porVeredicto[t.veredicto]||0)+1;});
+    return {positions,withTesis,stale,porVeredicto};
+  },[enriched,tesis]);
+
+  /* Filtrado */
+  const visible=useMemo(()=>{
+    if(filter==="todas")return enriched;
+    if(filter==="sin-tesis")return enriched.filter(p=>!tesis[p.ticker]);
+    if(filter==="vencidas")return enriched.filter(p=>{
+      const t=tesis[p.ticker];
+      if(!t?.ultimaActualizacion)return false;
+      return (Date.now()-new Date(t.ultimaActualizacion).getTime())>30*86400000;
+    });
+    return enriched.filter(p=>tesis[p.ticker]?.veredicto===filter);
+  },[enriched,tesis,filter]);
+
+  const saveTesis=(ticker,data)=>setTesis(prev=>({...prev,[ticker]:data}));
+  const deleteTesis=(ticker)=>setTesis(prev=>{const n={...prev};delete n[ticker];return n;});
+
+  const chipSt=(active,color)=>({background:active?(color||"#3b82f6"):"#1e293b",color:active?"#f1f5f9":"#94a3b8",border:`1px solid ${active?(color||"#3b82f6"):"#334155"}`,borderRadius:20,padding:"4px 12px",fontSize:11,cursor:"pointer",fontWeight:600});
+
+  return <div style={{display:"flex",flexDirection:"column",gap:16}}>
+    {/* Header con stats */}
+    <Card title="🧠 Tesis Activa por Posición">
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:14}}>
+        <div style={{background:"#0f172a",padding:10,borderRadius:8,borderLeft:"3px solid #3b82f6"}}>
+          <div style={{fontSize:9,color:"#64748b",textTransform:"uppercase",letterSpacing:0.5,fontWeight:600}}>Posiciones</div>
+          <div style={{fontSize:20,fontWeight:700,color:"#f1f5f9"}}>{stats.positions}</div>
+        </div>
+        <div style={{background:"#0f172a",padding:10,borderRadius:8,borderLeft:"3px solid #22c55e"}}>
+          <div style={{fontSize:9,color:"#64748b",textTransform:"uppercase",letterSpacing:0.5,fontWeight:600}}>Con tesis</div>
+          <div style={{fontSize:20,fontWeight:700,color:"#34d399"}}>{stats.withTesis}/{stats.positions}</div>
+        </div>
+        <div style={{background:"#0f172a",padding:10,borderRadius:8,borderLeft:"3px solid #f59735"}}>
+          <div style={{fontSize:9,color:"#64748b",textTransform:"uppercase",letterSpacing:0.5,fontWeight:600}}>Vencidas (&gt;30d)</div>
+          <div style={{fontSize:20,fontWeight:700,color:stats.stale?"#f59735":"#64748b"}}>{stats.stale}</div>
+        </div>
+        {Object.entries(stats.porVeredicto).map(([v,n])=>(
+          <div key={v} style={{background:"#0f172a",padding:10,borderRadius:8,borderLeft:`3px solid ${VEREDICTO_COLORS[v]||"#94a3b8"}`}}>
+            <div style={{fontSize:9,color:"#64748b",textTransform:"uppercase",letterSpacing:0.5,fontWeight:600}}>{v}</div>
+            <div style={{fontSize:20,fontWeight:700,color:VEREDICTO_COLORS[v]||"#94a3b8"}}>{n}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filtros */}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        <button onClick={()=>setFilter("todas")} style={chipSt(filter==="todas")}>Todas ({stats.positions})</button>
+        <button onClick={()=>setFilter("sin-tesis")} style={chipSt(filter==="sin-tesis","#64748b")}>Sin tesis ({stats.positions-stats.withTesis})</button>
+        {stats.stale>0&&<button onClick={()=>setFilter("vencidas")} style={chipSt(filter==="vencidas","#f59735")}>⚠ Vencidas ({stats.stale})</button>}
+        {Object.entries(stats.porVeredicto).map(([v,n])=>(
+          <button key={v} onClick={()=>setFilter(v)} style={chipSt(filter===v,VEREDICTO_COLORS[v])}>{v} ({n})</button>
+        ))}
+      </div>
+    </Card>
+
+    {/* Grid de cards */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(360px,1fr))",gap:12}}>
+      {visible.length===0?<div style={{gridColumn:"1/-1",textAlign:"center",padding:40,color:"#64748b",fontStyle:"italic"}}>No hay posiciones que coincidan con este filtro.</div>:
+       visible.map(p=>(
+        <TesisCard key={p.ticker} p={p} t={tesis[p.ticker]} onEdit={setEditing}/>
+       ))
+      }
+    </div>
+
+    {/* Modal de edición */}
+    {editing&&(()=>{
+      const p=enriched.find(x=>x.ticker===editing);
+      if(!p)return null;
+      return <TesisEditor ticker={editing} p={p} existing={tesis[editing]} onSave={saveTesis} onDelete={deleteTesis} onClose={()=>setEditing(null)}/>;
+    })()}
+  </div>;
+}
+
 /* ── APP ─────────────────────────────────── */
 function App(){
   const [tab,setTab]=useState("resumen");
@@ -2623,6 +2893,10 @@ function App(){
   /* ── Price Alerts System ── */
   /* Alert: {id, ticker, mercado, condition:"above"|"below", price, active, label, createdAt, triggeredAt} */
   const [priceAlerts,setPriceAlerts]=useState(()=>loadLS("price_alerts",[]));
+
+  /* ── Tesis activa por posición ── */
+  /* tesis: {[ticker]: {veredicto, entry, target, stop, horizonte, tesis, catalizadores, riesgos, fuente, ultimaActualizacion}} */
+  const [tesis,setTesis]=useState(()=>loadLS("tesis",{}));
 
   const addPriceAlert=useCallback((alert)=>{
     setPriceAlerts(prev=>[{id:Date.now(),...alert,active:true,createdAt:new Date().toISOString(),triggeredAt:null},...prev]);
@@ -2703,6 +2977,7 @@ function App(){
   /* Persistir en localStorage siempre */
   useEffect(()=>{saveLS("ops",ops)},[ops]);
   useEffect(()=>{saveLS("price_alerts",priceAlerts)},[priceAlerts]);
+  useEffect(()=>{saveLS("tesis",tesis)},[tesis]);
   useEffect(()=>{saveLS("casa",casa)},[casa]);
   useEffect(()=>{saveLS("hipoteca",hipoteca)},[hipoteca]);
   useEffect(()=>{saveLS("caucion",caucion)},[caucion]);
@@ -2719,6 +2994,7 @@ function App(){
         if(d.ops)setOps(d.ops);
         if(d.priceAlerts)setPriceAlerts(d.priceAlerts);
         else if(d.alerts)setPriceAlerts(d.alerts); /* backwards compat with old backups */
+        if(d.tesis)setTesis(d.tesis);
         if(d.casa)setCasa(d.casa);
         if(d.hipoteca)setHipoteca(d.hipoteca);
         if(d.caucion)setCaucion(d.caucion);
@@ -2748,7 +3024,7 @@ function App(){
     const macroSnap={dolarCCL:macro.dolarCCL,dolarMEP:macro.dolarMEP,dolarBlue:macro.dolarBlue,
       riesgoPais:macro.riesgoPais,inflacion:macro.inflacion,inflacionIA:macro.inflacionIA,
       tasa:macro.tasa,reservas:macro.reservas,mervalChg:macro.mervalChg,sp500Chg:macro.sp500Chg};
-    const data={ops,priceAlerts,casa,hipoteca,caucion,perfSnapshots,
+    const data={ops,priceAlerts,tesis,casa,hipoteca,caucion,perfSnapshots,
       portfolioSnapshot,macroSnapshot:macroSnap,
       portfolioTotal:Math.round(portfolioTotal*100)/100,
       invertido:Math.round(invertido*100)/100,
@@ -2761,7 +3037,7 @@ function App(){
       if(!gistId&&g.id){saveLS("gist_id",g.id)}
       setSyncStatus("ok");setLastSync(new Date());
     }).catch(()=>setSyncStatus("error"));
-  },[ops,priceAlerts,casa,hipoteca,caucion,enriched,macro,portfolioTotal,invertido,pl,rend,caucionUSD]);
+  },[ops,priceAlerts,tesis,casa,hipoteca,caucion,enriched,macro,portfolioTotal,invertido,pl,rend,caucionUSD]);
 
   useEffect(()=>{
     if(isFirstLoad.current)return;
@@ -2770,21 +3046,21 @@ function App(){
     if(syncTimer.current)clearTimeout(syncTimer.current);
     syncTimer.current=setTimeout(doGistSave,3000);
     return()=>{if(syncTimer.current)clearTimeout(syncTimer.current)};
-  },[ops,priceAlerts,casa,hipoteca,caucion,doGistSave]);
+  },[ops,priceAlerts,tesis,casa,hipoteca,caucion,doGistSave]);
 
   /* Exportar datos como JSON (backup local) */
   const exportData=useCallback(()=>{
-    const data={ops,priceAlerts,casa,hipoteca,caucion,perfSnapshots,exportDate:new Date().toISOString()};
+    const data={ops,priceAlerts,tesis,casa,hipoteca,caucion,perfSnapshots,exportDate:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");a.href=url;a.download="fin-cloud-backup-"+new Date().toISOString().slice(0,10)+".json";
     a.click();URL.revokeObjectURL(url);
-  },[ops,priceAlerts,casa,hipoteca,caucion,perfSnapshots]);
+  },[ops,priceAlerts,tesis,casa,hipoteca,caucion,perfSnapshots]);
 
   /* Resetear — limpia todo a vacío */
   const resetData=useCallback(()=>{
     if(!confirm("¿Estás seguro? Esto borra todas tus operaciones, alertas y configuración."))return;
-    setOps([]);setPriceAlerts([]);setCasa({precioCompra:0,anios:0,tasaAnual:0});setHipoteca({uvas:0});setCaucion({montoARS:0,tna:21,dias:1});setCaucionForm(INIT_CAUCION_FORM);setPerfSnapshots([]);saveLS("perf_snapshots",[]);
+    setOps([]);setPriceAlerts([]);setTesis({});setCasa({precioCompra:0,anios:0,tasaAnual:0});setHipoteca({uvas:0});setCaucion({montoARS:0,tna:21,dias:1});setCaucionForm(INIT_CAUCION_FORM);setPerfSnapshots([]);saveLS("perf_snapshots",[]);
   },[]);
 
   /* Posiciones derivadas 100% de operaciones */
@@ -2986,7 +3262,7 @@ function App(){
     fetchBenchmarks();
   },[portfolioTotal,invertido,macro.dolarCCL]); /* eslint-disable-line react-hooks/exhaustive-deps */
 
-  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"dividendos",label:"Dividendos",emoji:"💰"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"noticias",label:"Noticias",emoji:"📰"},{id:"caucion",label:"Caución",emoji:"🏦"},{id:"trading",label:"Trading",emoji:"⚡"},{id:"potencial",label:"Potencial",emoji:"🎯"}];
+  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"tesis",label:"Tesis",emoji:"🧠"},{id:"dividendos",label:"Dividendos",emoji:"💰"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"noticias",label:"Noticias",emoji:"📰"},{id:"caucion",label:"Caución",emoji:"🏦"},{id:"trading",label:"Trading",emoji:"⚡"},{id:"potencial",label:"Potencial",emoji:"🎯"}];
 
   return <div style={{minHeight:"100vh"}}>
     <header style={{background:"linear-gradient(90deg,#111827,#1e293b)",borderBottom:"1px solid #1e293b",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
@@ -3052,6 +3328,7 @@ function App(){
     {showConfig&&<SyncConfigPanel onClose={()=>setShowConfig(false)}/>}
     <main className="main-content" style={{padding:24,maxWidth:1400,margin:"0 auto"}}>
       {tab==="resumen"&&<Resumen enriched={enriched} total={portfolioTotal} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news} portfolioNeto={portfolioNeto} totalComVenta={totalComVenta}/>}
+      {tab==="tesis"&&<TesisActiva enriched={enriched} tesis={tesis} setTesis={setTesis}/>}
       {tab==="dividendos"&&<Dividendos enriched={enriched}/>}
       {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro} enriched={enriched}/>}
       {tab==="trading"&&<Trading macro={macro} prices={prices} pos={pos} priceAlerts={priceAlerts} addPriceAlert={addPriceAlert} removePriceAlert={removePriceAlert} togglePriceAlert={togglePriceAlert} onOpenConfig={()=>setShowConfig(true)} tradingForm={tradingForm} setTradingForm={setTradingForm}/>}
