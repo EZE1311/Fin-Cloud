@@ -1392,47 +1392,54 @@ function Dividendos({enriched}){
   const fU0=n=>`USD ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(n)}`;
   const [divData,setDivData]=useState([]);
   const [loading,setLoading]=useState(false);
+  const [progress,setProgress]=useState({done:0,total:0});
   const [lastFetch,setLastFetch]=useState(null);
 
   const tickers=[...new Set((enriched||[]).map(e=>e.ticker))];
 
-  /* Fetch dividend data from Yahoo Finance for all portfolio tickers */
+  /* Fetch dividends in PARALLEL with per-ticker timeout + progress counter */
   const fetchDividends=useCallback(async()=>{
     if(tickers.length===0)return;
     setLoading(true);
-    const results=[];
+    setProgress({done:0,total:tickers.length});
     const now=Math.floor(Date.now()/1000);
     const oneYearAgo=now-365*86400;
     const oneYearFwd=now+365*86400;
 
-    for(const ticker of tickers){
+    const fetchOne=async ticker=>{
       const pos=enriched.find(e=>e.ticker===ticker);
-      if(!pos)continue;
+      if(!pos)return [];
       const sym=yfSym(ticker);
+      const url=`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?period1=${oneYearAgo}&period2=${oneYearFwd}&interval=1mo&events=dividends`;
+      const tryFetch=async u=>{
+        const ctrl=new AbortController();
+        const tid=setTimeout(()=>ctrl.abort(),8000);
+        try{const r=await fetch(u,{signal:ctrl.signal});clearTimeout(tid);return r;}
+        catch(e){clearTimeout(tid);return null;}
+      };
       try{
-        /* Fetch dividend events from Yahoo chart API */
-        const url=`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?period1=${oneYearAgo}&period2=${oneYearFwd}&interval=1mo&events=dividends`;
-        let r;
-        try{r=await fetch(PROXY+encodeURIComponent(url));}catch(e){r=await fetch("https://corsproxy.io/?"+encodeURIComponent(url));}
-        if(!r||!r.ok)continue;
+        let r=await tryFetch(PROXY+encodeURIComponent(url));
+        if(!r||!r.ok)r=await tryFetch("https://corsproxy.io/?"+encodeURIComponent(url));
+        if(!r||!r.ok)return [];
         const j=await r.json();
         const divs=j.chart?.result?.[0]?.events?.dividends;
-        if(!divs)continue;
+        if(!divs)return [];
         const price=pos.precioActual||pos.ppc;
-        Object.values(divs).forEach(d=>{
-          results.push({
-            ticker,sym,
-            date:new Date(d.date*1000).toISOString().split("T")[0],
-            amount:d.amount,
-            cantidad:pos.cantidad,
-            total:d.amount*pos.cantidad,
-            yield:price>0?((d.amount/price)*100):0,
-            isPast:d.date<now
-          });
-        });
-      }catch(e){console.warn("Div fetch error for",ticker,e);}
-    }
-    results.sort((a,b)=>a.date.localeCompare(b.date));
+        return Object.values(divs).map(d=>({
+          ticker,sym,
+          date:new Date(d.date*1000).toISOString().split("T")[0],
+          amount:d.amount,cantidad:pos.cantidad,
+          total:d.amount*pos.cantidad,
+          yield:price>0?((d.amount/price)*100):0,
+          isPast:d.date<now
+        }));
+      }catch(e){console.warn("Div fetch error for",ticker,e);return [];}
+      finally{setProgress(p=>({done:p.done+1,total:p.total}));}
+    };
+
+    /* Parallel fetch: all tickers at once */
+    const all=await Promise.all(tickers.map(fetchOne));
+    const results=all.flat().sort((a,b)=>a.date.localeCompare(b.date));
     setDivData(results);
     setLastFetch(new Date());
     setLoading(false);
@@ -1519,7 +1526,7 @@ function Dividendos({enriched}){
   const statSt={background:"#1a1f2e",borderRadius:10,padding:"14px 18px",border:"1px solid #252d3d",flex:1,textAlign:"center"};
 
   return <Card title="💰 Dividendos · Flujo & Proyección" right={<button onClick={fetchDividends} disabled={loading} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"4px 12px",fontSize:11,cursor:"pointer",fontWeight:500}}>
-    {loading?"⏳ Cargando...":"🔄 Actualizar"}{lastFetch&&!loading&&<span style={{marginLeft:6,fontSize:9,color:"#475569"}}>{lastFetch.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"})}</span>}
+    {loading?`⏳ ${progress.done}/${progress.total}`:"🔄 Actualizar"}{lastFetch&&!loading&&<span style={{marginLeft:6,fontSize:9,color:"#475569"}}>{lastFetch.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"})}</span>}
   </button>}>
 
     {tickers.length===0&&<div style={{color:"#475569",textAlign:"center",padding:20,fontSize:13}}>Agregá posiciones en tu cartera para ver dividendos.</div>}
