@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Eze & Claude Finance</title>
+<title>EI Financial Dashboard</title>
 <meta name="theme-color" content="#0f1117">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1386,124 +1386,10 @@ function Operaciones({ops,setOps,macro,enriched}){
   </div>;
 }
 
-/* ── RENDIMIENTO / PERFORMANCE ──────────────── */
-function Performance({snapshots,macro,enriched}){
-  const fU=n=>`USD ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(n)}`;
-  const fPct=n=>n==null||isNaN(n)?"—":`${n>=0?"+":""}${n.toFixed(1)}%`;
-
-  if(!snapshots||snapshots.length<2) return <div>
-    <Card title="📈 Rendimiento">
-      <div style={{color:"#64748b",textAlign:"center",padding:40}}>
-        Se necesitan al menos 2 días de datos para mostrar la curva.<br/>
-        <span style={{fontSize:12}}>Se guarda un snapshot automático cada vez que abrís el dashboard.</span>
-      </div>
-    </Card>
-    <DividendCalendar enriched={enriched}/>
-  </div>;
-
-  /* Normalizar series a base 100 */
-  const normalize=arr=>{if(!arr||arr.length===0)return[];const base=arr[0].v;return arr.map(p=>({d:p.d,v:base!==0?((p.v/base)-1)*100:0}));};
-  const portSeries=normalize(snapshots.map(s=>({d:s.date,v:s.portfolioUSD})));
-  const invSeries=normalize(snapshots.map(s=>({d:s.date,v:s.invertidoUSD})));
-  /* Benchmarks (si hay datos guardados) */
-  const mervalSeries=snapshots[0].merval?normalize(snapshots.map(s=>({d:s.date,v:s.merval||0}))):null;
-  const sp500Series=snapshots[0].sp500?normalize(snapshots.map(s=>({d:s.date,v:s.sp500||0}))):null;
-
-  const allSeries=[portSeries,mervalSeries,sp500Series].filter(Boolean);
-  const allVals=allSeries.flatMap(s=>s.map(p=>p.v));
-  const minV=Math.min(...allVals,0);const maxV=Math.max(...allVals,0);
-  const rangeV=maxV-minV||1;
-
-  const W=800,H=300,PAD=40,PB=30;
-  const chartW=W-PAD*2,chartH=H-PAD-PB;
-  const toX=(i,len)=>PAD+(i/(len-1))*chartW;
-  const toY=v=>PAD+chartH-(((v-minV)/rangeV)*chartH);
-
-  const makePath=(series,color)=>{
-    if(!series||series.length<2)return null;
-    const d=series.map((p,i)=>`${i===0?"M":"L"}${toX(i,series.length).toFixed(1)},${toY(p.v).toFixed(1)}`).join(" ");
-    return React.createElement("path",{d,fill:"none",stroke:color,strokeWidth:2.5,strokeLinejoin:"round",key:color});
-  };
-
-  /* Grid lines */
-  const gridLines=[];
-  const steps=5;
-  for(let i=0;i<=steps;i++){
-    const v=minV+(rangeV/steps)*i;
-    const y=toY(v);
-    gridLines.push(React.createElement("line",{key:"g"+i,x1:PAD,x2:W-PAD,y1:y,y2:y,stroke:"#1e293b",strokeWidth:1}));
-    gridLines.push(React.createElement("text",{key:"t"+i,x:PAD-6,y:y+4,fill:"#475569",fontSize:10,textAnchor:"end"},fPct(v)));
-  }
-  /* Date labels */
-  const dateLabels=[];
-  const labelCount=Math.min(snapshots.length,7);
-  for(let i=0;i<labelCount;i++){
-    const idx=Math.round(i*(snapshots.length-1)/(labelCount-1));
-    const s=snapshots[idx];
-    const x=toX(idx,snapshots.length);
-    dateLabels.push(React.createElement("text",{key:"d"+i,x,y:H-8,fill:"#475569",fontSize:9,textAnchor:"middle"},s.date.slice(5)));
-  }
-  /* Zero line */
-  const zeroY=toY(0);
-
-  /* Stats resumen */
-  const last=snapshots[snapshots.length-1];
-  const first=snapshots[0];
-  const rendTotal=first.portfolioUSD>0?((last.portfolioUSD/first.portfolioUSD)-1)*100:0;
-  const rendMerval=mervalSeries&&mervalSeries.length>0?mervalSeries[mervalSeries.length-1].v:null;
-  const rendSP=sp500Series&&sp500Series.length>0?sp500Series[sp500Series.length-1].v:null;
-
-  const statSt={background:"#1a1f2e",borderRadius:10,padding:"14px 18px",border:"1px solid #252d3d",flex:1,textAlign:"center"};
-  const colors={port:"#60a5fa",merval:"#a78bfa",sp500:"#34d399"};
-
-  return <div>
-    <Card title="📈 Rendimiento del Portfolio" right={<span style={{fontSize:10,color:"#475569"}}>{snapshots.length} días de datos</span>}>
-      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
-        <div style={statSt}>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Portfolio</div>
-          <div style={{fontSize:22,fontWeight:700,color:rendTotal>=0?"#34d399":"#f87171"}}>{fPct(rendTotal)}</div>
-          <div style={{fontSize:11,color:"#94a3b8"}}>{fU(last.portfolioUSD)}</div>
-        </div>
-        {rendMerval!=null&&<div style={statSt}>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Merval (USD)</div>
-          <div style={{fontSize:22,fontWeight:700,color:rendMerval>=0?"#34d399":"#f87171"}}>{fPct(rendMerval)}</div>
-        </div>}
-        {rendSP!=null&&<div style={statSt}>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>S&P 500</div>
-          <div style={{fontSize:22,fontWeight:700,color:rendSP>=0?"#34d399":"#f87171"}}>{fPct(rendSP)}</div>
-        </div>}
-        {rendMerval!=null&&<div style={statSt}>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Alpha vs Merval</div>
-          <div style={{fontSize:22,fontWeight:700,color:(rendTotal-rendMerval)>=0?"#34d399":"#f87171"}}>{fPct(rendTotal-rendMerval)}</div>
-        </div>}
-      </div>
-      <div style={{overflowX:"auto"}}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",maxHeight:320,background:"#0f172a",borderRadius:10,border:"1px solid #1e293b"}}>
-          {gridLines}
-          {dateLabels}
-          {React.createElement("line",{x1:PAD,x2:W-PAD,y1:zeroY,y2:zeroY,stroke:"#334155",strokeWidth:1,strokeDasharray:"4,4"})}
-          {makePath(portSeries,colors.port)}
-          {makePath(mervalSeries,colors.merval)}
-          {makePath(sp500Series,colors.sp500)}
-          {/* Dots en último punto */}
-          {portSeries.length>0&&React.createElement("circle",{cx:toX(portSeries.length-1,portSeries.length),cy:toY(portSeries[portSeries.length-1].v),r:4,fill:colors.port})}
-        </svg>
-      </div>
-      <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:10}}>
-        <span style={{fontSize:11,color:colors.port}}>● Portfolio</span>
-        {mervalSeries&&<span style={{fontSize:11,color:colors.merval}}>● Merval USD</span>}
-        {sp500Series&&<span style={{fontSize:11,color:colors.sp500}}>● S&P 500</span>}
-      </div>
-    </Card>
-
-    {/* ── Dividendos ── */}
-    <DividendCalendar enriched={enriched}/>
-  </div>;
-}
-
-/* ── DIVIDEND TRACKER ── */
-function DividendCalendar({enriched}){
+/* ── DIVIDENDOS · FLUJO + PROYECCIÓN ─────────── */
+function Dividendos({enriched}){
   const fU=n=>`USD ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(n)}`;
+  const fU0=n=>`USD ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(n)}`;
   const [divData,setDivData]=useState([]);
   const [loading,setLoading]=useState(false);
   const [lastFetch,setLastFetch]=useState(null);
@@ -1556,8 +1442,26 @@ function DividendCalendar({enriched}){
 
   /* Split into past and upcoming */
   const today=new Date().toISOString().split("T")[0];
-  const upcoming=divData.filter(d=>d.date>=today);
+  const upcoming=divData.filter(d=>d.date>=today).map(u=>({...u,isProjected:false}));
   const past=divData.filter(d=>d.date<today);
+
+  /* Forward projection: shift past dividends +365 days. Snapshot current cantidad. */
+  const projected=past.map(d=>{
+    const nd=new Date(d.date+"T12:00:00");
+    nd.setDate(nd.getDate()+365);
+    const pos=enriched.find(e=>e.ticker===d.ticker);
+    const cant=pos?pos.cantidad:d.cantidad;
+    return {...d,date:nd.toISOString().split("T")[0],cantidad:cant,total:d.amount*cant,isProjected:true};
+  }).filter(p=>p.date>=today);
+
+  /* Merge confirmed + projected, dedup within ±15d window per ticker (prefer confirmed) */
+  const merged=[...upcoming];
+  projected.forEach(p=>{
+    const pT=new Date(p.date+"T12:00:00").getTime();
+    const dup=merged.find(u=>u.ticker===p.ticker&&Math.abs(new Date(u.date+"T12:00:00").getTime()-pT)<15*86400000);
+    if(!dup)merged.push(p);
+  });
+  merged.sort((a,b)=>a.date.localeCompare(b.date));
 
   /* Annual projection: sum of last 12 months dividends per ticker, projected forward */
   const annualByTicker={};
@@ -1566,33 +1470,55 @@ function DividendCalendar({enriched}){
     annualByTicker[d.ticker].annual+=d.amount;
     annualByTicker[d.ticker].count++;
   });
-  /* Also include upcoming known dividends */
   upcoming.forEach(d=>{
     if(!annualByTicker[d.ticker])annualByTicker[d.ticker]={ticker:d.ticker,annual:0,cantidad:d.cantidad,price:0,count:0};
   });
-  /* Get price for yield calc */
+  /* Use current portfolio cantidad + price for accuracy */
   Object.values(annualByTicker).forEach(a=>{
     const pos=enriched.find(e=>e.ticker===a.ticker);
-    if(pos)a.price=pos.precioActual||pos.ppc;
+    if(pos){a.price=pos.precioActual||pos.ppc;a.cantidad=pos.cantidad;}
   });
 
+  /* Build next 12-month forward buckets from merged */
+  const next12=[];
+  const startD=new Date();startD.setDate(1);
+  for(let i=0;i<12;i++){
+    const d=new Date(startD);d.setMonth(d.getMonth()+i);
+    next12.push({month:d.toISOString().slice(0,7),total:0,confirmed:0,projected:0,items:[]});
+  }
+  merged.forEach(d=>{
+    const slot=next12.find(s=>s.month===d.date.slice(0,7));
+    if(!slot)return;
+    slot.total+=d.total;
+    if(d.isProjected)slot.projected+=d.total;else slot.confirmed+=d.total;
+    slot.items.push(d);
+  });
+
+  const totalNext12=next12.reduce((s,m)=>s+m.total,0);
   const totalAnnualProjection=Object.values(annualByTicker).reduce((s,a)=>s+a.annual*a.cantidad,0);
   const portfolioTotal=enriched.reduce((s,p)=>s+p.montoActual,0);
-  const portfolioYield=portfolioTotal>0?(totalAnnualProjection/portfolioTotal)*100:0;
-
+  const fwdYield=portfolioTotal>0?(totalNext12/portfolioTotal)*100:0;
   const totalUpcoming=upcoming.reduce((s,d)=>s+d.total,0);
   const totalPast=past.reduce((s,d)=>s+d.total,0);
+  const avgMonth=totalNext12/12;
 
   /* Month names */
   const monthName=d=>{const m=new Date(d+"T12:00:00").toLocaleDateString("es-AR",{month:"short"});return m.charAt(0).toUpperCase()+m.slice(1);};
+  const monthLong=key=>{const d=new Date(key+"-15T12:00:00");const m=d.toLocaleDateString("es-AR",{month:"long"});return m.charAt(0).toUpperCase()+m.slice(1);};
 
-  /* Group upcoming by month */
+  /* Group merged (confirmed + projected) by month for calendar */
   const upByMonth={};
-  upcoming.forEach(d=>{const k=d.date.slice(0,7);if(!upByMonth[k])upByMonth[k]=[];upByMonth[k].push(d);});
+  merged.forEach(d=>{const k=d.date.slice(0,7);if(!upByMonth[k])upByMonth[k]=[];upByMonth[k].push(d);});
+
+  /* Bar chart dimensions for flujo 12 meses */
+  const W=820,H=240,PAD_L=50,PAD_R=20,PAD_T=20,PAD_B=42;
+  const chartW=W-PAD_L-PAD_R,chartH=H-PAD_T-PAD_B;
+  const maxV=Math.max(...next12.map(m=>m.total),1);
+  const colW=chartW/12,barW=colW*0.7,gap=colW*0.3;
 
   const statSt={background:"#1a1f2e",borderRadius:10,padding:"14px 18px",border:"1px solid #252d3d",flex:1,textAlign:"center"};
 
-  return <Card title="💰 Dividendos" right={<button onClick={fetchDividends} disabled={loading} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"4px 12px",fontSize:11,cursor:"pointer",fontWeight:500}}>
+  return <Card title="💰 Dividendos · Flujo & Proyección" right={<button onClick={fetchDividends} disabled={loading} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:6,padding:"4px 12px",fontSize:11,cursor:"pointer",fontWeight:500}}>
     {loading?"⏳ Cargando...":"🔄 Actualizar"}{lastFetch&&!loading&&<span style={{marginLeft:6,fontSize:9,color:"#475569"}}>{lastFetch.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"})}</span>}
   </button>}>
 
@@ -1604,24 +1530,60 @@ function DividendCalendar({enriched}){
       {/* ── Resumen cards ── */}
       <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
         <div style={statSt}>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Proyección Anual</div>
-          <div style={{fontSize:22,fontWeight:700,color:"#34d399"}}>{fU(totalAnnualProjection)}</div>
-          <div style={{fontSize:11,color:"#94a3b8"}}>Dividend yield: {portfolioYield.toFixed(2)}%</div>
+          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Próximos 12 meses</div>
+          <div style={{fontSize:22,fontWeight:700,color:"#34d399"}}>{fU0(totalNext12)}</div>
+          <div style={{fontSize:11,color:"#94a3b8"}}>Yield fwd: {fwdYield.toFixed(2)}%</div>
         </div>
         <div style={statSt}>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Próximos</div>
-          <div style={{fontSize:22,fontWeight:700,color:"#60a5fa"}}>{fU(totalUpcoming)}</div>
-          <div style={{fontSize:11,color:"#94a3b8"}}>{upcoming.length} pago{upcoming.length!==1?"s":""} programado{upcoming.length!==1?"s":""}</div>
+          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Confirmados</div>
+          <div style={{fontSize:22,fontWeight:700,color:"#60a5fa"}}>{fU0(totalUpcoming)}</div>
+          <div style={{fontSize:11,color:"#94a3b8"}}>{upcoming.length} pago{upcoming.length!==1?"s":""} declarado{upcoming.length!==1?"s":""}</div>
         </div>
         <div style={statSt}>
           <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Cobrados (12m)</div>
-          <div style={{fontSize:22,fontWeight:700,color:"#a78bfa"}}>{fU(totalPast)}</div>
+          <div style={{fontSize:22,fontWeight:700,color:"#a78bfa"}}>{fU0(totalPast)}</div>
           <div style={{fontSize:11,color:"#94a3b8"}}>{past.length} pago{past.length!==1?"s":""}</div>
         </div>
         <div style={statSt}>
           <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Mensual Promedio</div>
-          <div style={{fontSize:22,fontWeight:700,color:"#fbbf24"}}>{fU(totalAnnualProjection/12)}</div>
-          <div style={{fontSize:11,color:"#94a3b8"}}>estimado</div>
+          <div style={{fontSize:22,fontWeight:700,color:"#fbbf24"}}>{fU0(avgMonth)}</div>
+          <div style={{fontSize:11,color:"#94a3b8"}}>fwd 12m</div>
+        </div>
+      </div>
+
+      {/* ── Flujo proyectado próximos 12 meses (bar chart) ── */}
+      <div style={{marginBottom:20}}>
+        <div style={{fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:8,textTransform:"uppercase",letterSpacing:".04em",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+          <span>Flujo proyectado próximos 12 meses</span>
+          <span style={{fontSize:10,color:"#475569",textTransform:"none",fontWeight:400}}>
+            <span style={{color:"#60a5fa"}}>■</span> Confirmado &nbsp;
+            <span style={{color:"#34d399"}}>■</span> Proyectado (basado en histórico) &nbsp;
+            <span style={{color:"#fbbf24"}}>┄</span> Promedio
+          </span>
+        </div>
+        <div style={{overflowX:"auto",background:"#0f172a",borderRadius:10,border:"1px solid #1e293b"}}>
+          <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",maxHeight:300}}>
+            {/* Grid + Y-axis labels */}
+            {(()=>{const items=[];const steps=4;for(let i=0;i<=steps;i++){const v=maxV*i/steps;const y=PAD_T+chartH-(v/maxV)*chartH;items.push(React.createElement("line",{key:"g"+i,x1:PAD_L,x2:W-PAD_R,y1:y,y2:y,stroke:"#1e293b",strokeWidth:1}));items.push(React.createElement("text",{key:"t"+i,x:PAD_L-6,y:y+4,fill:"#475569",fontSize:10,textAnchor:"end"},"$"+Math.round(v)));}return items;})()}
+            {/* Average line */}
+            {avgMonth>0&&React.createElement("line",{x1:PAD_L,x2:W-PAD_R,y1:PAD_T+chartH-(avgMonth/maxV)*chartH,y2:PAD_T+chartH-(avgMonth/maxV)*chartH,stroke:"#fbbf24",strokeWidth:1.5,strokeDasharray:"4,4"})}
+            {avgMonth>0&&React.createElement("text",{x:W-PAD_R-4,y:PAD_T+chartH-(avgMonth/maxV)*chartH-4,fill:"#fbbf24",fontSize:9,textAnchor:"end"},"prom $"+Math.round(avgMonth))}
+            {/* Bars */}
+            {next12.map((m,i)=>{
+              const x=PAD_L+i*colW+gap/2;
+              const totalH=(m.total/maxV)*chartH;
+              const confH=(m.confirmed/maxV)*chartH;
+              const projH=(m.projected/maxV)*chartH;
+              const yBase=PAD_T+chartH;
+              return <g key={m.month}>
+                {projH>0&&<rect x={x} y={yBase-totalH} width={barW} height={projH} fill="#34d399" fillOpacity="0.55" stroke="#34d399" strokeWidth="0.6" rx="2"/>}
+                {confH>0&&<rect x={x} y={yBase-confH} width={barW} height={confH} fill="#60a5fa" rx="2"/>}
+                {m.total>0&&<text x={x+barW/2} y={yBase-totalH-4} fill="#e2e8f0" fontSize="9" textAnchor="middle" fontWeight="600">${Math.round(m.total)}</text>}
+                <text x={x+barW/2} y={H-PAD_B+14} fill="#64748b" fontSize="10" textAnchor="middle">{monthName(m.month+"-15")}</text>
+                <text x={x+barW/2} y={H-PAD_B+26} fill="#475569" fontSize="8" textAnchor="middle">'{m.month.slice(2,4)}</text>
+              </g>;
+            })}
+          </svg>
         </div>
       </div>
 
@@ -1640,26 +1602,29 @@ function DividendCalendar({enriched}){
               <div style={{fontSize:10,color:"#64748b",marginTop:2}}>${a.annual.toFixed(2)}/acción · {a.cantidad} acc · yield {yld.toFixed(1)}%</div>
               {/* Barra visual */}
               <div style={{marginTop:6,height:4,background:"#1e293b",borderRadius:2,overflow:"hidden"}}>
-                <div style={{height:"100%",background:"#34d399",borderRadius:2,width:`${Math.min(100,totalAnnualProjection>0?(totalTk/totalAnnualProjection*100):0)}%`}}/>
+                <div style={{height:"100%",background:"#34d399",borderRadius:2,width:`${Math.min(100,totalNext12>0?(totalTk/totalNext12*100):0)}%`}}/>
               </div>
             </div>;
           })}
         </div>
       </div>
 
-      {/* ── Timeline de próximos dividendos ── */}
-      {upcoming.length>0&&<div style={{marginBottom:16}}>
-        <div style={{fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:8,textTransform:"uppercase",letterSpacing:".04em"}}>Calendario de próximos pagos</div>
-        {Object.entries(upByMonth).map(([month,divs])=><div key={month} style={{marginBottom:12}}>
+      {/* ── Timeline próximos pagos (confirmado + proyectado) ── */}
+      {merged.length>0&&<div style={{marginBottom:16}}>
+        <div style={{fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:8,textTransform:"uppercase",letterSpacing:".04em"}}>Calendario · próximos pagos</div>
+        {Object.entries(upByMonth).sort((a,b)=>a[0].localeCompare(b[0])).map(([month,divs])=><div key={month} style={{marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:700,color:"#60a5fa",marginBottom:6,display:"flex",alignItems:"center",gap:8}}>
-            <span style={{background:"#1e40af33",padding:"2px 10px",borderRadius:12,fontSize:12}}>{monthName(divs[0].date)} {month.slice(0,4)}</span>
+            <span style={{background:"#1e40af33",padding:"2px 10px",borderRadius:12,fontSize:12}}>{monthLong(month)} {month.slice(0,4)}</span>
             <span style={{fontSize:11,color:"#475569",fontWeight:400}}>Total: {fU(divs.reduce((s,d)=>s+d.total,0))}</span>
           </div>
           {divs.map((d,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 12px",background:"#0f172a",borderRadius:8,marginBottom:4,border:"1px solid #1e293b"}}>
             <div style={{minWidth:70,fontSize:12,color:"#64748b"}}>{d.date.slice(5)}</div>
             <div style={{minWidth:60,fontWeight:700,color:"#e2e8f0",fontSize:13}}>{d.ticker}</div>
+            <div style={{fontSize:9,padding:"2px 7px",borderRadius:8,background:d.isProjected?"#33415555":"#1e40af55",color:d.isProjected?"#94a3b8":"#60a5fa",fontWeight:600,textTransform:"uppercase",letterSpacing:".03em"}}>
+              {d.isProjected?"proyectado":"confirmado"}
+            </div>
             <div style={{fontSize:11,color:"#94a3b8",flex:1}}>${d.amount.toFixed(4)} × {d.cantidad} acc</div>
-            <div style={{fontWeight:700,color:"#34d399",fontSize:13}}>{fU(d.total)}</div>
+            <div style={{fontWeight:700,color:d.isProjected?"#86efac":"#34d399",fontSize:13}}>{fU(d.total)}</div>
           </div>)}
         </div>)}
       </div>}
@@ -3014,14 +2979,14 @@ function App(){
     fetchBenchmarks();
   },[portfolioTotal,invertido,macro.dolarCCL]); /* eslint-disable-line react-hooks/exhaustive-deps */
 
-  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"rendimiento",label:"Rendimiento",emoji:"📈"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"noticias",label:"Noticias",emoji:"📰"},{id:"caucion",label:"Caución",emoji:"🏦"},{id:"trading",label:"Trading",emoji:"⚡"},{id:"potencial",label:"Potencial",emoji:"🎯"}];
+  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"dividendos",label:"Dividendos",emoji:"💰"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"noticias",label:"Noticias",emoji:"📰"},{id:"caucion",label:"Caución",emoji:"🏦"},{id:"trading",label:"Trading",emoji:"⚡"},{id:"potencial",label:"Potencial",emoji:"🎯"}];
 
   return <div style={{minHeight:"100vh"}}>
     <header style={{background:"linear-gradient(90deg,#111827,#1e293b)",borderBottom:"1px solid #1e293b",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
       <div style={{display:"flex",alignItems:"center",gap:14}}>
-        <img src="https://raw.githubusercontent.com/EZE1311/Fin-Cloud/main/logo.png" alt="Eze & Claude Finance" style={{height:42,width:"auto",flexShrink:0,objectFit:"contain"}} />
+        <div style={{fontSize:28,lineHeight:1,flexShrink:0}}>🐻⚔️🐂</div>
         <div>
-          <h1 className="hdr-title" style={{margin:0,fontSize:18,fontWeight:700,color:"#f1f5f9",letterSpacing:"-.02em"}}>Eze & Claude Finance</h1>
+          <h1 className="hdr-title" style={{margin:0,fontSize:18,fontWeight:700,color:"#f1f5f9",letterSpacing:"-.02em"}}>Dashboard de Eze 🇦🇷</h1>
           <div style={{fontSize:11,color:"#64748b"}}>Actualizado: {lastUp.toLocaleTimeString("es-AR")}</div>
           <div style={{display:"flex",gap:10,fontSize:10,marginTop:2}}>
             <span>Data: <span style={{color:dataSource==="live"?"#34d399":dataSource==="fallback"?"#fbbf24":"#64748b",fontWeight:600}}>{dataSource==="live"?"Online":dataSource==="fallback"?"Offline":"⏳"}</span></span>
@@ -3080,7 +3045,7 @@ function App(){
     {showConfig&&<SyncConfigPanel onClose={()=>setShowConfig(false)}/>}
     <main className="main-content" style={{padding:24,maxWidth:1400,margin:"0 auto"}}>
       {tab==="resumen"&&<Resumen enriched={enriched} total={portfolioTotal} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news} portfolioNeto={portfolioNeto} totalComVenta={totalComVenta}/>}
-      {tab==="rendimiento"&&<Performance snapshots={perfSnapshots} macro={macro} enriched={enriched}/>}
+      {tab==="dividendos"&&<Dividendos enriched={enriched}/>}
       {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro} enriched={enriched}/>}
       {tab==="trading"&&<Trading macro={macro} prices={prices} pos={pos} priceAlerts={priceAlerts} addPriceAlert={addPriceAlert} removePriceAlert={removePriceAlert} togglePriceAlert={togglePriceAlert} onOpenConfig={()=>setShowConfig(true)} tradingForm={tradingForm} setTradingForm={setTradingForm}/>}
       {tab==="potencial"&&<Potencial pos={pos} prices={prices} macro={macro}/>}
