@@ -3016,7 +3016,7 @@ function App(){
   },[casa]);
   const deudaUSD=useMemo(()=>{
     const deudaARS=hipoteca.uvas*macro.uva;
-    return deudaARS/macro.dolarMEP;
+    return macro.dolarMEP>0?deudaARS/macro.dolarMEP:0;
   },[hipoteca,macro]);
 
   /* ── Helpers: mercado abierto? ──── */
@@ -3139,9 +3139,11 @@ function App(){
 
   const enriched=useMemo(()=>pos.map(p=>{
     const l=prices[p.ticker]||{price:p.ppc,change:0};
-    /* BM: precio = CEDEAR ARS / CCL → refleja valor real en tu broker */
-    const ccl=macro.dolarCCL||1;
-    const precioUSD=(p.broker==="BM"&&l.priceARS)?l.priceARS/ccl:l.price;
+    /* BM: precio = CEDEAR ARS / CCL → refleja valor real en tu broker.
+       Guarda CCL>0 para evitar fallback silencioso a 1 si la API de macro falla:
+       con CCL=1 las CEDEARs en ARS se verían ~1300x infladas. */
+    const ccl=macro.dolarCCL>0?macro.dolarCCL:null;
+    const precioUSD=(p.broker==="BM"&&l.priceARS&&ccl)?l.priceARS/ccl:l.price;
     const varPct=(p.broker==="BM"&&l.changeARS!=null)?l.changeARS:l.change;
     const mi=p.cantidad*p.ppc;const ma=p.cantidad*precioUSD;const pl=ma-mi;const r=mi>0?(pl/mi)*100:0;
     const comCompra=calcComision(mi,p.broker,p.tipo);
@@ -3154,7 +3156,7 @@ function App(){
 
   const portfolioTotal=useMemo(()=>enriched.reduce((s,p)=>s+p.montoActual,0),[enriched]);
   const invertido=useMemo(()=>enriched.reduce((s,p)=>s+p.montoInvertido,0),[enriched]);
-  const caucionUSD=caucion.montoARS>0?caucion.montoARS/macro.dolarMEP:0;
+  const caucionUSD=(caucion.montoARS>0&&macro.dolarMEP>0)?caucion.montoARS/macro.dolarMEP:0;
   const portfolioLiquido=portfolioTotal-caucionUSD;
   const totalComVenta=useMemo(()=>enriched.reduce((s,p)=>s+p.comVenta,0),[enriched]);
   const portfolioNeto=portfolioLiquido-totalComVenta; /* lo que queda en mano si vendés todo */
