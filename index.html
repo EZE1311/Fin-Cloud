@@ -2944,6 +2944,26 @@ function App(){
     }).catch(()=>{setSyncStatus("error");isFirstLoad.current=false});
   },[]);
 
+  /* ── Auto-refresh del Gist cada 5 min — solo campos read-only del pipeline ────
+     Tesis + perfSnapshots vienen del briefing (morning/closing scheduled tasks).
+     No tocamos ops/casa/hipoteca/caucion acá: esos son editables por el usuario
+     y el auto-save con debounce de 3s es la fuente de verdad para ellos. */
+  useEffect(()=>{
+    const token=loadLS("gh_token","");
+    const gistId=loadLS("gist_id","");
+    if(!token||!gistId)return;
+    const refresh=()=>{
+      gistLoad(token,gistId).then(d=>{
+        if(!d)return;
+        if(d.tesis)setTesis(d.tesis);
+        if(d.perfSnapshots){setPerfSnapshots(d.perfSnapshots);saveLS("perf_snapshots",d.perfSnapshots);}
+        setLastSync(new Date());
+      }).catch(()=>{});
+    };
+    const iv=setInterval(refresh,5*60*1000); /* cada 5 min */
+    return()=>clearInterval(iv);
+  },[]);
+
   /* ── Auto-save a Gist con debounce de 3s ──── */
   /* Incluye snapshot de portfolio para que tareas programadas puedan leerlo */
   const doGistSave=useCallback(()=>{
@@ -3208,7 +3228,7 @@ function App(){
   return <div style={{minHeight:"100vh"}}>
     <header style={{background:"linear-gradient(90deg,#111827,#1e293b)",borderBottom:"1px solid #1e293b",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
       <div style={{display:"flex",alignItems:"center",gap:14}}>
-        <div style={{fontSize:28,lineHeight:1,flexShrink:0}}>🐻⚔️🐂</div>
+        <img src="logo.png" alt="Eze & Claude Finance" style={{height:38,width:"auto",flexShrink:0,objectFit:"contain"}} onError={e=>{e.target.outerHTML='<div style="font-size:28;line-height:1;flex-shrink:0">🐻⚔️🐂</div>';}}/>
         <div>
           <h1 className="hdr-title" style={{margin:0,fontSize:18,fontWeight:700,color:"#f1f5f9",letterSpacing:"-.02em"}}>Dashboard de Eze 🇦🇷</h1>
           <div style={{fontSize:11,color:"#64748b"}}>Actualizado: {lastUp.toLocaleTimeString("es-AR")}</div>
