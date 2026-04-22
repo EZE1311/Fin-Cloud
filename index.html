@@ -2603,25 +2603,40 @@ function TesisBar({stop,entry,target,actual}){
   const min=Math.min(...nums)*0.98, max=Math.max(...nums)*1.02;
   const pct=v=>((v-min)/(max-min))*100;
   const bullish=target>entry; /* asume long; si target < entry, es posición bajista / venta */
-  return <div style={{position:"relative",height:48,marginTop:6,marginBottom:4}}>
+  /* Formato compacto del precio: 2 dec si <100, 4 si <1, 0 si >=1000 */
+  const fmtP=n=>{if(n<1)return "$"+n.toFixed(n<0.1?4:3);if(n<100)return "$"+n.toFixed(2);if(n<1000)return "$"+n.toFixed(1);return "$"+Math.round(n).toLocaleString("es-AR");};
+  const LBL_W=60; /* ancho fijo del label para que "Stop/Entry" + "$XX.XX" entren en dos líneas */
+  return <div style={{position:"relative",height:72,marginTop:10,marginBottom:6}}>
     {/* Zona de riesgo (stop→entry) */}
-    <div style={{position:"absolute",top:18,left:pct(Math.min(stop,entry))+"%",width:(pct(Math.max(stop,entry))-pct(Math.min(stop,entry)))+"%",height:8,background:"#ef444433",borderRadius:2}}/>
+    <div style={{position:"absolute",top:30,left:pct(Math.min(stop,entry))+"%",width:(pct(Math.max(stop,entry))-pct(Math.min(stop,entry)))+"%",height:8,background:"#ef444433",borderRadius:2}}/>
     {/* Zona de recompensa (entry→target) */}
-    <div style={{position:"absolute",top:18,left:pct(Math.min(entry,target))+"%",width:(pct(Math.max(entry,target))-pct(Math.min(entry,target)))+"%",height:8,background:"#22c55e33",borderRadius:2}}/>
+    <div style={{position:"absolute",top:30,left:pct(Math.min(entry,target))+"%",width:(pct(Math.max(entry,target))-pct(Math.min(entry,target)))+"%",height:8,background:"#22c55e33",borderRadius:2}}/>
     {/* Línea base */}
-    <div style={{position:"absolute",top:21,left:0,right:0,height:2,background:"#334155"}}/>
-    {/* Stop */}
-    {typeof stop==="number"&&!isNaN(stop)&&<div style={{position:"absolute",top:12,left:`calc(${pct(stop)}% - 1px)`,width:2,height:20,background:"#ef4444"}}/>}
-    {typeof stop==="number"&&!isNaN(stop)&&<div style={{position:"absolute",top:0,left:`calc(${pct(stop)}% - 18px)`,fontSize:9,color:"#ef4444",fontWeight:600,width:36,textAlign:"center"}}>Stop</div>}
-    {/* Entry */}
-    {typeof entry==="number"&&!isNaN(entry)&&<div style={{position:"absolute",top:12,left:`calc(${pct(entry)}% - 1px)`,width:2,height:20,background:"#94a3b8"}}/>}
-    {typeof entry==="number"&&!isNaN(entry)&&<div style={{position:"absolute",top:34,left:`calc(${pct(entry)}% - 18px)`,fontSize:9,color:"#94a3b8",fontWeight:600,width:36,textAlign:"center"}}>Entry</div>}
-    {/* Target */}
-    {typeof target==="number"&&!isNaN(target)&&<div style={{position:"absolute",top:12,left:`calc(${pct(target)}% - 1px)`,width:2,height:20,background:"#22c55e"}}/>}
-    {typeof target==="number"&&!isNaN(target)&&<div style={{position:"absolute",top:0,left:`calc(${pct(target)}% - 22px)`,fontSize:9,color:"#22c55e",fontWeight:600,width:44,textAlign:"center"}}>Target</div>}
-    {/* Actual (marcador más grande, azul) */}
-    {typeof actual==="number"&&!isNaN(actual)&&<div style={{position:"absolute",top:14,left:`calc(${pct(actual)}% - 6px)`,width:12,height:12,background:"#3b82f6",borderRadius:"50%",border:"2px solid #0f172a",boxShadow:"0 0 0 1px #3b82f6"}}/>}
-    {typeof actual==="number"&&!isNaN(actual)&&<div style={{position:"absolute",top:34,left:`calc(${pct(actual)}% - 22px)`,fontSize:9,color:"#3b82f6",fontWeight:700,width:44,textAlign:"center"}}>Actual</div>}
+    <div style={{position:"absolute",top:33,left:0,right:0,height:2,background:"#334155"}}/>
+    {/* Stop (label+precio ARRIBA) */}
+    {typeof stop==="number"&&!isNaN(stop)&&<><div style={{position:"absolute",top:24,left:`calc(${pct(stop)}% - 1px)`,width:2,height:20,background:"#ef4444"}}/>
+      <div style={{position:"absolute",top:0,left:`calc(${pct(stop)}% - ${LBL_W/2}px)`,width:LBL_W,textAlign:"center",lineHeight:1.15}}>
+        <div style={{fontSize:9,color:"#ef4444",fontWeight:700}}>Stop</div>
+        <div style={{fontSize:10,color:"#ef4444",fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fmtP(stop)}</div>
+      </div></>}
+    {/* Entry (label+precio ABAJO) */}
+    {typeof entry==="number"&&!isNaN(entry)&&<><div style={{position:"absolute",top:24,left:`calc(${pct(entry)}% - 1px)`,width:2,height:20,background:"#94a3b8"}}/>
+      <div style={{position:"absolute",top:46,left:`calc(${pct(entry)}% - ${LBL_W/2}px)`,width:LBL_W,textAlign:"center",lineHeight:1.15}}>
+        <div style={{fontSize:9,color:"#94a3b8",fontWeight:700}}>Entry</div>
+        <div style={{fontSize:10,color:"#94a3b8",fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fmtP(entry)}</div>
+      </div></>}
+    {/* Target (label+precio ARRIBA) */}
+    {typeof target==="number"&&!isNaN(target)&&<><div style={{position:"absolute",top:24,left:`calc(${pct(target)}% - 1px)`,width:2,height:20,background:"#22c55e"}}/>
+      <div style={{position:"absolute",top:0,left:`calc(${pct(target)}% - ${LBL_W/2}px)`,width:LBL_W,textAlign:"center",lineHeight:1.15}}>
+        <div style={{fontSize:9,color:"#22c55e",fontWeight:700}}>Target</div>
+        <div style={{fontSize:10,color:"#22c55e",fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fmtP(target)}</div>
+      </div></>}
+    {/* Actual (marcador más grande, azul + label+precio ABAJO) */}
+    {typeof actual==="number"&&!isNaN(actual)&&<><div style={{position:"absolute",top:26,left:`calc(${pct(actual)}% - 6px)`,width:12,height:12,background:"#3b82f6",borderRadius:"50%",border:"2px solid #0f172a",boxShadow:"0 0 0 1px #3b82f6"}}/>
+      <div style={{position:"absolute",top:46,left:`calc(${pct(actual)}% - ${LBL_W/2}px)`,width:LBL_W,textAlign:"center",lineHeight:1.15}}>
+        <div style={{fontSize:9,color:"#3b82f6",fontWeight:700}}>Actual</div>
+        <div style={{fontSize:10,color:"#3b82f6",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmtP(actual)}</div>
+      </div></>}
   </div>;
 }
 
