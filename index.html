@@ -2655,18 +2655,22 @@ function TesisBar({stop,entry,target,actual}){
   const pE=typeof entry==="number"?pct(entry):null;
   const pT=typeof target==="number"?pct(target):null;
   const near=(a,b)=>a!==null&&b!==null&&Math.abs(a-b)<OVERLAP_PCT;
+  /* Si Actual == Entry (dentro de 0.5%), el label "Actual" es redundante:
+     el marcador azul ya muestra la posición y el número coincide con Entry.
+     Solo renderizamos el marcador (sin label) para evitar duplicación visual. */
+  const actualEqualsEntry=hasActual&&typeof entry==="number"&&Math.abs(actual-entry)/Math.max(Math.abs(entry),1e-9)<0.005;
   let actualAbove=true;
   let actualRow2=false; /* si colisiona arriba Y abajo, usar fila 2 abajo */
-  if(hasActual){
+  if(hasActual&&!actualEqualsEntry){
     const clashAbove=near(pA,pS)||near(pA,pT);
     if(clashAbove){
       actualAbove=false;
       if(near(pA,pE))actualRow2=true;
     }
   }
-  const ROW_ABOVE=0, ROW_BELOW=46, ROW_BELOW2=62;
+  const ROW_ABOVE=0, ROW_BELOW=46, ROW_BELOW2=72; /* 72 deja hueco real de 26px entre filas */
   const actualTop=actualAbove?ROW_ABOVE:(actualRow2?ROW_BELOW2:ROW_BELOW);
-  const containerH=actualRow2?84:72;
+  const containerH=actualRow2?96:72;
 
   return <div style={{position:"relative",height:containerH,marginTop:10,marginBottom:6}}>
     {/* Zona de riesgo (stop→entry) */}
@@ -2693,12 +2697,13 @@ function TesisBar({stop,entry,target,actual}){
         <div style={{fontSize:9,color:"#22c55e",fontWeight:700}}>Target</div>
         <div style={{fontSize:10,color:"#22c55e",fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fmtP(target)}</div>
       </div></>}
-    {/* Actual — ARRIBA por default (separado de Entry), colisión-aware con Stop/Target */}
-    {hasActual&&<><div style={{position:"absolute",top:26,left:`calc(${pct(actual)}% - 6px)`,width:12,height:12,background:"#3b82f6",borderRadius:"50%",border:"2px solid #0f172a",boxShadow:"0 0 0 1px #3b82f6"}}/>
-      <div style={{position:"absolute",top:actualTop,left:`calc(${pct(actual)}% - ${LBL_W/2}px)`,width:LBL_W,textAlign:"center",lineHeight:1.15}}>
-        <div style={{fontSize:9,color:"#3b82f6",fontWeight:700}}>Actual</div>
-        <div style={{fontSize:10,color:"#3b82f6",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmtP(actual)}</div>
-      </div></>}
+    {/* Actual — marcador siempre; label solo si NO coincide con Entry.
+        Colisión-aware con Stop/Target: arriba por default, abajo/fila2 si choca. */}
+    {hasActual&&<div style={{position:"absolute",top:26,left:`calc(${pct(actual)}% - 6px)`,width:12,height:12,background:"#3b82f6",borderRadius:"50%",border:"2px solid #0f172a",boxShadow:"0 0 0 1px #3b82f6"}}/>}
+    {hasActual&&!actualEqualsEntry&&<div style={{position:"absolute",top:actualTop,left:`calc(${pct(actual)}% - ${LBL_W/2}px)`,width:LBL_W,textAlign:"center",lineHeight:1.15}}>
+      <div style={{fontSize:9,color:"#3b82f6",fontWeight:700}}>Actual</div>
+      <div style={{fontSize:10,color:"#3b82f6",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmtP(actual)}</div>
+    </div>}
   </div>;
 }
 
