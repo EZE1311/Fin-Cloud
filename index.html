@@ -2630,43 +2630,72 @@ const VEREDICTO_COLORS={Comprar:"#22c55e",Mantener:"#60a5fa",Reducir:"#fbbf24",V
 const VEREDICTO_BG={Comprar:"#22c55e22",Mantener:"#60a5fa22",Reducir:"#fbbf2422",Vender:"#ef444422",Esperar:"#94a3b822"};
 
 function TesisBar({stop,entry,target,actual}){
-  /* Bar visual con 4 marcadores: stop (rojo) | entry (gris) | actual (azul) | target (verde) */
+  /* Bar visual con 4 marcadores: stop (rojo) | entry (gris) | actual (azul) | target (verde)
+     Layout:
+       - Stop     → label ARRIBA de la línea
+       - Target   → label ARRIBA de la línea
+       - Entry    → label ABAJO de la línea
+       - Actual   → label ARRIBA por default (evita pisar Entry, que es el caso más común
+                    cuando el precio está cerca del PPC). Si Actual cae cerca de Stop o
+                    Target (ambos arriba), lo bajamos para evitar pisarlos. Si ahí también
+                    choca con Entry, se estiran a una fila 2 debajo (container crece). */
   const nums=[stop,entry,target,actual].filter(n=>typeof n==="number"&&!isNaN(n));
   if(nums.length<2)return <div style={{fontSize:11,color:"#64748b",fontStyle:"italic"}}>Faltan niveles</div>;
   const min=Math.min(...nums)*0.98, max=Math.max(...nums)*1.02;
   const pct=v=>((v-min)/(max-min))*100;
-  const bullish=target>entry; /* asume long; si target < entry, es posición bajista / venta */
   /* Formato compacto del precio: 2 dec si <100, 4 si <1, 0 si >=1000 */
   const fmtP=n=>{if(n<1)return "$"+n.toFixed(n<0.1?4:3);if(n<100)return "$"+n.toFixed(2);if(n<1000)return "$"+n.toFixed(1);return "$"+Math.round(n).toLocaleString("es-AR");};
-  const LBL_W=60; /* ancho fijo del label para que "Stop/Entry" + "$XX.XX" entren en dos líneas */
-  return <div style={{position:"relative",height:72,marginTop:10,marginBottom:6}}>
+  const LBL_W=60;
+  const OVERLAP_PCT=14; /* LBL_W=60px sobre card ~420px ≈ 14%; si dos labels están a <14% se pisan */
+
+  /* Colocación de Actual según colisiones */
+  const hasActual=typeof actual==="number"&&!isNaN(actual);
+  const pA=hasActual?pct(actual):null;
+  const pS=typeof stop==="number"?pct(stop):null;
+  const pE=typeof entry==="number"?pct(entry):null;
+  const pT=typeof target==="number"?pct(target):null;
+  const near=(a,b)=>a!==null&&b!==null&&Math.abs(a-b)<OVERLAP_PCT;
+  let actualAbove=true;
+  let actualRow2=false; /* si colisiona arriba Y abajo, usar fila 2 abajo */
+  if(hasActual){
+    const clashAbove=near(pA,pS)||near(pA,pT);
+    if(clashAbove){
+      actualAbove=false;
+      if(near(pA,pE))actualRow2=true;
+    }
+  }
+  const ROW_ABOVE=0, ROW_BELOW=46, ROW_BELOW2=62;
+  const actualTop=actualAbove?ROW_ABOVE:(actualRow2?ROW_BELOW2:ROW_BELOW);
+  const containerH=actualRow2?84:72;
+
+  return <div style={{position:"relative",height:containerH,marginTop:10,marginBottom:6}}>
     {/* Zona de riesgo (stop→entry) */}
     <div style={{position:"absolute",top:30,left:pct(Math.min(stop,entry))+"%",width:(pct(Math.max(stop,entry))-pct(Math.min(stop,entry)))+"%",height:8,background:"#ef444433",borderRadius:2}}/>
     {/* Zona de recompensa (entry→target) */}
     <div style={{position:"absolute",top:30,left:pct(Math.min(entry,target))+"%",width:(pct(Math.max(entry,target))-pct(Math.min(entry,target)))+"%",height:8,background:"#22c55e33",borderRadius:2}}/>
     {/* Línea base */}
     <div style={{position:"absolute",top:33,left:0,right:0,height:2,background:"#334155"}}/>
-    {/* Stop (label+precio ARRIBA) */}
+    {/* Stop — ARRIBA */}
     {typeof stop==="number"&&!isNaN(stop)&&<><div style={{position:"absolute",top:24,left:`calc(${pct(stop)}% - 1px)`,width:2,height:20,background:"#ef4444"}}/>
-      <div style={{position:"absolute",top:0,left:`calc(${pct(stop)}% - ${LBL_W/2}px)`,width:LBL_W,textAlign:"center",lineHeight:1.15}}>
+      <div style={{position:"absolute",top:ROW_ABOVE,left:`calc(${pct(stop)}% - ${LBL_W/2}px)`,width:LBL_W,textAlign:"center",lineHeight:1.15}}>
         <div style={{fontSize:9,color:"#ef4444",fontWeight:700}}>Stop</div>
         <div style={{fontSize:10,color:"#ef4444",fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fmtP(stop)}</div>
       </div></>}
-    {/* Entry (label+precio ABAJO) */}
+    {/* Entry — ABAJO */}
     {typeof entry==="number"&&!isNaN(entry)&&<><div style={{position:"absolute",top:24,left:`calc(${pct(entry)}% - 1px)`,width:2,height:20,background:"#94a3b8"}}/>
-      <div style={{position:"absolute",top:46,left:`calc(${pct(entry)}% - ${LBL_W/2}px)`,width:LBL_W,textAlign:"center",lineHeight:1.15}}>
+      <div style={{position:"absolute",top:ROW_BELOW,left:`calc(${pct(entry)}% - ${LBL_W/2}px)`,width:LBL_W,textAlign:"center",lineHeight:1.15}}>
         <div style={{fontSize:9,color:"#94a3b8",fontWeight:700}}>Entry</div>
         <div style={{fontSize:10,color:"#94a3b8",fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fmtP(entry)}</div>
       </div></>}
-    {/* Target (label+precio ARRIBA) */}
+    {/* Target — ARRIBA */}
     {typeof target==="number"&&!isNaN(target)&&<><div style={{position:"absolute",top:24,left:`calc(${pct(target)}% - 1px)`,width:2,height:20,background:"#22c55e"}}/>
-      <div style={{position:"absolute",top:0,left:`calc(${pct(target)}% - ${LBL_W/2}px)`,width:LBL_W,textAlign:"center",lineHeight:1.15}}>
+      <div style={{position:"absolute",top:ROW_ABOVE,left:`calc(${pct(target)}% - ${LBL_W/2}px)`,width:LBL_W,textAlign:"center",lineHeight:1.15}}>
         <div style={{fontSize:9,color:"#22c55e",fontWeight:700}}>Target</div>
         <div style={{fontSize:10,color:"#22c55e",fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{fmtP(target)}</div>
       </div></>}
-    {/* Actual (marcador más grande, azul + label+precio ABAJO) */}
-    {typeof actual==="number"&&!isNaN(actual)&&<><div style={{position:"absolute",top:26,left:`calc(${pct(actual)}% - 6px)`,width:12,height:12,background:"#3b82f6",borderRadius:"50%",border:"2px solid #0f172a",boxShadow:"0 0 0 1px #3b82f6"}}/>
-      <div style={{position:"absolute",top:46,left:`calc(${pct(actual)}% - ${LBL_W/2}px)`,width:LBL_W,textAlign:"center",lineHeight:1.15}}>
+    {/* Actual — ARRIBA por default (separado de Entry), colisión-aware con Stop/Target */}
+    {hasActual&&<><div style={{position:"absolute",top:26,left:`calc(${pct(actual)}% - 6px)`,width:12,height:12,background:"#3b82f6",borderRadius:"50%",border:"2px solid #0f172a",boxShadow:"0 0 0 1px #3b82f6"}}/>
+      <div style={{position:"absolute",top:actualTop,left:`calc(${pct(actual)}% - ${LBL_W/2}px)`,width:LBL_W,textAlign:"center",lineHeight:1.15}}>
         <div style={{fontSize:9,color:"#3b82f6",fontWeight:700}}>Actual</div>
         <div style={{fontSize:10,color:"#3b82f6",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{fmtP(actual)}</div>
       </div></>}
