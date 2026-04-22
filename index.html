@@ -2471,7 +2471,26 @@ const INIT_CAUCION_FORM={monto:"66521399",diasTom:"4"};
 const GIST_FILENAME="fin-cloud-data.json";
 
 async function gistSave(token,gistId,data){
-  const body={files:{[GIST_FILENAME]:{content:JSON.stringify(data,null,2)}}};
+  /* Preserva campos pipeline-owned (tesis, perfSnapshots) del server: el briefing
+     pushea tesis frescas al gist; si el dashboard tiene tesis viejas en su state
+     (ej: cache de sesión anterior) y escribe sin merge, pisa el trabajo del
+     pipeline. Fetch-modify-write resuelve la race definitivamente. */
+  let payload=data;
+  if(gistId){
+    try{
+      const current=await gistLoad(token,gistId);
+      if(current){
+        const serverTesisTs=_maxTesisTs(current.tesis);
+        const clientTesisTs=_maxTesisTs(data.tesis);
+        /* Si el server tiene tesis más nuevas que las del cliente → usar server.
+           Si son iguales o el cliente no tiene → usar el que tenga contenido real. */
+        const keepServerTesis=serverTesisTs>=clientTesisTs&&Object.keys(current.tesis||{}).length>0;
+        payload={...data,tesis:keepServerTesis?current.tesis:(data.tesis||current.tesis||{}),
+          perfSnapshots:data.perfSnapshots&&data.perfSnapshots.length>=((current.perfSnapshots||[]).length)?data.perfSnapshots:current.perfSnapshots};
+      }
+    }catch(e){/* si falla el fetch, seguimos con data tal cual — mejor escribir algo que nada */}
+  }
+  const body={files:{[GIST_FILENAME]:{content:JSON.stringify(payload,null,2)}}};
   const url=gistId
     ?`https://api.github.com/gists/${gistId}`
     :"https://api.github.com/gists";
@@ -2481,6 +2500,20 @@ async function gistSave(token,gistId,data){
   const res=await fetch(url,{method,headers:{"Authorization":`token ${token}`,"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(!res.ok) throw new Error(`GitHub ${res.status}`);
   return res.json();
+}
+
+/* Devuelve el max timestamp (ms) entre ultimaActualizacion de todas las tesis.
+   0 si no hay tesis o ninguna tiene timestamp parseable. */
+function _maxTesisTs(tesis){
+  if(!tesis||typeof tesis!=="object")return 0;
+  let max=0;
+  for(const k in tesis){
+    const ts=tesis[k]?.ultimaActualizacion;
+    if(!ts)continue;
+    const ms=Date.parse(ts);
+    if(!isNaN(ms)&&ms>max)max=ms;
+  }
+  return max;
 }
 
 async function gistLoad(token,gistId){
