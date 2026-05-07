@@ -1920,12 +1920,6 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
 
   /* Merge portfolio prices with on-demand trading price */
   const priceData=prices[ticker]||tradingPrice;
-  const precioVentaAuto=isBYMA?(priceData?.priceARS||0):(priceData?.price||0);
-
-  /* Precio venta: usa manual si lo escribió, sino auto */
-  const pvManual=parseNum(precioVentaManual);
-  const pv=pvManual>0?pvManual:precioVentaAuto;
-  const pvIsAuto=pvManual===0&&precioVentaAuto>0;
 
   /* Autofill Precio Compra con la cotización actual al cambiar ticker.
      Solo si el usuario no editó manualmente. Permite ajuste fino para precio real ejecutado. */
@@ -1949,17 +1943,10 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
   const cant=parseNum(cantidad);
   const pc=parseNum(precioCompra);
   const montoCompra=cant*pc;
-  const montoVenta=cant*pv;
   const mep=macro.dolarMEP||1;
 
-  /* Comisiones */
+  /* Comisiones de compra (la venta se calcula al cerrar la posición en el watchlist) */
   const comCompra=montoCompra*(comPct+derPct)*ivaMult;
-  const comVenta=montoVenta*(comPct+derPct+intraPct)*ivaMult;
-  const totalGastos=comCompra+comVenta;
-
-  /* P&L */
-  const bruto=montoVenta-montoCompra;
-  const neto=bruto-totalGastos;
 
   /* Breakeven */
   const ventaFactor=(comPct+derPct+intraPct)*ivaMult;
@@ -2000,6 +1987,19 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
   const [watchlistPrices,setWatchlistPrices]=useState({});
   const [closingId,setClosingId]=useState(null);
   const [closingPrice,setClosingPrice]=useState("");
+
+  /* Autofill del precio de cierre: si el precio aún no llegó al hacer click en Cerrar,
+     completa cuando esté disponible. Si el usuario ya escribió, no toca. */
+  React.useEffect(()=>{
+    if(closingId==null||closingPrice)return;
+    const item=watchlist.find(x=>x.id===closingId);
+    if(!item)return;
+    const isBM=item.mercado==="BYMA";
+    const pd=prices[item.ticker]||watchlistPrices[item.ticker];
+    const pAct=isBM?(pd?.priceARS||0):(pd?.price||0);
+    if(pAct<=0)return;
+    setClosingPrice(isBM?String(Math.round(pAct*100)/100):pAct.toFixed(2));
+  },[closingId,closingPrice,watchlist,prices,watchlistPrices]);
 
   /* Live-fetch precios para tickers de watchlist que no estén en portfolio prices.
      Refresca cada 60s mientras haya watchlist activa. */
@@ -2126,20 +2126,17 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
 
     {/* Operación */}
     <Card title="Operación" right={<span style={{fontSize:10,color:exento?"#34d399":"#64748b"}}>{tipoActivo?`${tipoActivo} · `:""}{moneda}{exento?" · IVA Exento":isBYMA?" · IVA 21%":" · Sin IVA"}</span>}>
-      <div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 1fr 1fr",gap:14,alignItems:"start"}}>
+      <div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr 1fr",gap:14,alignItems:"start"}}>
         <div><label style={labelSt}>Ticker</label>
           <div style={{position:"relative"}}>
             <input type="text" value={tickerInput} onChange={e=>setTickerInput(e.target.value.toUpperCase())} style={inputSt} placeholder={isBYMA?"Ej: GGAL, VIST, MELI":"Ej: IBM, AAPL, TSLA"}/>
             {ticker&&tradingPriceLoading&&<div style={{fontSize:10,color:"#fbbf24",marginTop:4,position:"absolute",left:0,top:"100%",whiteSpace:"nowrap"}}>Buscando cotización...</div>}
-            {ticker&&priceData&&!tradingPriceLoading&&<div style={{fontSize:10,color:"#34d399",marginTop:4,position:"absolute",left:0,top:"100%",whiteSpace:"nowrap"}}>Cotización: {isBYMA?(priceData.priceARS?`$ ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(priceData.priceARS)}`:"—"):(priceData.price?fM(priceData.price):"—")}</div>}
+            {ticker&&priceData&&!tradingPriceLoading&&<div style={{fontSize:10,color:"#34d399",marginTop:4,position:"absolute",left:0,top:"100%",whiteSpace:"nowrap"}}>Cotización: {isBYMA?(priceData.priceARS?`$ ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(priceData.priceARS)}`:"—"):(priceData.price?`USD ${priceData.price.toFixed(2)}`:"—")}</div>}
             {ticker&&!priceData&&!tradingPriceLoading&&<div style={{fontSize:10,color:"#64748b",marginTop:4,position:"absolute",left:0,top:"100%",whiteSpace:"nowrap"}}>Sin cotización — ingresá precio manual</div>}
           </div>
         </div>
         <div><label style={labelSt}>Cantidad</label><input type="text" value={cantidad} onChange={e=>setCantidad(e.target.value.replace(/[^\d]/g,""))} style={inputSt} placeholder="Nominales"/></div>
         <div><label style={labelSt}>Precio Compra ({monedaSym.trim()}) {precioCompra&&!userEditedCompraRef.current?<span style={{color:"#34d399",fontWeight:400,textTransform:"none"}}>— auto</span>:null}</label><input type="text" value={precioCompra} onChange={e=>{userEditedCompraRef.current=true;setPrecioCompra(e.target.value.replace(/[^\d.,]/g,""));}} style={{...inputSt,color:precioCompra&&!userEditedCompraRef.current?"#34d399":"#e2e8f0"}} placeholder={isBYMA?"34.800 ó 34800":"232.50"}/></div>
-        <div><label style={labelSt}>Precio Venta ({monedaSym.trim()}) {pvIsAuto?<span style={{color:"#34d399",fontWeight:400,textTransform:"none"}}>— auto</span>:pv>0?<span style={{color:"#60a5fa",fontWeight:400,textTransform:"none"}}>— manual</span>:null}</label>
-          <input type="text" value={precioVentaManual||(precioVentaAuto>0?(isBYMA?new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(precioVentaAuto):precioVentaAuto.toFixed(2)):"")} onChange={e=>setPrecioVentaManual(e.target.value.replace(/[^\d.,]/g,""))} style={{...inputSt,background:pvIsAuto?"#0f172a":"#111827",color:pv>0?"#34d399":tradingPriceLoading?"#fbbf24":"#e2e8f0"}} placeholder={tradingPriceLoading?"Buscando precio...":"Dejá vacío p/auto"}/>
-        </div>
       </div>
       {/* Inline Alert: Target / Stop Loss */}
       {ticker&&(()=>{
@@ -2198,31 +2195,6 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
         <div style={{fontSize:16,fontWeight:700,color:"#e2e8f0",fontVariantNumeric:"tabular-nums"}}>{fM(montoCompra)}</div>
         <div style={{fontSize:10,color:"#fbbf24",marginTop:2}}>+ {fM2(comCompra)} gastos</div>
         <div style={{fontSize:10,color:"#60a5fa",marginTop:2}}>{fAlt(montoCompra)} ({fAltLabel})</div>
-      </div>
-    </div>}
-
-    {/* P&L Summary */}
-    {pv>0&&cant>0&&pc>0&&<div style={{background:neto>=0?"#065f4622":"#7f1d1d22",border:`1px solid ${neto>=0?"#34d39955":"#f8717155"}`,borderRadius:12,padding:"20px 24px"}}>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,textAlign:"center"}}>
-        <div>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Bruto</div>
-          <div style={{fontSize:20,fontWeight:800,color:bruto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fM(bruto)}</div>
-          <div style={{fontSize:10,color:"#60a5fa",marginTop:2}}>{fAlt(bruto)}</div>
-        </div>
-        <div>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Total Gastos</div>
-          <div style={{fontSize:20,fontWeight:800,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fM2(totalGastos)}</div>
-          <div style={{fontSize:10,color:"#60a5fa",marginTop:2}}>{fAlt(totalGastos)}</div>
-        </div>
-        <div>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>P&L Neto</div>
-          <div style={{fontSize:24,fontWeight:800,color:neto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fM(neto)}</div>
-          <div style={{fontSize:11,color:"#60a5fa",fontWeight:600,marginTop:2}}>{fAlt(neto)}</div>
-        </div>
-        <div>
-          <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Rendimiento</div>
-          <div style={{fontSize:20,fontWeight:800,color:neto>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums"}}>{fPct(montoCompra>0?neto/montoCompra*100:0,3)}</div>
-        </div>
       </div>
     </div>}
 
