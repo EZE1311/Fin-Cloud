@@ -972,12 +972,12 @@ function Card({title,children,style:s={},right=null}){
   </div>;
 }
 function Stat({label,value,sub,color="#818cf8"}){
-  return <div style={{background:"#13151c",border:"1px solid #22263350",borderRadius:18,padding:"20px 22px",animation:"fadeIn .3s ease",transition:"transform .15s ease, border-color .15s ease"}}
+  return <div style={{background:"#13151c",border:"1px solid #22263350",borderRadius:18,padding:"16px 18px",animation:"fadeIn .3s ease",transition:"transform .15s ease, border-color .15s ease",minWidth:0}}
     onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.borderColor="#3a4055"}}
     onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.borderColor="#22263350"}}>
-    <div style={{fontSize:11,color:"#7a8497",marginBottom:8,textTransform:"uppercase",letterSpacing:".06em",fontWeight:500}}>{label}</div>
-    <div className="stat-val" style={{fontSize:26,fontWeight:700,color,fontVariantNumeric:"tabular-nums",letterSpacing:"-.02em"}}>{value}</div>
-    {sub&&<div style={{fontSize:12,color:typeof sub==="string"&&sub.startsWith("+")?"#10b981":typeof sub==="string"&&sub.startsWith("-")?"#f43f5e":"#7a8497",marginTop:6,fontWeight:500}}>{sub}</div>}
+    <div style={{fontSize:11,color:"#7a8497",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em",fontWeight:500}}>{label}</div>
+    <div className="stat-val" style={{fontSize:22,fontWeight:700,color,fontVariantNumeric:"tabular-nums",letterSpacing:"-.015em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{value}</div>
+    {sub&&<div style={{fontSize:12,color:typeof sub==="string"&&sub.startsWith("+")?"#10b981":typeof sub==="string"&&sub.startsWith("-")?"#f43f5e":"#7a8497",marginTop:4,fontWeight:500}}>{sub}</div>}
   </div>;
 }
 function Btn({children,onClick,variant="primary",style:s={}}){
@@ -1030,9 +1030,9 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
     {/* ── KPIs — todos en una fila ── */}
     <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:14}}>
       <Stat label="Patrimonio Neto" value={fU(patrimonioNeto)} sub="Port + Casa - Hipoteca - Caución" color="#a78bfa"/>
-      <div style={{background:"#13151c",border:"1px solid #22263350",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
-        <div style={{fontSize:11,color:"#7a8497",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Portfolio Total</div>
-        <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#f1f5f9",fontVariantNumeric:"tabular-nums"}}>{fU(portfolioTotal)}</div>
+      <div style={{background:"#13151c",border:"1px solid #22263350",borderRadius:18,padding:"16px 18px",animation:"fadeIn .3s ease",minWidth:0}}>
+        <div style={{fontSize:11,color:"#7a8497",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em",fontWeight:500}}>Portfolio Total</div>
+        <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#f1f5f9",fontVariantNumeric:"tabular-nums",letterSpacing:"-.015em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{fU(portfolioTotal)}</div>
         <div style={{display:"flex",gap:8,marginTop:4,fontSize:12,fontWeight:500}}>
           <span style={{color:pl>=0?"#10b981":"#f43f5e"}}>P&L: {pl>=0?"+":""}{fU(pl)} ({rend>=0?"+":""}{fmt(rend,2)}%)</span>
         </div>
@@ -1042,16 +1042,16 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
         </div>
       </div>
       <Stat label="Portfolio Líquido" value={fU(portfolioLiquido)} sub={caucionUSD>0?`Caución: ${fU(caucionUSD)}`:"Sin caución"} color="#818cf8"/>
-      {(()=>{const bCCL=macro.dolarOficial>0?(macro.dolarCCL-macro.dolarOficial)/macro.dolarOficial:0;const portAR=portfolioNeto*(1+bCCL);return <div style={{background:"#13151c",border:"1px solid #22263350",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
-        <div style={{fontSize:11,color:"#7a8497",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Portfolio Líq. Argentina <span style={{fontSize:9,color:"#4d5365"}}>(neto com.)</span></div>
-        <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#818cf8",fontVariantNumeric:"tabular-nums"}}>{fU(portAR)}</div>
+      {(()=>{const bCCL=macro.dolarOficial>0?(macro.dolarCCL-macro.dolarOficial)/macro.dolarOficial:0;const portAR=portfolioNeto*(1+bCCL);return <div style={{background:"#13151c",border:"1px solid #22263350",borderRadius:18,padding:"16px 18px",animation:"fadeIn .3s ease",minWidth:0}}>
+        <div style={{fontSize:11,color:"#7a8497",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em",fontWeight:500}}>Portfolio Líq. Argentina <span style={{fontSize:9,color:"#4d5365"}}>(neto com.)</span></div>
+        <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#818cf8",fontVariantNumeric:"tabular-nums",letterSpacing:"-.015em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{fU(portAR)}</div>
         <div style={{fontSize:10,color:"#f59e0b",marginTop:4}}>Com. venta: -{fU(totalComVenta)}</div>
       </div>;})()}
-      <div style={{background:"#13151c",border:"1px solid #22263350",borderRadius:10,padding:"16px 18px",animation:"fadeIn .3s ease"}}>
-        <div style={{fontSize:11,color:"#7a8497",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Caución Tomada</div>
+      <div style={{background:"#13151c",border:"1px solid #22263350",borderRadius:18,padding:"16px 18px",animation:"fadeIn .3s ease",minWidth:0}}>
+        <div style={{fontSize:11,color:"#7a8497",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em",fontWeight:500}}>Caución Tomada</div>
         <div style={{display:"flex",alignItems:"center",gap:4}}>
-          <span style={{fontSize:11,color:"#f43f5e"}}>$</span>
-          <input type="text" value={caucion.montoARS?caucion.montoARS.toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setCaucion({...caucion,montoARS:raw?parseInt(raw,10):0});}} style={{background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:6,padding:"4px 8px",color:"#f43f5e",fontSize:18,fontWeight:700,width:"100%",fontVariantNumeric:"tabular-nums",outline:"none"}} placeholder="0"/>
+          <span style={{fontSize:14,color:"#f43f5e",fontWeight:700}}>$</span>
+          <input type="text" value={caucion.montoARS?caucion.montoARS.toLocaleString("es-AR"):""} onChange={e=>{const raw=e.target.value.replace(/[^\d]/g,"");setCaucion({...caucion,montoARS:raw?parseInt(raw,10):0});}} style={{background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:8,padding:"3px 8px",color:"#f43f5e",fontSize:22,fontWeight:700,width:"100%",fontVariantNumeric:"tabular-nums",letterSpacing:"-.015em",outline:"none"}} placeholder="0"/>
         </div>
         <div style={{fontSize:12,color:"#f43f5e",marginTop:4}}>≈ {fU(caucionUSD)} <span style={{color:"#4d5365"}}>(MEP ${fmt(macro.dolarMEP)})</span></div>
       </div>
