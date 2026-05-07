@@ -2155,7 +2155,9 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
             </div>
             <button onClick={createInlineAlerts} disabled={tParsed<=0&&sParsed<=0} style={{background:"#2563eb",border:"none",color:"#fff",borderRadius:5,padding:"4px 12px",fontSize:11,cursor:"pointer",fontWeight:600,opacity:(tParsed<=0&&sParsed<=0)?0.4:1}}>+ Alerta</button>
             {(hasTarget||hasStop)&&<span style={{fontSize:10,color:"#34d399",marginLeft:4}}>{hasTarget?"⬆️ ":""}{hasStop?"⬇️ ":""}activa{hasTarget&&hasStop?"s":""}</span>}
-            {!loadLS("tg_token","")&&<button onClick={onOpenConfig} style={{fontSize:10,color:"#60a5fa",background:"none",border:"none",cursor:"pointer",textDecoration:"underline",marginLeft:"auto"}}>⚙️ Configurar Telegram</button>}
+            <span style={{flex:1}}/>
+            {canAdd&&<button onClick={addToWatchlist} title={(tParsed>0||sParsed>0)?"Agrega la posición y crea las alertas":"Agrega la posición a la watchlist"} style={{background:"#16a34a",border:"none",color:"#fff",borderRadius:5,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:700}}>+ Watchlist {(tParsed>0||sParsed>0)?<span style={{fontSize:10,opacity:0.85}}>· 🔔 {tParsed>0?"⬆️":""}{sParsed>0?"⬇️":""}</span>:null}</button>}
+            {!loadLS("tg_token","")&&<button onClick={onOpenConfig} style={{fontSize:10,color:"#60a5fa",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>⚙️ Configurar Telegram</button>}
           </div>
         </div>;
       })()}
@@ -2228,12 +2230,6 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
         })}</tbody>
       </table>
     </Card>}
-
-    {/* Botón Agregar a Watchlist */}
-    {canAdd&&<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
-      <button onClick={addToWatchlist} style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:8,padding:"12px 24px",fontSize:14,fontWeight:700,cursor:"pointer",transition:"background .15s"}} onMouseOver={e=>e.target.style.background="#1d4ed8"} onMouseOut={e=>e.target.style.background="#2563eb"}>+ Agregar a Watchlist</button>
-      {(parseNum(inlineTarget)>0||parseNum(inlineStop)>0)&&<div style={{fontSize:10,color:"#34d399"}}>🔔 Se crearán alertas: {parseNum(inlineTarget)>0?"Target ":""}{parseNum(inlineStop)>0?"Stop":""}</div>}
-    </div>}
 
     {/* ── Watchlist (Posiciones Intraday Abiertas) ── */}
     {watchlist.length>0&&(()=>{
@@ -2325,10 +2321,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
               <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums"}}>{item.cantidad.toLocaleString("es-AR")}</td>
               <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums"}}>{fT2(item.precioCompra)}</td>
               <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
-                {pAct>0?<>
-                  <div style={{fontSize:13,fontWeight:600,color:"#e2e8f0"}}>{fT2(pAct)}</div>
-                  {dayChg!=null&&<div style={{fontSize:9,color:dayChg>=0?"#34d399":"#f87171"}}>{dayChg>=0?"+":""}{dayChg.toFixed(2)}% día</div>}
-                </>:<span style={{fontSize:11,color:"#64748b"}}>cargando…</span>}
+                {pAct>0?<div style={{fontSize:13,fontWeight:600,color:"#e2e8f0"}}>{fT2(pAct)}</div>:<span style={{fontSize:11,color:"#64748b"}}>cargando…</span>}
               </td>
               <td style={{padding:"6px 8px",textAlign:"right",fontSize:13,fontWeight:700,color:deltaPct==null?"#64748b":(deltaPct>=0?"#34d399":"#f87171")}}>{deltaPct==null?"—":(deltaPct>=0?"+":"")+deltaPct.toFixed(2)+"%"}</td>
               <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fT2(item.breakeven)}</td>
