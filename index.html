@@ -376,6 +376,28 @@ async function fetchWithProxies(url,opts={}){
   throw new Error("All proxies failed for "+url);
 }
 
+/* fetchJSONWithProxies(url) — variante que valida JSON.
+   Algunos proxies (codetabs) devuelven 200 + body de texto "Too Many Requests"
+   cuando están rate-limited. fetchWithProxies se queda con ese response y el caller
+   se rompe al parsear. Esta variante intenta parsear cada proxy y solo devuelve
+   si el JSON es válido; si falla, sigue con el siguiente proxy. */
+async function fetchJSONWithProxies(url,opts={}){
+  const tryParse=async(r)=>{try{const t=await r.text();return JSON.parse(t);}catch(e){return null;}};
+  /* 1) Directo */
+  try{
+    const r=await fetch(url,opts);
+    if(r&&r.ok){const j=await tryParse(r);if(j)return j;}
+  }catch(e){}
+  /* 2) Cadena de proxies */
+  for(const p of PROXIES){
+    try{
+      const r=await fetch(p+encodeURIComponent(url),opts);
+      if(r&&r.ok){const j=await tryParse(r);if(j)return j;}
+    }catch(e){}
+  }
+  throw new Error("All proxies failed (no valid JSON) for "+url);
+}
+
 async function fetchMacroReal(){
   try{
     /* Dólares desde DolarAPI */
@@ -2503,11 +2525,9 @@ async function fetchHistorical(ticker,range){
   const interval=range==="10y"?"1mo":"1wk";
   const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=${interval}&includePrePost=false`;
   try{
-    let res;
-    try{res=await fetch(PROXY+encodeURIComponent(url));}catch(e){
-      try{res=await fetch("https://corsproxy.io/?"+encodeURIComponent(url));}catch(e2){return null;}
-    }
-    const data=await res.json();
+    /* Yahoo no tiene CORS-allow-all → fetchJSONWithProxies valida JSON y salta al
+       próximo proxy si alguno devuelve "Too Many Requests" como texto. */
+    const data=await fetchJSONWithProxies(url);
     const result=data?.chart?.result?.[0];
     if(!result)return null;
     const ts=result.timestamp||[];
