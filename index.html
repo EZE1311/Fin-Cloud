@@ -1042,9 +1042,9 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
         </div>
       </div>
       <Stat label="Portfolio Líquido CCL" value={fU(portfolioLiquido)} sub={caucionUSD>0?`Caución: ${fU(caucionUSD)}`:"Sin caución"} color="#818cf8"/>
-      {(()=>{const portMEP=(macro.dolarMEP>0&&macro.dolarCCL>0)?portfolioLiquido*(macro.dolarCCL/macro.dolarMEP):portfolioLiquido;return <div style={{background:"#13151c",border:"1px solid #22263350",borderRadius:18,padding:"16px 18px",animation:"fadeIn .3s ease",minWidth:0}}>
-        <div style={{fontSize:11,color:"#7a8497",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em",fontWeight:500}}>Portfolio Líquido MEP</div>
-        <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#818cf8",fontVariantNumeric:"tabular-nums",letterSpacing:"-.015em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{fU(portMEP)}</div>
+      {(()=>{const portOf=(macro.dolarOficial>0&&macro.dolarCCL>0)?portfolioLiquido*(macro.dolarCCL/macro.dolarOficial):portfolioLiquido;return <div style={{background:"#13151c",border:"1px solid #22263350",borderRadius:18,padding:"16px 18px",animation:"fadeIn .3s ease",minWidth:0}}>
+        <div style={{fontSize:11,color:"#7a8497",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em",fontWeight:500}}>Portfolio Líquido OFICIAL</div>
+        <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#818cf8",fontVariantNumeric:"tabular-nums",letterSpacing:"-.015em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{fU(portOf)}</div>
         <div style={{fontSize:10,color:"#f59e0b",marginTop:4}}>Com. venta: -{fU(totalComVenta)}</div>
       </div>;})()}
       <div style={{background:"#13151c",border:"1px solid #22263350",borderRadius:18,padding:"16px 18px",animation:"fadeIn .3s ease",minWidth:0}}>
