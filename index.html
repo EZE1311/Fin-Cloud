@@ -2519,15 +2519,61 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
 
 /* ── POTENCIAL ──────────────────────────── */
 
-/* Cache local de datos históricos: TTL 1h. Los proxies CORS están flakeando
-   (allorigins timeoutea, codetabs rate-limited) → cache evita re-pegarles cada apertura. */
+/* Cache local de datos históricos: TTL 1h. */
 const HIST_CACHE_KEY="hist_cache_v1";
 const HIST_CACHE_TTL=60*60*1000; /* 1h */
 function loadHistCache(){try{return JSON.parse(localStorage.getItem(HIST_CACHE_KEY)||"{}");}catch(e){return{};}}
 function saveHistCache(c){try{localStorage.setItem(HIST_CACHE_KEY,JSON.stringify(c));}catch(e){}}
 
-async function fetchHistorical(ticker,range,opts={}){
+/* Alpha Vantage: free tier 25 req/día con API key. CORS abierto → sin proxy = más confiable.
+   Endpoint TIME_SERIES_WEEKLY/MONTHLY devuelve histórico full; filtramos por rango client-side. */
+async function fetchHistoricalAV(ticker,range,apiKey){
   const sym=yfSym(ticker);
+  const fn=range==="10y"?"TIME_SERIES_MONTHLY":"TIME_SERIES_WEEKLY";
+  const url=`https://www.alphavantage.co/query?function=${fn}&symbol=${encodeURIComponent(sym)}&apikey=${encodeURIComponent(apiKey)}`;
+  const res=await fetch(url);
+  if(!res.ok)throw new Error("AV HTTP "+res.status);
+  const data=await res.json();
+  if(data["Error Message"])throw new Error(data["Error Message"]);
+  if(data["Note"])throw new Error("AV rate limit");
+  if(data["Information"])throw new Error("AV info: "+(data["Information"]||"").slice(0,40));
+  const seriesKey=fn==="TIME_SERIES_MONTHLY"?"Monthly Time Series":"Weekly Time Series";
+  const series=data[seriesKey];
+  if(!series)throw new Error("AV: sin serie");
+  /* Construir array {date,close} ordenado ascendente y filtrado al rango */
+  const yearsBack=range==="1y"?1:range==="5y"?5:10;
+  const cutoff=new Date();cutoff.setFullYear(cutoff.getFullYear()-yearsBack);
+  const points=Object.entries(series)
+    .map(([d,v])=>({date:d,close:parseFloat(v["4. close"])}))
+    .filter(p=>!isNaN(p.close)&&p.close>0&&new Date(p.date)>=cutoff)
+    .sort((a,b)=>a.date<b.date?-1:1);
+  if(points.length===0)throw new Error("AV: serie vacía post-filtro");
+  const currentPrice=points[points.length-1].close;
+  return{sym,ticker,currency:"USD",currentPrice,points,source:"alpha-vantage"};
+}
+
+/* Yahoo Finance via proxy CORS — fallback cuando no hay AV key o AV falla */
+async function fetchHistoricalYF(ticker,range){
+  const sym=yfSym(ticker);
+  const interval=range==="10y"?"1mo":"1wk";
+  const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=${interval}&includePrePost=false`;
+  const data=await fetchJSONWithProxies(url);
+  const result=data?.chart?.result?.[0];
+  if(!result)return null;
+  const ts=result.timestamp||[];
+  const closes=result.indicators?.quote?.[0]?.close||[];
+  const currency=result.meta?.currency||"USD";
+  const currentPrice=result.meta?.regularMarketPrice||0;
+  const points=[];
+  for(let i=0;i<ts.length;i++){
+    if(closes[i]!=null&&closes[i]>0){
+      points.push({date:new Date(ts[i]*1000).toISOString().slice(0,10),close:closes[i]});
+    }
+  }
+  return{sym,ticker,currency,currentPrice,points,source:"yahoo"};
+}
+
+async function fetchHistorical(ticker,range,opts={}){
   const cacheKey=`${ticker}|${range}`;
   /* 1) Cache hit fresco → devolver inmediato */
   if(!opts.bypassCache){
@@ -2535,35 +2581,29 @@ async function fetchHistorical(ticker,range,opts={}){
     const hit=cache[cacheKey];
     if(hit&&Date.now()-hit.ts<HIST_CACHE_TTL){return hit.data;}
   }
-  /* interval: 1wk for 1y/5y, 1mo for 10y to keep data manageable */
-  const interval=range==="10y"?"1mo":"1wk";
-  const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=${interval}&includePrePost=false`;
-  /* 2) Hasta 2 reintentos con backoff (allorigins a veces se cae por 5-10s) */
-  for(let attempt=0;attempt<3;attempt++){
+  /* 2) Alpha Vantage primary si hay API key */
+  const avKey=(typeof loadLS==="function")?loadLS("av_api_key",""):(localStorage.getItem("av_api_key")||"").replace(/^"|"$/g,"");
+  if(avKey){
     try{
-      const data=await fetchJSONWithProxies(url);
-      const result=data?.chart?.result?.[0];
-      if(!result){if(attempt<2){await new Promise(r=>setTimeout(r,800*(attempt+1)));continue;}return null;}
-      const ts=result.timestamp||[];
-      const closes=result.indicators?.quote?.[0]?.close||[];
-      const currency=result.meta?.currency||"USD";
-      const currentPrice=result.meta?.regularMarketPrice||0;
-      const points=[];
-      for(let i=0;i<ts.length;i++){
-        if(closes[i]!=null&&closes[i]>0){
-          points.push({date:new Date(ts[i]*1000).toISOString().slice(0,10),close:closes[i]});
-        }
-      }
-      const out={sym,ticker,currency,currentPrice,points};
-      /* Guardar en cache */
+      const out=await fetchHistoricalAV(ticker,range,avKey);
       const cache=loadHistCache();
       cache[cacheKey]={ts:Date.now(),data:out};
       saveHistCache(cache);
       return out;
-    }catch(e){
-      console.warn(`fetchHistorical attempt ${attempt+1} failed for ${ticker}:`,e?.message||e);
-      if(attempt<2)await new Promise(r=>setTimeout(r,1000*(attempt+1)));
-    }
+    }catch(e){console.warn(`AV failed for ${ticker} (${range}):`,e?.message||e,"— falling back to Yahoo");}
+  }
+  /* 3) Yahoo via proxy con retries */
+  for(let attempt=0;attempt<3;attempt++){
+    try{
+      const out=await fetchHistoricalYF(ticker,range);
+      if(out){
+        const cache=loadHistCache();
+        cache[cacheKey]={ts:Date.now(),data:out};
+        saveHistCache(cache);
+        return out;
+      }
+    }catch(e){console.warn(`YF attempt ${attempt+1} failed for ${ticker}:`,e?.message||e);}
+    if(attempt<2)await new Promise(r=>setTimeout(r,1000*(attempt+1)));
   }
   return null;
 }
@@ -2864,6 +2904,33 @@ function SyncConfigPanel({onClose}){
   const [tgChatId,setTgChatId]=useState(loadLS("tg_chat_id",""));
   const [tgStatus,setTgStatus]=useState("");
   const [tgTesting,setTgTesting]=useState(false);
+  /* Alpha Vantage */
+  const [avKey,setAvKey]=useState(loadLS("av_api_key",""));
+  const [avStatus,setAvStatus]=useState("");
+  const [avTesting,setAvTesting]=useState(false);
+
+  const testAV=async()=>{
+    setAvTesting(true);setAvStatus("");
+    try{
+      saveLS("av_api_key",avKey);
+      /* Ping con un símbolo conocido y la key del usuario */
+      const url=`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=IBM&apikey=${encodeURIComponent(avKey)}`;
+      const res=await fetch(url);
+      if(!res.ok)throw new Error("HTTP "+res.status);
+      const data=await res.json();
+      if(data["Error Message"])throw new Error("Key inválida: "+data["Error Message"]);
+      if(data["Note"])throw new Error("Rate limit: "+data["Note"].slice(0,80));
+      if(data["Information"])throw new Error("Info: "+data["Information"].slice(0,80));
+      const q=data["Global Quote"];
+      if(!q||!q["05. price"])throw new Error("Respuesta inesperada");
+      setAvStatus(`✅ Key OK · IBM @ USD ${parseFloat(q["05. price"]).toFixed(2)}. Limpiá el cache hist en Datos para forzar refetch.`);
+    }catch(e){setAvStatus("❌ "+e.message);}
+    setAvTesting(false);
+  };
+
+  const clearHistCache=()=>{
+    try{localStorage.removeItem("hist_cache_v1");setAvStatus("✅ Cache histórico borrado. La próxima carga del tab Potencial bajará todo de nuevo.");}catch(e){}
+  };
 
   const testConnection=async()=>{
     setTesting(true);setStatus("");
@@ -2902,6 +2969,7 @@ function SyncConfigPanel({onClose}){
       <div style={{display:"flex",gap:4,marginBottom:16}}>
         <button onClick={()=>setActiveTab("sync")} style={tabBtnSt("sync")}>☁️ Sync</button>
         <button onClick={()=>setActiveTab("telegram")} style={tabBtnSt("telegram")}>📱 Telegram</button>
+        <button onClick={()=>setActiveTab("datos")} style={tabBtnSt("datos")}>📊 Datos</button>
       </div>
 
       {activeTab==="sync"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -2947,6 +3015,32 @@ function SyncConfigPanel({onClose}){
         <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:4}}>
           <button onClick={onClose} style={{...btnSt,background:"#2a2f3f"}}>Cerrar</button>
           <button onClick={testTelegram} disabled={tgTesting||!tgToken||!tgChatId} style={{...btnSt,opacity:tgTesting||!tgToken||!tgChatId?.5:1}}>{tgTesting?"Enviando...":"Enviar Mensaje de Prueba"}</button>
+        </div>
+      </div>}
+
+      {activeTab==="datos"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <h3 style={{margin:0,fontSize:16,fontWeight:700}}>Fuente de Datos Históricos</h3>
+        <p style={{margin:0,fontSize:13,color:"#c1c8d4"}}>El tab Potencial usa Alpha Vantage si configurás tu API key (CORS abierto, sin proxy = más rápido y confiable). Si la dejás vacía, usa Yahoo Finance vía proxy CORS (intermitente).</p>
+        <div style={{background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:8,padding:12,fontSize:12,color:"#c1c8d4"}}>
+          <strong style={{color:"#e6edf3"}}>Setup (1 minuto, gratis):</strong><br/>
+          1. Andá a <a href="https://www.alphavantage.co/support/#api-key" target="_blank" rel="noopener" style={{color:"#818cf8"}}>alphavantage.co/support/#api-key</a><br/>
+          2. Completá email + qué hacés (cualquier cosa válida)<br/>
+          3. Te dan la key al toque (16 caracteres alfanuméricos)<br/>
+          4. Pegala acá abajo y "Probar"<br/>
+          <br/>
+          <span style={{color:"#7a8497"}}>Free tier: 25 requests/día. Con cache de 1h te alcanza para los 6 tickers.</span>
+        </div>
+        <div>
+          <label style={{fontSize:12,color:"#7a8497",display:"block",marginBottom:4}}>Alpha Vantage API Key</label>
+          <input type="password" value={avKey} onChange={e=>setAvKey(e.target.value.trim())} placeholder="ABCD1234EFGH5678" style={inpSt}/>
+        </div>
+        {avStatus&&<div style={{fontSize:13,padding:"8px 12px",borderRadius:6,background:avStatus.startsWith("✅")?"#065f4622":"#7f1d2e22",color:avStatus.startsWith("✅")?"#10b981":"#f43f5e"}}>{avStatus}</div>}
+        <div style={{display:"flex",gap:10,justifyContent:"space-between",marginTop:4}}>
+          <button onClick={clearHistCache} style={{...btnSt,background:"#2a2f3f",fontSize:11}}>🗑 Limpiar cache hist</button>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={onClose} style={{...btnSt,background:"#2a2f3f"}}>Cerrar</button>
+            <button onClick={testAV} disabled={avTesting||!avKey} style={{...btnSt,opacity:avTesting||!avKey?.5:1}}>{avTesting?"Probando…":"Probar Key"}</button>
+          </div>
         </div>
       </div>}
     </div>
