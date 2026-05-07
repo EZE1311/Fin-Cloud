@@ -3630,11 +3630,15 @@ function App(){
         </div>
       </div>
     </header>
-    <nav className="nav-bar" style={{background:"#0c0e14",display:"flex",gap:12,padding:"14px 20px",justifyContent:"space-between",alignItems:"center"}}>
-      <div style={{display:"flex",gap:4,background:"#13151c",border:"1px solid #2a2f3f",borderRadius:12,padding:4}}>
-        {tabs.map(t=>{const active=tab===t.id;return <button key={t.id} onClick={()=>setTab(t.id)} style={{background:active?"#1a1d27":"transparent",border:"none",color:active?"#e6edf3":"#7a8497",padding:"8px 16px",cursor:"pointer",fontSize:13,fontWeight:active?600:500,borderRadius:8,display:"flex",alignItems:"center",gap:6,transition:"background .15s ease, color .15s ease",whiteSpace:"nowrap",boxShadow:active?"0 1px 2px rgba(0,0,0,.35), 0 0 0 1px #2a2f3f55":"none"}}
+    <nav className="nav-bar" style={{background:"#0c0e14",display:"flex",gap:14,padding:"14px 20px",alignItems:"center"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,paddingRight:6,marginRight:6,borderRight:"1px solid #22263380"}}>
+        <div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"grid",placeItems:"center",color:"#fff",fontSize:14,fontWeight:800,letterSpacing:"-.02em",boxShadow:"0 4px 12px rgba(99,102,241,.35)"}}>F</div>
+        <span style={{fontSize:14,fontWeight:700,letterSpacing:"-.01em",color:"#e6edf3"}}>Fin-Cloud</span>
+      </div>
+      <div style={{display:"flex",gap:2,background:"#13151c",border:"1px solid #2a2f3f",borderRadius:12,padding:4,flex:"1 1 auto",maxWidth:760}}>
+        {tabs.map(t=>{const active=tab===t.id;return <button key={t.id} onClick={()=>setTab(t.id)} style={{background:active?"#1a1d27":"transparent",border:"none",color:active?"#e6edf3":"#7a8497",padding:"7px 14px",cursor:"pointer",fontSize:13,fontWeight:active?600:500,borderRadius:8,transition:"background .15s ease, color .15s ease",whiteSpace:"nowrap",boxShadow:active?"0 1px 2px rgba(0,0,0,.35), 0 0 0 1px #2a2f3f55":"none",flex:"1 1 auto",letterSpacing:"-.005em"}}
           onMouseEnter={e=>{if(!active)e.currentTarget.style.color="#c1c8d4"}}
-          onMouseLeave={e=>{if(!active)e.currentTarget.style.color="#7a8497"}}>{t.emoji} {t.label}</button>;})}
+          onMouseLeave={e=>{if(!active)e.currentTarget.style.color="#7a8497"}}>{t.label}</button>;})}
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
         {syncStatus==="syncing"&&<span style={{fontSize:11,color:"#f59e0b",animation:"pulse 1s infinite",padding:"4px 10px",background:"#f59e0b15",borderRadius:99}}>⏳ Sincronizando…</span>}
