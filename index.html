@@ -1871,9 +1871,14 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
   const [tradingPriceLoading,setTradingPriceLoading]=useState(false);
   const fetchTimerRef=React.useRef(null);
 
+  /* Track if user manually edited precioCompra to avoid overwriting */
+  const userEditedCompraRef=React.useRef(false);
+
   React.useEffect(()=>{
     /* Reset on ticker change */
     setPrecioVentaManual("");
+    setPrecioCompra("");
+    userEditedCompraRef.current=false;
     setTradingPrice(null);
     if(fetchTimerRef.current)clearTimeout(fetchTimerRef.current);
     if(!ticker||ticker.length<2)return;
@@ -1921,6 +1926,18 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
   const pvManual=parseNum(precioVentaManual);
   const pv=pvManual>0?pvManual:precioVentaAuto;
   const pvIsAuto=pvManual===0&&precioVentaAuto>0;
+
+  /* Autofill Precio Compra con la cotización actual al cambiar ticker.
+     Solo si el usuario no editó manualmente. Permite ajuste fino para precio real ejecutado. */
+  React.useEffect(()=>{
+    if(!ticker||userEditedCompraRef.current)return;
+    const cur=isBYMA?(priceData?.priceARS||0):(priceData?.price||0);
+    if(cur<=0)return;
+    const formatted=isBYMA
+      ?new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(cur)
+      :cur.toFixed(2);
+    setPrecioCompra(formatted);
+  },[ticker,priceData,isBYMA]);
 
   /* All available tickers for datalist suggestions */
   const allTickers=useMemo(()=>{
@@ -2119,7 +2136,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
           </div>
         </div>
         <div><label style={labelSt}>Cantidad</label><input type="text" value={cantidad} onChange={e=>setCantidad(e.target.value.replace(/[^\d]/g,""))} style={inputSt} placeholder="Nominales"/></div>
-        <div><label style={labelSt}>Precio Compra ({monedaSym.trim()})</label><input type="text" value={precioCompra} onChange={e=>setPrecioCompra(e.target.value.replace(/[^\d.,]/g,""))} style={inputSt} placeholder={isBYMA?"34.800 ó 34800":"232.50"}/></div>
+        <div><label style={labelSt}>Precio Compra ({monedaSym.trim()}) {precioCompra&&!userEditedCompraRef.current?<span style={{color:"#34d399",fontWeight:400,textTransform:"none"}}>— auto</span>:null}</label><input type="text" value={precioCompra} onChange={e=>{userEditedCompraRef.current=true;setPrecioCompra(e.target.value.replace(/[^\d.,]/g,""));}} style={{...inputSt,color:precioCompra&&!userEditedCompraRef.current?"#34d399":"#e2e8f0"}} placeholder={isBYMA?"34.800 ó 34800":"232.50"}/></div>
         <div><label style={labelSt}>Precio Venta ({monedaSym.trim()}) {pvIsAuto?<span style={{color:"#34d399",fontWeight:400,textTransform:"none"}}>— auto</span>:pv>0?<span style={{color:"#60a5fa",fontWeight:400,textTransform:"none"}}>— manual</span>:null}</label>
           <input type="text" value={precioVentaManual||(precioVentaAuto>0?(isBYMA?new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(precioVentaAuto):precioVentaAuto.toFixed(2)):"")} onChange={e=>setPrecioVentaManual(e.target.value.replace(/[^\d.,]/g,""))} style={{...inputSt,background:pvIsAuto?"#0f172a":"#111827",color:pv>0?"#34d399":tradingPriceLoading?"#fbbf24":"#e2e8f0"}} placeholder={tradingPriceLoading?"Buscando precio...":"Dejá vacío p/auto"}/>
         </div>
@@ -2276,7 +2293,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
       </div>}>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr>
-            {["Apertura","Ticker","Cant","P.Compra","P.Actual","Δ%","Breakeven","P&L Live","%","Alertas","Acción"].map(h=>
+            {["Apertura","Ticker","Cant","P.Compra","P.Actual","Breakeven","P&L Live","%","Alertas","Acción"].map(h=>
               <th key={h} style={{padding:"6px 8px",textAlign:["Apertura","Ticker","Alertas","Acción"].includes(h)?"left":"right",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>
             )}
           </tr></thead>
@@ -2289,7 +2306,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
             const sAlert=tickerAlerts.find(a=>a.condition==="below");
             if(isClosing){
               return <tr key={item.id} style={{background:"#0c1322",borderBottom:"1px solid #1e293b"}}>
-                <td colSpan={11} style={{padding:"10px 12px"}}>
+                <td colSpan={10} style={{padding:"10px 12px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                     <span style={{fontSize:12,fontWeight:700,color:"#e2e8f0"}}>Cerrar {item.ticker}</span>
                     <span style={{fontSize:11,color:"#64748b"}}>×{item.cantidad.toLocaleString("es-AR")} @ {fT2(item.precioCompra)}</span>
@@ -2323,7 +2340,6 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
               <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
                 {pAct>0?<div style={{fontSize:13,fontWeight:600,color:"#e2e8f0"}}>{fT2(pAct)}</div>:<span style={{fontSize:11,color:"#64748b"}}>cargando…</span>}
               </td>
-              <td style={{padding:"6px 8px",textAlign:"right",fontSize:13,fontWeight:700,color:deltaPct==null?"#64748b":(deltaPct>=0?"#34d399":"#f87171")}}>{deltaPct==null?"—":(deltaPct>=0?"+":"")+deltaPct.toFixed(2)+"%"}</td>
               <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fT2(item.breakeven)}</td>
               <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
                 {pAct>0?<div style={{fontSize:13,fontWeight:700,color:netoLive>=0?"#34d399":"#f87171"}}>{fT(netoLive)}</div>:<span style={{fontSize:11,color:"#64748b"}}>—</span>}
