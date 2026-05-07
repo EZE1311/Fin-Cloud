@@ -1988,6 +1988,30 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
   const [closingId,setClosingId]=useState(null);
   const [closingPrice,setClosingPrice]=useState("");
 
+  /* Helper único para calcular fees de una posición del watchlist.
+     Si la posición está carriada (no es intraday), el "intra venta" desaparece y el breakeven baja. */
+  const calcRowFees=(item)=>{
+    const isBM=item.mercado==="BYMA";
+    const _comPct=isBM?0.0010:0.0060;
+    const _derPct=isBM?0.0007:0;
+    const _intraBase=isBM?0.0005:0;
+    const _ivaMult=(isBM&&!item.exento)?1.21:1;
+    /* "Carriada" = la fecha de apertura no es hoy en hora local del usuario */
+    const todayLocal=new Date().toLocaleDateString("en-CA");
+    const aperturaLocal=item.fechaApertura?new Date(item.fechaApertura).toLocaleDateString("en-CA"):todayLocal;
+    const isCarriedOver=aperturaLocal!==todayLocal;
+    const _intraPct=isCarriedOver?0:_intraBase;
+    const ventaFactor=(_comPct+_derPct+_intraPct)*_ivaMult;
+    const breakevenDyn=item.cantidad>0?(item.montoCompra+item.comCompra)/(item.cantidad*(1-ventaFactor)):0;
+    /* Días de carry para badge */
+    let daysCarried=0;
+    if(isCarriedOver){
+      const a=new Date(aperturaLocal),t=new Date(todayLocal);
+      daysCarried=Math.max(1,Math.round((t-a)/(86400000)));
+    }
+    return{ventaFactor,breakeven:breakevenDyn,isCarriedOver,daysCarried,ivaMult:_ivaMult};
+  };
+
   /* Autofill del precio de cierre: si el precio aún no llegó al hacer click en Cerrar,
      completa cuando esté disponible. Si el usuario ya escribió, no toca. */
   React.useEffect(()=>{
@@ -2069,18 +2093,13 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
     if(!w)return;
     const pv2=parseNum(precioVentaStr);
     if(pv2<=0){alert("Ingresá un precio de venta válido");return;}
-    const isBM=w.mercado==="BYMA";
-    const _comPct=isBM?0.0010:0.0060;
-    const _derPct=isBM?0.0007:0;
-    const _intraPct=isBM?0.0005:0;
-    const _ivaMult=(isBM&&!w.exento)?1.21:1;
-    const ventaFactor2=(_comPct+_derPct+_intraPct)*_ivaMult;
+    const fees=calcRowFees(w);
     const montoVenta2=w.cantidad*pv2;
-    const comVenta2=montoVenta2*ventaFactor2;
+    const comVenta2=montoVenta2*fees.ventaFactor;
     const totalGastos2=w.comCompra+comVenta2;
     const bruto2=montoVenta2-w.montoCompra;
     const neto2=bruto2-totalGastos2;
-    const trade={id:Date.now(),fecha:new Date().toISOString().slice(0,10),ticker:w.ticker,mercado:w.mercado,cantidad:w.cantidad,precioCompra:w.precioCompra,precioVenta:pv2,montoCompra:w.montoCompra,montoVenta:montoVenta2,comCompra:w.comCompra,comVenta:comVenta2,totalGastos:totalGastos2,bruto:bruto2,neto:neto2,breakeven:w.breakeven,exento:w.exento,moneda:w.moneda,mep:w.mep,fromWatchlist:true,fechaApertura:w.fechaApertura};
+    const trade={id:Date.now(),fecha:new Date().toISOString().slice(0,10),ticker:w.ticker,mercado:w.mercado,cantidad:w.cantidad,precioCompra:w.precioCompra,precioVenta:pv2,montoCompra:w.montoCompra,montoVenta:montoVenta2,comCompra:w.comCompra,comVenta:comVenta2,totalGastos:totalGastos2,bruto:bruto2,neto:neto2,breakeven:fees.breakeven,exento:w.exento,moneda:w.moneda,mep:w.mep,fromWatchlist:true,fechaApertura:w.fechaApertura,carriedOver:fees.isCarriedOver,daysCarried:fees.daysCarried};
     setTrades(prev=>[trade,...prev]);
     setWatchlist(prev=>prev.filter(x=>x.id!==id));
     setClosingId(null);setClosingPrice("");
@@ -2231,23 +2250,17 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
         return{fT,fT2,fTalt,isBM};
       };
 
-      /* Live P&L per row using current price */
+      /* Live P&L per row using current price + fees actualizados (intra/overnight) */
       const rowsLive=watchlist.map(item=>{
         const isBM=item.mercado==="BYMA";
-        const _comPct=isBM?0.0010:0.0060;
-        const _derPct=isBM?0.0007:0;
-        const _intraPct=isBM?0.0005:0;
-        const _ivaMult=(isBM&&!item.exento)?1.21:1;
-        const ventaFactor2=(_comPct+_derPct+_intraPct)*_ivaMult;
+        const fees=calcRowFees(item);
         const pd=prices[item.ticker]||watchlistPrices[item.ticker];
         const pAct=isBM?(pd?.priceARS||0):(pd?.price||0);
         const montoVentaLive=item.cantidad*pAct;
-        const comVentaLive=montoVentaLive*ventaFactor2;
+        const comVentaLive=montoVentaLive*fees.ventaFactor;
         const netoLive=montoVentaLive-item.montoCompra-item.comCompra-comVentaLive;
-        const deltaPct=item.precioCompra>0&&pAct>0?((pAct-item.precioCompra)/item.precioCompra*100):null;
         const rendPct=item.montoCompra>0&&pAct>0?(netoLive/item.montoCompra*100):null;
-        const dayChg=isBM?(pd?.changeARS):(pd?.change);
-        return{item,pAct,netoLive,deltaPct,rendPct,dayChg};
+        return{item,pAct,netoLive,rendPct,fees};
       });
 
       /* Aggregate live P&L (open positions) */
@@ -2269,7 +2282,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
               <th key={h} style={{padding:"6px 8px",textAlign:["Apertura","Ticker","Alertas","Acción"].includes(h)?"left":"right",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>
             )}
           </tr></thead>
-          <tbody>{rowsLive.map(({item,pAct,netoLive,deltaPct,rendPct,dayChg})=>{
+          <tbody>{rowsLive.map(({item,pAct,netoLive,rendPct,fees})=>{
             const{fT,fT2,isBM}=rowFmt(item);
             const isClosing=closingId===item.id;
             const fechaShort=item.fechaApertura?new Date(item.fechaApertura).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—";
@@ -2282,19 +2295,15 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
                   <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                     <span style={{fontSize:12,fontWeight:700,color:"#e2e8f0"}}>Cerrar {item.ticker}</span>
                     <span style={{fontSize:11,color:"#64748b"}}>×{item.cantidad.toLocaleString("es-AR")} @ {fT2(item.precioCompra)}</span>
+                    {fees.isCarriedOver&&<span style={{fontSize:10,color:"#a78bfa",background:"#3730a322",border:"1px solid #6366f155",borderRadius:4,padding:"2px 6px"}} title={`Posición carriada · sin comisión intra venta`}>📅 Overnight +{fees.daysCarried}d</span>}
                     <label style={{fontSize:10,color:"#64748b"}}>Precio Venta:</label>
                     <input value={closingPrice} onChange={e=>setClosingPrice(e.target.value.replace(/[^\d.,]/g,""))} placeholder={pAct>0?(isBM?Math.round(pAct).toLocaleString("es-AR"):pAct.toFixed(2)):"—"} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"6px 10px",color:"#e2e8f0",fontSize:13,fontWeight:600,width:130,fontVariantNumeric:"tabular-nums"}} autoFocus/>
                     {pAct>0&&<button onClick={()=>setClosingPrice(isBM?String(Math.round(pAct*100)/100):pAct.toFixed(2))} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:5,padding:"4px 8px",fontSize:10,cursor:"pointer"}}>Usar actual</button>}
                     {(()=>{
                       const pvN=parseNum(closingPrice);
                       if(pvN<=0||item.cantidad<=0)return null;
-                      const _comPct=isBM?0.0010:0.0060;
-                      const _derPct=isBM?0.0007:0;
-                      const _intraPct=isBM?0.0005:0;
-                      const _ivaMult=(isBM&&!item.exento)?1.21:1;
-                      const vf=(_comPct+_derPct+_intraPct)*_ivaMult;
                       const mv=item.cantidad*pvN;
-                      const cv=mv*vf;
+                      const cv=mv*fees.ventaFactor;
                       const n=mv-item.montoCompra-item.comCompra-cv;
                       return <span style={{fontSize:12,fontWeight:700,color:n>=0?"#34d399":"#f87171",marginLeft:6}}>P&L: {fT(n)}</span>;
                     })()}
@@ -2305,14 +2314,20 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
               </tr>;
             }
             return <tr key={item.id} style={{borderBottom:"1px solid #1e293b",background:netoLive>=0?"#065f4608":"#7f1d1d08"}}>
-              <td style={{padding:"6px 8px",fontSize:10,color:"#94a3b8"}}>{fechaShort}</td>
+              <td style={{padding:"6px 8px",fontSize:10,color:"#94a3b8"}}>
+                <div>{fechaShort}</div>
+                {fees.isCarriedOver&&<div style={{color:"#a78bfa",fontSize:9,fontWeight:600,marginTop:2}}>📅 +{fees.daysCarried}d overnight</div>}
+              </td>
               <td style={{padding:"6px 8px",fontSize:13,fontWeight:700}}>{item.ticker} <span style={{fontSize:10,color:"#64748b"}}>{isBM?"🇦🇷":"🇺🇸"}</span></td>
               <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums"}}>{item.cantidad.toLocaleString("es-AR")}</td>
               <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums"}}>{fT2(item.precioCompra)}</td>
               <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
                 {pAct>0?<div style={{fontSize:13,fontWeight:600,color:"#e2e8f0"}}>{fT2(pAct)}</div>:<span style={{fontSize:11,color:"#64748b"}}>cargando…</span>}
               </td>
-              <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fT2(item.breakeven)}</td>
+              <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}} title={fees.isCarriedOver?`Breakeven actualizado sin comisión intra venta (posición carriada ${fees.daysCarried}d). Original: ${fT2(item.breakeven)}`:"Breakeven con fee intra venta"}>
+                <div style={{fontSize:12,color:"#fbbf24",fontWeight:600}}>{fT2(fees.breakeven)}</div>
+                {fees.isCarriedOver&&item.breakeven&&<div style={{fontSize:9,color:"#64748b",textDecoration:"line-through"}}>{fT2(item.breakeven)}</div>}
+              </td>
               <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
                 {pAct>0?<div style={{fontSize:13,fontWeight:700,color:netoLive>=0?"#34d399":"#f87171"}}>{fT(netoLive)}</div>:<span style={{fontSize:11,color:"#64748b"}}>—</span>}
               </td>
