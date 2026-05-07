@@ -1977,12 +1977,96 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
   const [trades,setTrades]=useState(()=>loadLS("intraday_trades",[]));
   useEffect(()=>{saveLS("intraday_trades",trades)},[trades]);
 
-  const canAdd=ticker&&cant>0&&pc>0&&pv>0;
-  const addTrade=()=>{
+  /* ── Watchlist (posiciones intraday abiertas) ── */
+  const [watchlist,setWatchlist]=useState(()=>loadLS("intraday_watchlist",[]));
+  useEffect(()=>{saveLS("intraday_watchlist",watchlist)},[watchlist]);
+  const [watchlistPrices,setWatchlistPrices]=useState({});
+  const [closingId,setClosingId]=useState(null);
+  const [closingPrice,setClosingPrice]=useState("");
+
+  /* Live-fetch precios para tickers de watchlist que no estén en portfolio prices.
+     Refresca cada 60s mientras haya watchlist activa. */
+  const wlTickerKey=watchlist.map(w=>w.ticker).join(",");
+  React.useEffect(()=>{
+    if(watchlist.length===0){setWatchlistPrices({});return;}
+    const need=[...new Set(watchlist.map(w=>w.ticker))].filter(t=>!prices[t]);
+    if(need.length===0){setWatchlistPrices({});return;}
+    let cancelled=false;
+    const fetchD912=async(ep)=>{try{let r;try{r=await fetch(DATA912_BASE+"/"+ep)}catch(e){r=await fetch(PROXY+encodeURIComponent(DATA912_BASE+"/"+ep))}return await r.json()}catch(e){return[]}};
+    const fetchOne=async(tk)=>{
+      try{
+        const [cedears,argStocks,argBonds,usaStocks]=await Promise.all([fetchD912("arg_cedears"),fetchD912("arg_stocks"),fetchD912("arg_bonds"),fetchD912("usa_stocks")]);
+        const find=arr=>(arr||[]).find(x=>(x.symbol||"").toUpperCase()===tk);
+        const hit=find(cedears)||find(argStocks)||find(argBonds)||find(usaStocks);
+        if(hit&&hit.c){
+          const isArg=!!(find(cedears)||find(argStocks)||find(argBonds));
+          return[tk,{priceARS:isArg?hit.c:null,price:isArg?0:hit.c,changeARS:isArg?(hit.pct_change||0):null,change:isArg?0:(hit.pct_change||0)}];
+        }
+        const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(tk)}?range=5d&interval=1d`;
+        let r;try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+        if(r&&r.ok){
+          const j=await r.json();const meta=j.chart?.result?.[0]?.meta;
+          if(meta&&meta.regularMarketPrice){
+            const p=meta.regularMarketPrice,prev=meta.chartPreviousClose||meta.previousClose||p;
+            const chg=prev?((p-prev)/prev*100):0;
+            const isArg=(meta.exchangeName||"").includes("Buenos")||(meta.currency||"")==="ARS";
+            return[tk,{priceARS:isArg?p:null,price:isArg?0:p,changeARS:isArg?chg:null,change:isArg?0:chg}];
+          }
+        }
+      }catch(e){console.warn("Watchlist price fetch error:",tk,e);}
+      return null;
+    };
+    const refresh=async()=>{
+      const results=await Promise.all(need.map(fetchOne));
+      if(cancelled)return;
+      const map={};results.forEach(r=>{if(r)map[r[0]]=r[1];});
+      setWatchlistPrices(prev=>({...prev,...map}));
+    };
+    refresh();
+    const timer=setInterval(refresh,60000);
+    return()=>{cancelled=true;clearInterval(timer);};
+  },[wlTickerKey,Object.keys(prices).join(",")]);
+
+  const canAdd=ticker&&cant>0&&pc>0;
+  const addToWatchlist=()=>{
     if(!canAdd)return;
-    const trade={id:Date.now(),fecha:new Date().toISOString().slice(0,10),ticker,mercado,cantidad:cant,precioCompra:pc,precioVenta:pv,montoCompra,montoVenta,comCompra,comVenta,totalGastos,bruto,neto,breakeven,exento,moneda,mep};
-    setTrades(prev=>[trade,...prev]);
+    const groupId=Date.now();
+    const item={id:groupId,fechaApertura:new Date().toISOString(),ticker,mercado,cantidad:cant,precioCompra:pc,montoCompra,comCompra,breakeven,exento,moneda,mep,alertGroupId:groupId};
+    setWatchlist(prev=>[item,...prev]);
+    /* Auto-crear alertas si target/stop ya están escritos */
+    const tParsed=parseNum(inlineTarget);
+    const sParsed=parseNum(inlineStop);
+    if(tParsed>0)addPriceAlert({ticker,mercado,condition:"above",price:tParsed,label:"Target",groupId});
+    if(sParsed>0)addPriceAlert({ticker,mercado,condition:"below",price:sParsed,label:"Stop Loss",groupId});
     setTickerInput("");setCantidad("");setPrecioCompra("");setPrecioVentaManual("");
+    setInlineTarget("");setInlineStop("");
+  };
+
+  const removeFromWatchlist=(id)=>{
+    if(!confirm("Eliminar de la watchlist? (no se registra como operación cerrada)"))return;
+    setWatchlist(prev=>prev.filter(x=>x.id!==id));
+  };
+
+  const closeWatchlistItem=(id,precioVentaStr)=>{
+    const w=watchlist.find(x=>x.id===id);
+    if(!w)return;
+    const pv2=parseNum(precioVentaStr);
+    if(pv2<=0){alert("Ingresá un precio de venta válido");return;}
+    const isBM=w.mercado==="BYMA";
+    const _comPct=isBM?0.0010:0.0060;
+    const _derPct=isBM?0.0007:0;
+    const _intraPct=isBM?0.0005:0;
+    const _ivaMult=(isBM&&!w.exento)?1.21:1;
+    const ventaFactor2=(_comPct+_derPct+_intraPct)*_ivaMult;
+    const montoVenta2=w.cantidad*pv2;
+    const comVenta2=montoVenta2*ventaFactor2;
+    const totalGastos2=w.comCompra+comVenta2;
+    const bruto2=montoVenta2-w.montoCompra;
+    const neto2=bruto2-totalGastos2;
+    const trade={id:Date.now(),fecha:new Date().toISOString().slice(0,10),ticker:w.ticker,mercado:w.mercado,cantidad:w.cantidad,precioCompra:w.precioCompra,precioVenta:pv2,montoCompra:w.montoCompra,montoVenta:montoVenta2,comCompra:w.comCompra,comVenta:comVenta2,totalGastos:totalGastos2,bruto:bruto2,neto:neto2,breakeven:w.breakeven,exento:w.exento,moneda:w.moneda,mep:w.mep,fromWatchlist:true,fechaApertura:w.fechaApertura};
+    setTrades(prev=>[trade,...prev]);
+    setWatchlist(prev=>prev.filter(x=>x.id!==id));
+    setClosingId(null);setClosingPrice("");
   };
 
   const removeTrade=(id)=>setTrades(prev=>prev.filter(t=>t.id!==id));
@@ -2145,8 +2229,128 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
       </table>
     </Card>}
 
-    {/* Botón Agregar */}
-    {canAdd&&<button onClick={addTrade} style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:8,padding:"12px 24px",fontSize:14,fontWeight:700,cursor:"pointer",alignSelf:"center",transition:"background .15s"}} onMouseOver={e=>e.target.style.background="#1d4ed8"} onMouseOut={e=>e.target.style.background="#2563eb"}>+ Agregar Operación</button>}
+    {/* Botón Agregar a Watchlist */}
+    {canAdd&&<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+      <button onClick={addToWatchlist} style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:8,padding:"12px 24px",fontSize:14,fontWeight:700,cursor:"pointer",transition:"background .15s"}} onMouseOver={e=>e.target.style.background="#1d4ed8"} onMouseOut={e=>e.target.style.background="#2563eb"}>+ Agregar a Watchlist</button>
+      {(parseNum(inlineTarget)>0||parseNum(inlineStop)>0)&&<div style={{fontSize:10,color:"#34d399"}}>🔔 Se crearán alertas: {parseNum(inlineTarget)>0?"Target ":""}{parseNum(inlineStop)>0?"Stop":""}</div>}
+    </div>}
+
+    {/* ── Watchlist (Posiciones Intraday Abiertas) ── */}
+    {watchlist.length>0&&(()=>{
+      /* Per-row formatters because rows can mix BYMA/NYSE */
+      const rowFmt=(item)=>{
+        const isBM=item.mercado==="BYMA";
+        const fT=n=>{if(n==null||isNaN(n))return"—";if(isBM)return fARS(n);const a=Math.abs(n);const d=a<1&&a>0?2:0;return`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)}`;};
+        const fT2=n=>{if(n==null||isNaN(n))return"—";if(isBM)return fARS2(n);const a=Math.abs(n);const d=a<0.01?6:a<1?4:2;return`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)}`;};
+        const fTalt=n=>n==null||isNaN(n)?"—":isBM?fUSD(n/(item.mep||mep)):fARS(n*(item.mep||mep));
+        return{fT,fT2,fTalt,isBM};
+      };
+
+      /* Live P&L per row using current price */
+      const rowsLive=watchlist.map(item=>{
+        const isBM=item.mercado==="BYMA";
+        const _comPct=isBM?0.0010:0.0060;
+        const _derPct=isBM?0.0007:0;
+        const _intraPct=isBM?0.0005:0;
+        const _ivaMult=(isBM&&!item.exento)?1.21:1;
+        const ventaFactor2=(_comPct+_derPct+_intraPct)*_ivaMult;
+        const pd=prices[item.ticker]||watchlistPrices[item.ticker];
+        const pAct=isBM?(pd?.priceARS||0):(pd?.price||0);
+        const montoVentaLive=item.cantidad*pAct;
+        const comVentaLive=montoVentaLive*ventaFactor2;
+        const netoLive=montoVentaLive-item.montoCompra-item.comCompra-comVentaLive;
+        const deltaPct=item.precioCompra>0&&pAct>0?((pAct-item.precioCompra)/item.precioCompra*100):null;
+        const rendPct=item.montoCompra>0&&pAct>0?(netoLive/item.montoCompra*100):null;
+        const dayChg=isBM?(pd?.changeARS):(pd?.change);
+        return{item,pAct,netoLive,deltaPct,rendPct,dayChg};
+      });
+
+      /* Aggregate live P&L (open positions) */
+      const liveTotals=rowsLive.reduce((acc,r)=>{
+        if(r.pAct<=0)return acc;
+        const m=r.item.mep||mep;
+        if(r.item.mercado==="BYMA"){acc.netoARS+=r.netoLive;acc.netoUSD+=r.netoLive/m;}
+        else{acc.netoUSD+=r.netoLive;acc.netoARS+=r.netoLive*m;}
+        return acc;
+      },{netoARS:0,netoUSD:0});
+
+      return <Card title={`Watchlist — Posiciones Abiertas (${watchlist.length})`} right={<div style={{display:"flex",gap:10,alignItems:"center"}}>
+        <span style={{fontSize:11,color:liveTotals.netoARS>=0?"#34d399":"#f87171",fontWeight:700}}>P&L Live: {fARS(liveTotals.netoARS)} / {fUSD(liveTotals.netoUSD)}</span>
+        <span style={{fontSize:9,color:"#475569"}}>↻ 60s</span>
+      </div>}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>
+            {["Apertura","Ticker","Cant","P.Compra","P.Actual","Δ%","Breakeven","P&L Live","%","Alertas","Acción"].map(h=>
+              <th key={h} style={{padding:"6px 8px",textAlign:["Apertura","Ticker","Alertas","Acción"].includes(h)?"left":"right",fontSize:10,fontWeight:600,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #252d3d"}}>{h}</th>
+            )}
+          </tr></thead>
+          <tbody>{rowsLive.map(({item,pAct,netoLive,deltaPct,rendPct,dayChg})=>{
+            const{fT,fT2,isBM}=rowFmt(item);
+            const isClosing=closingId===item.id;
+            const fechaShort=item.fechaApertura?new Date(item.fechaApertura).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—";
+            const tickerAlerts=priceAlerts.filter(a=>a.ticker===item.ticker&&a.active);
+            const tAlert=tickerAlerts.find(a=>a.condition==="above");
+            const sAlert=tickerAlerts.find(a=>a.condition==="below");
+            if(isClosing){
+              return <tr key={item.id} style={{background:"#0c1322",borderBottom:"1px solid #1e293b"}}>
+                <td colSpan={11} style={{padding:"10px 12px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                    <span style={{fontSize:12,fontWeight:700,color:"#e2e8f0"}}>Cerrar {item.ticker}</span>
+                    <span style={{fontSize:11,color:"#64748b"}}>×{item.cantidad.toLocaleString("es-AR")} @ {fT2(item.precioCompra)}</span>
+                    <label style={{fontSize:10,color:"#64748b"}}>Precio Venta:</label>
+                    <input value={closingPrice} onChange={e=>setClosingPrice(e.target.value.replace(/[^\d.,]/g,""))} placeholder={pAct>0?(isBM?Math.round(pAct).toLocaleString("es-AR"):pAct.toFixed(2)):"—"} style={{background:"#111827",border:"1px solid #334155",borderRadius:6,padding:"6px 10px",color:"#e2e8f0",fontSize:13,fontWeight:600,width:130,fontVariantNumeric:"tabular-nums"}} autoFocus/>
+                    {pAct>0&&<button onClick={()=>setClosingPrice(isBM?String(Math.round(pAct*100)/100):pAct.toFixed(2))} style={{background:"#1e293b",border:"1px solid #334155",color:"#94a3b8",borderRadius:5,padding:"4px 8px",fontSize:10,cursor:"pointer"}}>Usar actual</button>}
+                    {(()=>{
+                      const pvN=parseNum(closingPrice);
+                      if(pvN<=0||item.cantidad<=0)return null;
+                      const _comPct=isBM?0.0010:0.0060;
+                      const _derPct=isBM?0.0007:0;
+                      const _intraPct=isBM?0.0005:0;
+                      const _ivaMult=(isBM&&!item.exento)?1.21:1;
+                      const vf=(_comPct+_derPct+_intraPct)*_ivaMult;
+                      const mv=item.cantidad*pvN;
+                      const cv=mv*vf;
+                      const n=mv-item.montoCompra-item.comCompra-cv;
+                      return <span style={{fontSize:12,fontWeight:700,color:n>=0?"#34d399":"#f87171",marginLeft:6}}>P&L: {fT(n)}</span>;
+                    })()}
+                    <button onClick={()=>closeWatchlistItem(item.id,closingPrice)} style={{background:"#16a34a",color:"#fff",border:"none",borderRadius:6,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer",marginLeft:"auto"}}>✓ Confirmar Cierre</button>
+                    <button onClick={()=>{setClosingId(null);setClosingPrice("");}} style={{background:"#1e293b",color:"#94a3b8",border:"1px solid #334155",borderRadius:6,padding:"6px 12px",fontSize:11,cursor:"pointer"}}>Cancelar</button>
+                  </div>
+                </td>
+              </tr>;
+            }
+            return <tr key={item.id} style={{borderBottom:"1px solid #1e293b",background:netoLive>=0?"#065f4608":"#7f1d1d08"}}>
+              <td style={{padding:"6px 8px",fontSize:10,color:"#94a3b8"}}>{fechaShort}</td>
+              <td style={{padding:"6px 8px",fontSize:13,fontWeight:700}}>{item.ticker} <span style={{fontSize:10,color:"#64748b"}}>{isBM?"🇦🇷":"🇺🇸"}</span></td>
+              <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums"}}>{item.cantidad.toLocaleString("es-AR")}</td>
+              <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums"}}>{fT2(item.precioCompra)}</td>
+              <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
+                {pAct>0?<>
+                  <div style={{fontSize:13,fontWeight:600,color:"#e2e8f0"}}>{fT2(pAct)}</div>
+                  {dayChg!=null&&<div style={{fontSize:9,color:dayChg>=0?"#34d399":"#f87171"}}>{dayChg>=0?"+":""}{dayChg.toFixed(2)}% día</div>}
+                </>:<span style={{fontSize:11,color:"#64748b"}}>cargando…</span>}
+              </td>
+              <td style={{padding:"6px 8px",textAlign:"right",fontSize:13,fontWeight:700,color:deltaPct==null?"#64748b":(deltaPct>=0?"#34d399":"#f87171")}}>{deltaPct==null?"—":(deltaPct>=0?"+":"")+deltaPct.toFixed(2)+"%"}</td>
+              <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,color:"#fbbf24",fontVariantNumeric:"tabular-nums"}}>{fT2(item.breakeven)}</td>
+              <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
+                {pAct>0?<div style={{fontSize:13,fontWeight:700,color:netoLive>=0?"#34d399":"#f87171"}}>{fT(netoLive)}</div>:<span style={{fontSize:11,color:"#64748b"}}>—</span>}
+              </td>
+              <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontWeight:600,color:rendPct==null?"#64748b":(rendPct>=0?"#34d399":"#f87171")}}>{rendPct==null?"—":rendPct.toFixed(2)+"%"}</td>
+              <td style={{padding:"6px 8px",fontSize:10}}>
+                <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                  {tAlert?<span style={{color:"#34d399"}}>⬆️ {fT2(tAlert.price)}</span>:<span style={{color:"#475569"}}>—</span>}
+                  {sAlert?<span style={{color:"#f87171"}}>⬇️ {fT2(sAlert.price)}</span>:<span style={{color:"#475569"}}>—</span>}
+                </div>
+              </td>
+              <td style={{padding:"6px 8px",textAlign:"right",whiteSpace:"nowrap"}}>
+                <button onClick={()=>{setClosingId(item.id);setClosingPrice(pAct>0?(isBM?String(Math.round(pAct*100)/100):pAct.toFixed(2)):"");}} style={{background:"#16a34a",color:"#fff",border:"none",borderRadius:5,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",marginRight:4}}>Cerrar</button>
+                <button onClick={()=>removeFromWatchlist(item.id)} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,padding:2}} title="Eliminar sin cerrar">✕</button>
+              </td>
+            </tr>;
+          })}</tbody>
+        </table>
+      </Card>;
+    })()}
 
     {/* ── Operaciones Intraday Guardadas ── */}
     {trades.length>0&&<Card title={`Operaciones Intraday (${trades.length})`} right={<div style={{display:"flex",gap:8,alignItems:"center"}}>
