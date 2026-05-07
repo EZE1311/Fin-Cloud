@@ -1041,7 +1041,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
             <td style={{padding:"8px 6px"}}><div style={{fontWeight:700,fontSize:13}}>{p.ticker}</div><div style={{fontSize:10,color:"#64748b"}}>{p.mercado}·{p.broker}</div></td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12}}>{fmt(p.cantidad)}</td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12}}>{fU(p.ppc)}</td>
-            <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600}}>{fU(p.precioActual)}</td>
+            <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600}} title={p.priceFallback?"⚠ Precio sin actualizar (priceARS o CCL no disponibles) — mostrando PPC. Reintentá Sync.":""}>{p.priceFallback?<span style={{color:"#fbbf24"}}>⚠ {fU(p.precioActual)}</span>:fU(p.precioActual)}</td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600,color:p.variacion>=0?"#34d399":"#f87171"}}><div>{fP(p.variacion)}</div><div style={{fontSize:10,fontWeight:500}}>{(()=>{const dm=p.montoActual*(p.variacion/100);return(dm>=0?"+":"")+fU(dm);})()}</div></td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12}}>{fU(p.montoInvertido)}</td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600}}>{fU(p.montoActual)}</td>
@@ -3468,10 +3468,20 @@ function App(){
   const enriched=useMemo(()=>pos.map(p=>{
     const l=prices[p.ticker]||{price:p.ppc,change:0};
     /* BM: precio = CEDEAR ARS / CCL → refleja valor real en tu broker.
-       Guarda CCL>0 para evitar fallback silencioso a 1 si la API de macro falla:
-       con CCL=1 las CEDEARs en ARS se verían ~1300x infladas. */
+       Si priceARS o CCL fallan, NO caer a l.price porque para CEDEARs grandes (MELI, ORCL, etc.)
+       l.price es el ADR subyacente en USD → patrimonio se ve ~16x inflado.
+       Mejor mantener PPC hasta que la data se recupere. */
     const ccl=macro.dolarCCL>0?macro.dolarCCL:null;
-    const precioUSD=(p.broker==="BM"&&l.priceARS&&ccl)?l.priceARS/ccl:l.price;
+    const isBM=p.broker==="BM";
+    let precioUSD;
+    let priceFallback=false;
+    if(isBM){
+      if(l.priceARS&&ccl)precioUSD=l.priceARS/ccl;
+      else{precioUSD=p.ppc;priceFallback=true;}
+    }else{
+      precioUSD=l.price||p.ppc;
+      if(!l.price)priceFallback=true;
+    }
     const varPct=(p.broker==="BM"&&l.changeARS!=null)?l.changeARS:l.change;
     const mi=p.cantidad*p.ppc;const ma=p.cantidad*precioUSD;const pl=ma-mi;const r=mi>0?(pl/mi)*100:0;
     const comCompra=calcComision(mi,p.broker,p.tipo);
@@ -3479,7 +3489,7 @@ function App(){
     const comTotal=comCompra+comVenta;
     const plNeto=pl-comTotal;
     const rendNeto=mi>0?((ma-comVenta-(mi+comCompra))/(mi+comCompra))*100:0;
-    return{...p,precioActual:precioUSD,variacion:varPct,montoInvertido:mi,montoActual:ma,pl,rendimiento:r,priceARS:l.priceARS||null,changeARS:l.changeARS||null,comCompra,comVenta,comTotal,plNeto,rendNeto};
+    return{...p,precioActual:precioUSD,variacion:varPct,montoInvertido:mi,montoActual:ma,pl,rendimiento:r,priceARS:l.priceARS||null,changeARS:l.changeARS||null,comCompra,comVenta,comTotal,plNeto,rendNeto,priceFallback};
   }),[pos,prices,macro]);
 
   const portfolioTotal=useMemo(()=>enriched.reduce((s,p)=>s+p.montoActual,0),[enriched]);
