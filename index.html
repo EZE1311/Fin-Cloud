@@ -2519,30 +2519,53 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
 
 /* ── POTENCIAL ──────────────────────────── */
 
-async function fetchHistorical(ticker,range){
+/* Cache local de datos históricos: TTL 1h. Los proxies CORS están flakeando
+   (allorigins timeoutea, codetabs rate-limited) → cache evita re-pegarles cada apertura. */
+const HIST_CACHE_KEY="hist_cache_v1";
+const HIST_CACHE_TTL=60*60*1000; /* 1h */
+function loadHistCache(){try{return JSON.parse(localStorage.getItem(HIST_CACHE_KEY)||"{}");}catch(e){return{};}}
+function saveHistCache(c){try{localStorage.setItem(HIST_CACHE_KEY,JSON.stringify(c));}catch(e){}}
+
+async function fetchHistorical(ticker,range,opts={}){
   const sym=yfSym(ticker);
+  const cacheKey=`${ticker}|${range}`;
+  /* 1) Cache hit fresco → devolver inmediato */
+  if(!opts.bypassCache){
+    const cache=loadHistCache();
+    const hit=cache[cacheKey];
+    if(hit&&Date.now()-hit.ts<HIST_CACHE_TTL){return hit.data;}
+  }
   /* interval: 1wk for 1y/5y, 1mo for 10y to keep data manageable */
   const interval=range==="10y"?"1mo":"1wk";
   const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=${interval}&includePrePost=false`;
-  try{
-    /* Yahoo no tiene CORS-allow-all → fetchJSONWithProxies valida JSON y salta al
-       próximo proxy si alguno devuelve "Too Many Requests" como texto. */
-    const data=await fetchJSONWithProxies(url);
-    const result=data?.chart?.result?.[0];
-    if(!result)return null;
-    const ts=result.timestamp||[];
-    const closes=result.indicators?.quote?.[0]?.close||[];
-    const currency=result.meta?.currency||"USD";
-    const currentPrice=result.meta?.regularMarketPrice||0;
-    /* Build array of {date, close} filtering nulls */
-    const points=[];
-    for(let i=0;i<ts.length;i++){
-      if(closes[i]!=null&&closes[i]>0){
-        points.push({date:new Date(ts[i]*1000).toISOString().slice(0,10),close:closes[i]});
+  /* 2) Hasta 2 reintentos con backoff (allorigins a veces se cae por 5-10s) */
+  for(let attempt=0;attempt<3;attempt++){
+    try{
+      const data=await fetchJSONWithProxies(url);
+      const result=data?.chart?.result?.[0];
+      if(!result){if(attempt<2){await new Promise(r=>setTimeout(r,800*(attempt+1)));continue;}return null;}
+      const ts=result.timestamp||[];
+      const closes=result.indicators?.quote?.[0]?.close||[];
+      const currency=result.meta?.currency||"USD";
+      const currentPrice=result.meta?.regularMarketPrice||0;
+      const points=[];
+      for(let i=0;i<ts.length;i++){
+        if(closes[i]!=null&&closes[i]>0){
+          points.push({date:new Date(ts[i]*1000).toISOString().slice(0,10),close:closes[i]});
+        }
       }
+      const out={sym,ticker,currency,currentPrice,points};
+      /* Guardar en cache */
+      const cache=loadHistCache();
+      cache[cacheKey]={ts:Date.now(),data:out};
+      saveHistCache(cache);
+      return out;
+    }catch(e){
+      console.warn(`fetchHistorical attempt ${attempt+1} failed for ${ticker}:`,e?.message||e);
+      if(attempt<2)await new Promise(r=>setTimeout(r,1000*(attempt+1)));
     }
-    return{sym,ticker,currency,currentPrice,points};
-  }catch(e){console.warn("fetchHistorical error:",ticker,e);return null;}
+  }
+  return null;
 }
 
 function Potencial({pos,prices,macro}){
@@ -2550,6 +2573,7 @@ function Potencial({pos,prices,macro}){
   const [histData,setHistData]=useState({});
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState(null);
+  const [progress,setProgress]=useState({done:0,total:0,failed:[]});
   const mep=macro.dolarMEP||1;
 
   const fARS=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:0,maximumFractionDigits:0}).format(n)}`;
@@ -2559,19 +2583,31 @@ function Potencial({pos,prices,macro}){
   /* Tickers from portfolio (only those with open positions) */
   const tickers=useMemo(()=>pos.filter(p=>p.cantidad>0).map(p=>p.ticker),[pos]);
 
-  /* Fetch on range or tickers change */
+  /* Fetch on range or tickers change. Secuencial con delay 400ms para no saturar
+     proxies CORS (allorigins/codetabs son volátiles). Cache 1h reduce re-fetches. */
   useEffect(()=>{
     if(tickers.length===0)return;
     let cancelled=false;
-    setLoading(true);setError(null);
-    Promise.all(tickers.map(t=>fetchHistorical(t,range))).then(results=>{
-      if(cancelled)return;
+    (async()=>{
+      setLoading(true);setError(null);
       const map={};
-      results.forEach((r,i)=>{if(r)map[tickers[i]]=r;});
+      const failed=[];
+      setProgress({done:0,total:tickers.length,failed:[]});
+      for(let i=0;i<tickers.length;i++){
+        if(cancelled)return;
+        const t=tickers[i];
+        const r=await fetchHistorical(t,range);
+        if(cancelled)return;
+        if(r)map[t]=r; else failed.push(t);
+        setProgress({done:i+1,total:tickers.length,failed:[...failed]});
+        /* Pausa 400ms entre requests para no rate-limitear el proxy */
+        if(i<tickers.length-1)await new Promise(rs=>setTimeout(rs,400));
+      }
+      if(cancelled)return;
       setHistData(map);
       if(Object.keys(map).length===0)setError("No se pudieron obtener datos históricos");
       setLoading(false);
-    }).catch(e=>{if(!cancelled){setError("Error al cargar datos");setLoading(false);}});
+    })();
     return()=>{cancelled=true;};
   },[tickers.join(","),range]);
 
@@ -2634,7 +2670,13 @@ function Potencial({pos,prices,macro}){
       </div>
     </div>
 
-    {loading&&<div style={{textAlign:"center",padding:40,color:"#f59e0b",fontSize:14}}>Cargando datos históricos de {tickers.length} activos...</div>}
+    {loading&&<div style={{textAlign:"center",padding:40,color:"#f59e0b",fontSize:14}}>
+      Cargando datos históricos · {progress.done} de {progress.total}
+      {progress.failed.length>0&&<div style={{fontSize:11,color:"#f43f5e",marginTop:6}}>Fallaron: {progress.failed.join(", ")} (proxy CORS volátil — los reintentos pueden recuperarlos)</div>}
+    </div>}
+    {!loading&&progress.failed.length>0&&Object.keys(histData).length>0&&<div style={{textAlign:"center",padding:"10px 14px",color:"#f59e0b",fontSize:12,background:"#f59e0b15",border:"1px solid #f59e0b35",borderRadius:10,marginBottom:8}}>
+      ⚠ {progress.failed.length} ticker{progress.failed.length>1?"s":""} sin datos históricos: <b>{progress.failed.join(", ")}</b>. Reintentá cambiando de rango o esperá unos minutos (proxy CORS está intermitente).
+    </div>}
     {error&&!loading&&<div style={{textAlign:"center",padding:40,color:"#f43f5e",fontSize:14}}>{error}</div>}
 
     {/* Portfolio Summary Cards */}
