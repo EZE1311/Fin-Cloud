@@ -1850,21 +1850,38 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
 
   /* Comisiones según mercado */
   const isBYMA=mercado==="BYMA";
-  /* BM Active Trader Plus (BYMA) */
-  const comPctBM=0.0010;   /* 0.10% broker */
-  const derPctBM=0.0007;   /* 0.07% der mercado */
-  const intraPctBM=0.0005; /* 0.05% intra venta */
-  /* Allaria/CS (NYSE) — comisiones más bajas, sin der mercado local ni intra */
-  const comPctAT=0.0060;   /* 0.60% all-in approx */
-  const derPctAT=0;
-  const intraPctAT=0;
-
-  const comPct=isBYMA?comPctBM:comPctAT;
-  const derPct=isBYMA?derPctBM:derPctAT;
-  const intraPct=isBYMA?intraPctBM:intraPctAT;
-  const ivaMult=(isBYMA&&!exento)?1.21:1; /* NYSE no paga IVA; BYMA bonos/letras/ONs exentos */
   const moneda=isBYMA?"ARS":"USD";
   const monedaSym=isBYMA?"$":"USD ";
+
+  /* ── Helpers de tarifa ──
+     BYMA = Bull Market Active Trader Plus (Marzo 2025)
+       · Acciones/CEDEARs: 0,10% comisión + 0,080% der. mercado (normal) / 0,05% + 0,055% (intra)
+       · Bonos/ONs:        0,10% comisión + 0,010% der. mercado (intra solo bonifica comisión a 0,05%)
+       · Letras del Tesoro:0,10% comisión + 0,001% der. mercado (NO aplica bonificación intra)
+       · IVA 21% sobre comisión + der. mercado, EXCEPTO bonos/letras/ONs (exentos).
+       · "Intra" = compra Y venta el mismo día → AMBAS patas se bonifican.
+         Si carriás overnight, las dos patas pasan a tarifa normal.
+     NYSE = Allaria/CS — 0,60% all-in approx, sin distinción intra ni IVA. */
+  const calcFeesBYMA=(tipo,isIntra)=>{
+    const isFixed=tipo==="Bono"||tipo==="Letra"||tipo==="ON";
+    const intraApplies=isIntra&&tipo!=="Letra"; /* Letras no aplican intra */
+    const comPct=intraApplies?0.0005:0.0010;
+    let derPct;
+    if(tipo==="Letra")derPct=0.00001;
+    else if(isFixed)derPct=0.00010;
+    else derPct=intraApplies?0.00055:0.00080;
+    const ivaMult=isFixed?1:1.21;
+    return{comPct,derPct,ivaMult,factor:(comPct+derPct)*ivaMult,intraApplies};
+  };
+  const calcFeesNYSE=(_isIntra)=>({comPct:0.0060,derPct:0,ivaMult:1,factor:0.0060,intraApplies:false});
+  const calcFees=(mkt,tipo,isIntra)=>mkt==="BYMA"?calcFeesBYMA(tipo,isIntra):calcFeesNYSE(isIntra);
+
+  /* Para el form: asumimos intra (lo más optimista; si carriás, las fees suben). */
+  const formFees=calcFees(mercado,tipoActivo,true);
+  const formFeesNonIntra=calcFees(mercado,tipoActivo,false);
+  const comPct=formFees.comPct;
+  const derPct=formFees.derPct;
+  const ivaMult=formFees.ivaMult;
 
   /* On-demand price fetch for tickers not in portfolio */
   const [tradingPrice,setTradingPrice]=useState(null);
@@ -1945,12 +1962,14 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
   const montoCompra=cant*pc;
   const mep=macro.dolarMEP||1;
 
-  /* Comisiones de compra (la venta se calcula al cerrar la posición en el watchlist) */
-  const comCompra=montoCompra*(comPct+derPct)*ivaMult;
+  /* Comisiones de compra (asumiendo intra; si carriás overnight la fee real es la normal). */
+  const comCompra=montoCompra*formFees.factor;
+  const comCompraOvernight=montoCompra*formFeesNonIntra.factor;
 
-  /* Breakeven */
-  const ventaFactor=(comPct+derPct+intraPct)*ivaMult;
+  /* Breakeven (intra) — se calcula con la misma factor en ambas patas */
+  const ventaFactor=formFees.factor;
   const breakeven=cant>0?(montoCompra+comCompra)/(cant*(1-ventaFactor)):0;
+  const breakevenOvernight=cant>0?(montoCompra+comCompraOvernight)/(cant*(1-formFeesNonIntra.factor)):0;
 
   /* Auto-alert prices: solve for pv where neto = +/- alertPL */
   const alertPL=isBYMA?1000000:1000; /* $1M ARS or USD 1000 */
@@ -1968,11 +1987,11 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
     }
   },[cant,pc,isBYMA]);
 
-  /* Scenarios */
+  /* Scenarios — asume cierre intra (mismo día) */
   const scenarios=pc>0?[-3,-2,-1,-0.5,0.5,1,2,3].map(pct=>{
     const pvS=pc*(1+pct/100);
     const mvS=cant*pvS;
-    const cvS=mvS*(comPct+derPct+intraPct)*ivaMult;
+    const cvS=mvS*formFees.factor;
     const netoS=mvS-montoCompra-comCompra-cvS;
     return{pct,pv:pvS,neto:netoS};
   }):[];
@@ -1989,27 +2008,29 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
   const [closingPrice,setClosingPrice]=useState("");
 
   /* Helper único para calcular fees de una posición del watchlist.
-     Si la posición está carriada (no es intraday), el "intra venta" desaparece y el breakeven baja. */
+     Si la posición está carriada (overnight), AMBAS patas (compra y venta) usan tarifa normal,
+     no la intra. Las fees suben → el breakeven sube. */
   const calcRowFees=(item)=>{
-    const isBM=item.mercado==="BYMA";
-    const _comPct=isBM?0.0010:0.0060;
-    const _derPct=isBM?0.0007:0;
-    const _intraBase=isBM?0.0005:0;
-    const _ivaMult=(isBM&&!item.exento)?1.21:1;
-    /* "Carriada" = la fecha de apertura no es hoy en hora local del usuario */
     const todayLocal=new Date().toLocaleDateString("en-CA");
     const aperturaLocal=item.fechaApertura?new Date(item.fechaApertura).toLocaleDateString("en-CA"):todayLocal;
     const isCarriedOver=aperturaLocal!==todayLocal;
-    const _intraPct=isCarriedOver?0:_intraBase;
-    const ventaFactor=(_comPct+_derPct+_intraPct)*_ivaMult;
-    const breakevenDyn=item.cantidad>0?(item.montoCompra+item.comCompra)/(item.cantidad*(1-ventaFactor)):0;
-    /* Días de carry para badge */
+    const isIntraNow=!isCarriedOver;
+    /* Legacy: items viejos guardaban exento pero no tipo. Si exento, asumimos Bono. */
+    const tipoForFees=item.tipo||(item.exento?"Bono":"");
+    const fees=calcFees(item.mercado,tipoForFees,isIntraNow);
+    const feesIntra=calcFees(item.mercado,tipoForFees,true);
+    /* Comisión de compra dinámica: si está intra, paga intra; si carrió, paga normal */
+    const comCompra=item.montoCompra*fees.factor;
+    const comCompraIfIntra=item.montoCompra*feesIntra.factor;
+    const ventaFactor=fees.factor;
+    const breakeven=item.cantidad>0?(item.montoCompra+comCompra)/(item.cantidad*(1-ventaFactor)):0;
+    const breakevenIfIntra=item.cantidad>0?(item.montoCompra+comCompraIfIntra)/(item.cantidad*(1-feesIntra.factor)):0;
     let daysCarried=0;
     if(isCarriedOver){
       const a=new Date(aperturaLocal),t=new Date(todayLocal);
       daysCarried=Math.max(1,Math.round((t-a)/(86400000)));
     }
-    return{ventaFactor,breakeven:breakevenDyn,isCarriedOver,daysCarried,ivaMult:_ivaMult};
+    return{ventaFactor,breakeven,breakevenIfIntra,comCompra,isCarriedOver,daysCarried,fees,feesIntra};
   };
 
   /* Autofill del precio de cierre: si el precio aún no llegó al hacer click en Cerrar,
@@ -2072,7 +2093,9 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
   const addToWatchlist=()=>{
     if(!canAdd)return;
     const groupId=Date.now();
-    const item={id:groupId,fechaApertura:new Date().toISOString(),ticker,mercado,cantidad:cant,precioCompra:pc,montoCompra,comCompra,breakeven,exento,moneda,mep,alertGroupId:groupId};
+    /* Guardamos solo data primaria. comCompra y breakeven se recalculan dinámicamente
+       según si la posición sigue intraday o ya carrió overnight. */
+    const item={id:groupId,fechaApertura:new Date().toISOString(),ticker,mercado,cantidad:cant,precioCompra:pc,montoCompra,tipo:tipoActivo||"",exento,moneda,mep,alertGroupId:groupId};
     setWatchlist(prev=>[item,...prev]);
     /* Auto-crear alertas si target/stop ya están escritos */
     const tParsed=parseNum(inlineTarget);
@@ -2096,10 +2119,10 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
     const fees=calcRowFees(w);
     const montoVenta2=w.cantidad*pv2;
     const comVenta2=montoVenta2*fees.ventaFactor;
-    const totalGastos2=w.comCompra+comVenta2;
+    const totalGastos2=fees.comCompra+comVenta2;
     const bruto2=montoVenta2-w.montoCompra;
     const neto2=bruto2-totalGastos2;
-    const trade={id:Date.now(),fecha:new Date().toISOString().slice(0,10),ticker:w.ticker,mercado:w.mercado,cantidad:w.cantidad,precioCompra:w.precioCompra,precioVenta:pv2,montoCompra:w.montoCompra,montoVenta:montoVenta2,comCompra:w.comCompra,comVenta:comVenta2,totalGastos:totalGastos2,bruto:bruto2,neto:neto2,breakeven:fees.breakeven,exento:w.exento,moneda:w.moneda,mep:w.mep,fromWatchlist:true,fechaApertura:w.fechaApertura,carriedOver:fees.isCarriedOver,daysCarried:fees.daysCarried};
+    const trade={id:Date.now(),fecha:new Date().toISOString().slice(0,10),ticker:w.ticker,mercado:w.mercado,cantidad:w.cantidad,precioCompra:w.precioCompra,precioVenta:pv2,montoCompra:w.montoCompra,montoVenta:montoVenta2,comCompra:fees.comCompra,comVenta:comVenta2,totalGastos:totalGastos2,bruto:bruto2,neto:neto2,breakeven:fees.breakeven,exento:w.exento,moneda:w.moneda,mep:w.mep,fromWatchlist:true,fechaApertura:w.fechaApertura,carriedOver:fees.isCarriedOver,daysCarried:fees.daysCarried,tipo:w.tipo};
     setTrades(prev=>[trade,...prev]);
     setWatchlist(prev=>prev.filter(x=>x.id!==id));
     setClosingId(null);setClosingPrice("");
@@ -2196,23 +2219,25 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
       })()}
     </Card>
 
-    {/* Breakeven destacado */}
+    {/* Breakeven destacado — muestra ambos escenarios para que el user vea el costo real de carriar */}
     {pc>0&&cant>0&&<div style={{background:"linear-gradient(135deg,#1a1f2e 0%,#0f172a 100%)",border:"1px solid #334155",borderRadius:12,padding:"20px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:14}}>
       <div style={{display:"flex",alignItems:"center",gap:16}}>
         <div style={{background:"#111827",borderRadius:10,padding:"12px 16px",border:"1px solid #252d3d",textAlign:"center",minWidth:150}}>
           <div style={{fontSize:28,fontWeight:800,color:"#fbbf24",fontVariantNumeric:"tabular-nums",lineHeight:1}}>{fM2(breakeven)}</div>
-          <div style={{fontSize:10,color:"#64748b",marginTop:4}}>por acción</div>
+          <div style={{fontSize:10,color:"#34d399",marginTop:4,fontWeight:600}}>intra · por acción</div>
         </div>
         <div>
           <h3 style={{margin:0,fontSize:15,fontWeight:700,color:"#e2e8f0"}}>Precio Breakeven</h3>
           <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>Vendé a este precio o más para no perder plata</div>
-          <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Spread: {fM2(breakeven-pc)} ({fPct((breakeven-pc)/pc*100,3)}) sobre compra</div>
+          <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Spread intra: {fM2(breakeven-pc)} ({fPct((breakeven-pc)/pc*100,3)}) sobre compra</div>
+          {isBYMA&&breakevenOvernight!==breakeven&&<div style={{fontSize:11,color:"#a78bfa",marginTop:6}}>📅 Si carriás overnight → BE sube a <b>{fM2(breakevenOvernight)}</b> ({fPct((breakevenOvernight-pc)/pc*100,3)})</div>}
         </div>
       </div>
       <div style={{textAlign:"right"}}>
         <div style={{fontSize:11,color:"#64748b"}}>Monto Compra</div>
         <div style={{fontSize:16,fontWeight:700,color:"#e2e8f0",fontVariantNumeric:"tabular-nums"}}>{fM(montoCompra)}</div>
-        <div style={{fontSize:10,color:"#fbbf24",marginTop:2}}>+ {fM2(comCompra)} gastos</div>
+        <div style={{fontSize:10,color:"#fbbf24",marginTop:2}}>+ {fM2(comCompra)} gastos intra</div>
+        {isBYMA&&comCompraOvernight!==comCompra&&<div style={{fontSize:10,color:"#a78bfa",marginTop:1}}>(overnight: + {fM2(comCompraOvernight)})</div>}
         <div style={{fontSize:10,color:"#60a5fa",marginTop:2}}>{fAlt(montoCompra)} ({fAltLabel})</div>
       </div>
     </div>}
@@ -2225,7 +2250,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
         </tr></thead>
         <tbody>{scenarios.map(s=>{
           const mvS=cant*s.pv;
-          const cvS=mvS*(comPct+derPct+intraPct)*ivaMult;
+          const cvS=mvS*formFees.factor;
           const gastosTotal=comCompra+cvS;
           return<tr key={s.pct} style={{borderBottom:"1px solid #1e293b",background:s.neto>=0?"#065f4608":"#7f1d1d08"}}>
             <td style={{padding:"8px 10px",fontWeight:700,fontSize:13,color:s.pct>=0?"#34d399":"#f87171"}}>{s.pct>0?"+":""}{s.pct}%</td>
@@ -2250,7 +2275,8 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
         return{fT,fT2,fTalt,isBM};
       };
 
-      /* Live P&L per row using current price + fees actualizados (intra/overnight) */
+      /* Live P&L per row using current price + fees actualizados (intra/overnight).
+         Si la posición carrió, AMBAS patas (compra y venta) usan tarifa normal. */
       const rowsLive=watchlist.map(item=>{
         const isBM=item.mercado==="BYMA";
         const fees=calcRowFees(item);
@@ -2258,7 +2284,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
         const pAct=isBM?(pd?.priceARS||0):(pd?.price||0);
         const montoVentaLive=item.cantidad*pAct;
         const comVentaLive=montoVentaLive*fees.ventaFactor;
-        const netoLive=montoVentaLive-item.montoCompra-item.comCompra-comVentaLive;
+        const netoLive=montoVentaLive-item.montoCompra-fees.comCompra-comVentaLive;
         const rendPct=item.montoCompra>0&&pAct>0?(netoLive/item.montoCompra*100):null;
         return{item,pAct,netoLive,rendPct,fees};
       });
@@ -2324,9 +2350,9 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
               <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
                 {pAct>0?<div style={{fontSize:13,fontWeight:600,color:"#e2e8f0"}}>{fT2(pAct)}</div>:<span style={{fontSize:11,color:"#64748b"}}>cargando…</span>}
               </td>
-              <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}} title={fees.isCarriedOver?`Breakeven actualizado sin comisión intra venta (posición carriada ${fees.daysCarried}d). Original: ${fT2(item.breakeven)}`:"Breakeven con fee intra venta"}>
+              <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}} title={fees.isCarriedOver?`Posición carriada ${fees.daysCarried}d → ambas patas pagan tarifa normal (no intra). El breakeven sube. Si hubieras cerrado intra: ${fT2(fees.breakevenIfIntra)}`:"Breakeven con tarifa intra (compra y venta el mismo día)"}>
                 <div style={{fontSize:12,color:"#fbbf24",fontWeight:600}}>{fT2(fees.breakeven)}</div>
-                {fees.isCarriedOver&&item.breakeven&&<div style={{fontSize:9,color:"#64748b",textDecoration:"line-through"}}>{fT2(item.breakeven)}</div>}
+                {fees.isCarriedOver&&<div style={{fontSize:9,color:"#a78bfa",marginTop:2}} title="Si hubieras cerrado mismo día">vs intra: {fT2(fees.breakevenIfIntra)}</div>}
               </td>
               <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
                 {pAct>0?<div style={{fontSize:13,fontWeight:700,color:netoLive>=0?"#34d399":"#f87171"}}>{fT(netoLive)}</div>:<span style={{fontSize:11,color:"#64748b"}}>—</span>}
@@ -2425,7 +2451,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
       </table>
     </Card>}
 
-    <div style={{fontSize:9,color:"#475569",fontStyle:"italic",textAlign:"center"}}>{isBYMA?"Comisión 0,10% + Der. Mercado 0,07% + Intra Venta 0,05% · IVA 21% (Bonos/Letras/ONs exentos) · Fuente: Tarifario BM Marzo 2025 + BYMA":"Comisión 0,60% all-in · Sin IVA · Fuente: Allaria (CS)"} · Equivalencias a MEP ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(mep)}</div>
+    <div style={{fontSize:9,color:"#475569",fontStyle:"italic",textAlign:"center"}}>{isBYMA?"BM Active Trader Plus · Acciones/CEDEARs: 0,10% + 0,080% normal | 0,05% + 0,055% intra (bonificación 50% si compra y venta mismo día) · IVA 21% (Bonos/Letras/ONs exentos) · Fuente: Tarifario BM Marzo 2025":"Comisión 0,60% all-in · Sin IVA · Fuente: Allaria (CS)"} · Equivalencias a MEP ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(mep)}</div>
   </div>;
 }
 
