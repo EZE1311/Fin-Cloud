@@ -342,8 +342,34 @@ const D912_USA_ALIAS={YPFD:"YPF"};
 /* Resolver símbolo: usa el alias si existe, sino el ticker tal cual */
 const d912Sym=(ticker,aliases={})=>aliases[ticker.toUpperCase()]||ticker.toUpperCase();
 
-/* Proxy CORS para APIs que no permiten fetch directo del browser */
-const PROXY="https://api.allorigins.win/raw?url=";
+/* Proxy CORS para APIs que no permiten fetch directo del browser.
+   Mantenemos cadena de fallbacks porque proxies públicos van y vienen.
+   Verificado 2026-05-07: allorigins caído (502/520), corsproxy.io bloqueado (403),
+   codetabs OK. Si todos fallan, el ticker queda con ⚠ price fallback. */
+const PROXIES=[
+  "https://api.codetabs.com/v1/proxy?quest=",
+  "https://api.allorigins.win/raw?url=",
+];
+/* Compat: PROXY legacy apunta al primer proxy de la cadena */
+const PROXY=PROXIES[0];
+
+/* fetchWithProxies(url) — intenta directo, después cada proxy en orden.
+   Devuelve el Response. Lanza si todos fallan. */
+async function fetchWithProxies(url,opts={}){
+  /* 1) Directo (funciona cuando la API tiene CORS *) */
+  try{
+    const r=await fetch(url,opts);
+    if(r&&r.ok)return r;
+  }catch(e){}
+  /* 2) Cadena de proxies */
+  for(const p of PROXIES){
+    try{
+      const r=await fetch(p+encodeURIComponent(url),opts);
+      if(r&&r.ok)return r;
+    }catch(e){}
+  }
+  throw new Error("All proxies failed for "+url);
+}
 
 async function fetchMacroReal(){
   try{
@@ -467,7 +493,7 @@ async function fetchMacroReal(){
     try{
       const chartIdx=async(sym)=>{
         const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=1d&interval=1d`;
-        let r;try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+        let r;try{r=await fetchWithProxies(url);}catch(e){r=null;}
         if(r&&r.ok){const j=await r.json();const m=j.chart?.result?.[0]?.meta;if(m){const p=m.regularMarketPrice,prev=m.chartPreviousClose||m.previousClose;return prev?((p-prev)/prev*100):0;}}
         return 0;
       };
@@ -488,10 +514,9 @@ async function fetchPricesReal(tickers){
     /* Fetch data912 endpoints en paralelo: CEDEARs ARS + acciones ARG + acciones USA */
     const fetchD912=async(endpoint)=>{
       try{
-        let r;
-        try{r=await fetch(DATA912_BASE+"/"+endpoint);}catch(e){r=await fetch(PROXY+encodeURIComponent(DATA912_BASE+"/"+endpoint));}
+        const r=await fetchWithProxies(DATA912_BASE+"/"+endpoint);
         return await r.json();
-      }catch(e){return[];}
+      }catch(e){console.warn("data912 fetch failed:",endpoint,e);return[];}
     };
     const [cedears,argStocks,argBonds,usaStocks]=await Promise.all([
       fetchD912("arg_cedears"),
@@ -547,7 +572,8 @@ async function fetchPricesReal(tickers){
         const sym=d912Sym(ticker,D912_USA_ALIAS);
         try{
           const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=5d&interval=1d`;
-          let r;try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+          /* Yahoo no tiene CORS-allow-all → siempre via proxy (la fn maneja reintentos) */
+          const r=await fetchWithProxies(url);
           if(r&&r.ok){
             const j=await r.json();
             const meta=j.chart?.result?.[0]?.meta;
@@ -559,7 +585,7 @@ async function fetchPricesReal(tickers){
               return{ticker,price:isArg?0:price,change:isArg?0:change,prev:isArg?0:prev,priceARS:isArg?price:null,changeARS:isArg?change:null,d912:{isCedear:false,isArgStock:isArg,isBond:false,isUsaStock:!isArg}};
             }
           }
-        }catch(e){}
+        }catch(e){console.warn("Yahoo chart fetch failed:",ticker,e);}
         return null;
       };
       try{
@@ -1905,7 +1931,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
     setTradingPriceLoading(true);
     fetchTimerRef.current=setTimeout(async()=>{
       try{
-        const fetchD912=async(ep)=>{try{let r;try{r=await fetch(DATA912_BASE+"/"+ep)}catch(e){r=await fetch(PROXY+encodeURIComponent(DATA912_BASE+"/"+ep))}return await r.json()}catch(e){return[]}};
+        const fetchD912=async(ep)=>{try{const r=await fetchWithProxies(DATA912_BASE+"/"+ep);return await r.json()}catch(e){return[]}};
         const [cedears,argStocks,argBonds,usaStocks]=await Promise.all([fetchD912("arg_cedears"),fetchD912("arg_stocks"),fetchD912("arg_bonds"),fetchD912("usa_stocks")]);
         const find=(arr)=>(arr||[]).find(x=>(x.symbol||"").toUpperCase()===ticker);
         const hit=find(cedears)||find(argStocks)||find(argBonds)||find(usaStocks);
@@ -1918,7 +1944,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
         /* BKUCF: ticker OTC directo (igual que TradingView) */
         try{
           const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d`;
-          let r;try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+          let r;try{r=await fetchWithProxies(url);}catch(e){r=null;}
           if(r&&r.ok){
             const j=await r.json();const meta=j.chart?.result?.[0]?.meta;
             if(meta&&meta.regularMarketPrice){
@@ -2054,7 +2080,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
     const need=[...new Set(watchlist.map(w=>w.ticker))].filter(t=>!prices[t]);
     if(need.length===0){setWatchlistPrices({});return;}
     let cancelled=false;
-    const fetchD912=async(ep)=>{try{let r;try{r=await fetch(DATA912_BASE+"/"+ep)}catch(e){r=await fetch(PROXY+encodeURIComponent(DATA912_BASE+"/"+ep))}return await r.json()}catch(e){return[]}};
+    const fetchD912=async(ep)=>{try{const r=await fetchWithProxies(DATA912_BASE+"/"+ep);return await r.json()}catch(e){return[]}};
     const fetchOne=async(tk)=>{
       try{
         const [cedears,argStocks,argBonds,usaStocks]=await Promise.all([fetchD912("arg_cedears"),fetchD912("arg_stocks"),fetchD912("arg_bonds"),fetchD912("usa_stocks")]);
@@ -2065,7 +2091,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
           return[tk,{priceARS:isArg?hit.c:null,price:isArg?0:hit.c,changeARS:isArg?(hit.pct_change||0):null,change:isArg?0:(hit.pct_change||0)}];
         }
         const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(tk)}?range=5d&interval=1d`;
-        let r;try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+        let r;try{r=await fetchWithProxies(url);}catch(e){r=null;}
         if(r&&r.ok){
           const j=await r.json();const meta=j.chart?.result?.[0]?.meta;
           if(meta&&meta.regularMarketPrice){
