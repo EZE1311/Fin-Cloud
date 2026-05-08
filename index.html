@@ -18,10 +18,10 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html{font-size:16px;-webkit-text-size-adjust:100%}
 body{background:#08090d;color:#e6edf3;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow-x:hidden;font-feature-settings:"cv11","ss01";-webkit-font-smoothing:antialiased}
-body::before{content:"";position:fixed;inset:0;background:radial-gradient(900px 600px at 5% -5%,#6366f114,transparent 60%),radial-gradient(900px 700px at 95% 105%,#ec489910,transparent 60%);pointer-events:none;z-index:-1}
+body::before{content:"";position:fixed;inset:0;background:radial-gradient(900px 600px at 5% -5%,#8B153814,transparent 60%),radial-gradient(900px 700px at 95% 105%,#ec489910,transparent 60%);pointer-events:none;z-index:-1}
 input,select,button{font-family:inherit}
 input,select{background:#1a1d27;border:1px solid #2a2f3f;color:#e6edf3;border-radius:10px;padding:8px 12px;font-size:14px;outline:none;-webkit-appearance:none;transition:border-color .15s, box-shadow .15s}
-input:focus,select:focus{border-color:#6366f1;box-shadow:0 0 0 3px #6366f120}
+input:focus,select:focus{border-color:#8B1538;box-shadow:0 0 0 3px #8B153820}
 input::placeholder{color:#4d5365}
 input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.7);cursor:pointer}
 ::-webkit-scrollbar{width:8px;height:8px}
@@ -144,9 +144,9 @@ function HBarChart({data,height:h2=220}){
 }
 
 /* ── data ─────────────────────────────────── */
-const COLORS=["#6366f1","#10b981","#d97706","#dc2626","#7c3aed","#0891b2","#be185d","#65a30d","#ea580c","#4f46e5"];
-const SC_KNOWN={"Energía":"#f59e0b","Petróleo":"#78716c","Tecnología":"#3b82f6","Fintech":"#8b5cf6","Automotriz":"#ef4444","Salud":"#10b981","Renta Fija":"#6366f1","Uranio":"#22c55e","Inmobiliario":"#f97316","Real Estate":"#a78bfa","Comunicación":"#06b6d4","Finanzas":"#a855f7","Consumo":"#f97316","Industrial":"#84cc16","Materiales":"#d97706","Servicios Públicos":"#eab308","Sin clasificar":"#7a8497"};
-const SC_AUTO_COLORS=["#0ea5e9","#d946ef","#f43f5e","#14b8a6","#fb923c","#a3e635","#818cf8","#f59e0b","#2dd4bf","#c084fc"];
+const COLORS=["#8B1538","#10b981","#d97706","#dc2626","#6B0F2A","#0891b2","#be185d","#65a30d","#ea580c","#6B0F2A"];
+const SC_KNOWN={"Energía":"#f59e0b","Petróleo":"#78716c","Tecnología":"#3b82f6","Fintech":"#4A0E1A","Automotriz":"#ef4444","Salud":"#10b981","Renta Fija":"#8B1538","Uranio":"#22c55e","Inmobiliario":"#f97316","Real Estate":"#A52447","Comunicación":"#06b6d4","Finanzas":"#a855f7","Consumo":"#f97316","Industrial":"#84cc16","Materiales":"#d97706","Servicios Públicos":"#eab308","Sin clasificar":"#7a8497"};
+const SC_AUTO_COLORS=["#0ea5e9","#d946ef","#f43f5e","#14b8a6","#fb923c","#a3e635","#336699","#f59e0b","#2dd4bf","#c084fc"];
 let scAutoIdx=0;
 function sectorColor(name){if(SC_KNOWN[name])return SC_KNOWN[name];const c=SC_AUTO_COLORS[scAutoIdx%SC_AUTO_COLORS.length];scAutoIdx++;SC_KNOWN[name]=c;return c;}
 
@@ -168,7 +168,7 @@ async function fetchProfileYahoo(symbol){
     const url=`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=assetProfile,price`;
     try{
       let r;
-      try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+      try{r=await fetchWithProxies(url);}catch(e){r=null;}
       if(!r||!r.ok)continue;
       const data=await r.json();
       const res=data?.quoteSummary?.result?.[0];
@@ -355,47 +355,72 @@ const PROXIES=[
   "https://api.codetabs.com/v1/proxy?quest=",
   "https://api.allorigins.win/raw?url=",
 ];
-/* Compat: PROXY legacy apunta al primer proxy de la cadena */
+/* @deprecated — usar fetchWithProxies/fetchJSONWithProxies en lugar de PROXY directo.
+   Se mantiene declarado para compat backward (scripts externos que pudieran depender). */
 const PROXY=PROXIES[0];
 
+/* Timeout default para todos los fetches via proxy. Si un proxy queda hung,
+   el browser default es ~30s+. Con 10s saltamos al próximo más rápido. */
+const FETCH_TIMEOUT_MS=10000;
+
+/* fetchWithTimeout — wrapper sobre fetch con AbortController.
+   Si timeout, throw específico (timeout) en lugar de quedar colgado. */
+async function fetchWithTimeout(url,opts={},timeoutMs=FETCH_TIMEOUT_MS){
+  const ctrl=new AbortController();
+  const tid=setTimeout(()=>ctrl.abort(),timeoutMs);
+  try{
+    const r=await fetch(url,{...opts,signal:ctrl.signal});
+    return r;
+  }finally{clearTimeout(tid);}
+}
+
 /* fetchWithProxies(url) — intenta directo, después cada proxy en orden.
-   Devuelve el Response. Lanza si todos fallan. */
+   Cada intento con timeout 10s. Devuelve el Response. Lanza si todos fallan. */
 async function fetchWithProxies(url,opts={}){
+  const errors=[];
   /* 1) Directo (funciona cuando la API tiene CORS *) */
   try{
-    const r=await fetch(url,opts);
+    const r=await fetchWithTimeout(url,opts);
     if(r&&r.ok)return r;
-  }catch(e){}
+    errors.push(`direct:${r?.status||"no-response"}`);
+  }catch(e){errors.push(`direct:${e?.name||e?.message||"err"}`);}
   /* 2) Cadena de proxies */
   for(const p of PROXIES){
     try{
-      const r=await fetch(p+encodeURIComponent(url),opts);
+      const r=await fetchWithTimeout(p+encodeURIComponent(url),opts);
       if(r&&r.ok)return r;
-    }catch(e){}
+      errors.push(`${p.slice(0,30)}:${r?.status||"no-response"}`);
+    }catch(e){errors.push(`${p.slice(0,30)}:${e?.name||e?.message||"err"}`);}
   }
-  throw new Error("All proxies failed for "+url);
+  const err=new Error(`All proxies failed for ${url} [${errors.join(" | ")}]`);
+  err.proxyErrors=errors;
+  throw err;
 }
 
 /* fetchJSONWithProxies(url) — variante que valida JSON.
    Algunos proxies (codetabs) devuelven 200 + body de texto "Too Many Requests"
-   cuando están rate-limited. fetchWithProxies se queda con ese response y el caller
-   se rompe al parsear. Esta variante intenta parsear cada proxy y solo devuelve
-   si el JSON es válido; si falla, sigue con el siguiente proxy. */
+   cuando están rate-limited. Esta variante intenta parsear cada proxy y solo
+   devuelve si el JSON es válido; si falla, sigue con el siguiente proxy. */
 async function fetchJSONWithProxies(url,opts={}){
   const tryParse=async(r)=>{try{const t=await r.text();return JSON.parse(t);}catch(e){return null;}};
+  const errors=[];
   /* 1) Directo */
   try{
-    const r=await fetch(url,opts);
-    if(r&&r.ok){const j=await tryParse(r);if(j)return j;}
-  }catch(e){}
+    const r=await fetchWithTimeout(url,opts);
+    if(r&&r.ok){const j=await tryParse(r);if(j)return j;errors.push("direct:bad-json");}
+    else errors.push(`direct:${r?.status||"no-response"}`);
+  }catch(e){errors.push(`direct:${e?.name||e?.message||"err"}`);}
   /* 2) Cadena de proxies */
   for(const p of PROXIES){
     try{
-      const r=await fetch(p+encodeURIComponent(url),opts);
-      if(r&&r.ok){const j=await tryParse(r);if(j)return j;}
-    }catch(e){}
+      const r=await fetchWithTimeout(p+encodeURIComponent(url),opts);
+      if(r&&r.ok){const j=await tryParse(r);if(j)return j;errors.push(`${p.slice(0,30)}:bad-json`);}
+      else errors.push(`${p.slice(0,30)}:${r?.status||"no-response"}`);
+    }catch(e){errors.push(`${p.slice(0,30)}:${e?.name||e?.message||"err"}`);}
   }
-  throw new Error("All proxies failed (no valid JSON) for "+url);
+  const err=new Error(`All proxies failed (no valid JSON) for ${url} [${errors.join(" | ")}]`);
+  err.proxyErrors=errors;
+  throw err;
 }
 
 async function fetchMacroReal(){
@@ -456,7 +481,7 @@ async function fetchMacroReal(){
         const url=BCRA_BASE+"/"+idVar+"?desde="+fmtD(desde||hace60)+"&hasta="+fmtD(hoy)+"&limit=1000";
         /* Intentar directo primero, si falla CORS usar proxy */
         let r;
-        try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+        try{r=await fetchWithProxies(url);}catch(e){r=null;}
         if(r&&r.ok){
           const j=await r.json();
           const res=j.results||j.data||j;
@@ -473,7 +498,7 @@ async function fetchMacroReal(){
       try{
         const url="https://apis.datos.gob.ar/series/api/series/?ids="+serieId+"&last=1&format=json";
         let r;
-        try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+        try{r=await fetchWithProxies(url);}catch(e){r=null;}
         if(r&&r.ok){const j=await r.json();if(j.data&&j.data.length>0)return j.data[0][1];}
       }catch(e){}
       return null;
@@ -484,7 +509,7 @@ async function fetchMacroReal(){
       try{
         const url="https://api.argentinadatos.com/v1/"+path;
         let r;
-        try{r=await fetch(url);}catch(e){r=await fetch(PROXY+encodeURIComponent(url));}
+        try{r=await fetchWithProxies(url);}catch(e){r=null;}
         if(r&&r.ok){const j=await r.json();if(Array.isArray(j)&&j.length>0)return j[j.length-1].valor||null;}
       }catch(e){}
       return null;
@@ -536,14 +561,49 @@ async function fetchMacroReal(){
   }
 }
 
+/* ─── Cache compartido de endpoints data912 ─────────────────────────────
+   El fetch global (cada 60s), el fetch on-demand del Trading form y el watchlist
+   effect bajaban los 4 endpoints de data912 cada uno por separado. En un
+   user con watchlist activa = ~12 requests/min al proxy.
+   Este cache hace que las 4 listas (cedears/argStocks/argBonds/usaStocks)
+   se compartan con TTL 30s. */
+const D912_TTL_MS=30*1000;
+const _d912Cache={cedears:null,argStocks:null,argBonds:null,usaStocks:null,ts:0,inflight:null};
+async function fetchD912Endpoints(){
+  if(_d912Cache.inflight)return _d912Cache.inflight;
+  if(_d912Cache.ts&&Date.now()-_d912Cache.ts<D912_TTL_MS&&_d912Cache.cedears){
+    return _d912Cache;
+  }
+  const fetchOne=async(ep)=>{
+    try{
+      const r=await fetchWithProxies(DATA912_BASE+"/"+ep);
+      return await r.json();
+    }catch(e){console.warn("data912 fetch failed:",ep,e?.message||e);return[];}
+  };
+  const promise=Promise.all([
+    fetchOne("arg_cedears"),fetchOne("arg_stocks"),fetchOne("arg_bonds"),fetchOne("usa_stocks"),
+  ]).then(([cedears,argStocks,argBonds,usaStocks])=>{
+    _d912Cache.cedears=cedears;_d912Cache.argStocks=argStocks;
+    _d912Cache.argBonds=argBonds;_d912Cache.usaStocks=usaStocks;
+    _d912Cache.ts=Date.now();_d912Cache.inflight=null;
+    return _d912Cache;
+  }).catch(e=>{_d912Cache.inflight=null;throw e;});
+  _d912Cache.inflight=promise;
+  return promise;
+}
+
 async function fetchPricesReal(tickers){
   try{
-    /* Fetch data912 endpoints en paralelo: CEDEARs ARS + acciones ARG + acciones USA */
+    /* Reusa cache compartido — evita re-bajar las 4 listas si ya están frescas. */
     const fetchD912=async(endpoint)=>{
       try{
-        const r=await fetchWithProxies(DATA912_BASE+"/"+endpoint);
-        return await r.json();
-      }catch(e){console.warn("data912 fetch failed:",endpoint,e);return[];}
+        const cache=await fetchD912Endpoints();
+        const key=endpoint==="arg_cedears"?"cedears"
+                 :endpoint==="arg_stocks"?"argStocks"
+                 :endpoint==="arg_bonds"?"argBonds"
+                 :endpoint==="usa_stocks"?"usaStocks":null;
+        return key?cache[key]||[]:[];
+      }catch(e){console.warn("data912 fetch failed:",endpoint,e?.message||e);return[];}
     };
     const [cedears,argStocks,argBonds,usaStocks]=await Promise.all([
       fetchD912("arg_cedears"),
@@ -993,7 +1053,7 @@ function Card({title,children,style:s={},right=null}){
     <div style={{padding:22}}>{children}</div>
   </div>;
 }
-function Stat({label,value,sub,color="#818cf8"}){
+function Stat({label,value,sub,color="#336699"}){
   return <div style={{background:"#13151c",border:"1px solid #22263350",borderRadius:18,padding:"16px 18px",animation:"fadeIn .3s ease",transition:"transform .15s ease, border-color .15s ease",minWidth:0}}
     onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.borderColor="#3a4055"}}
     onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.borderColor="#22263350"}}>
@@ -1004,16 +1064,16 @@ function Stat({label,value,sub,color="#818cf8"}){
 }
 function Btn({children,onClick,variant="primary",style:s={}}){
   const bg=variant==="primary"
-    ?"linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%)"
+    ?"linear-gradient(135deg,#8B1538 0%,#4A0E1A 100%)"
     :variant==="success"?"linear-gradient(135deg,#10b981 0%,#059669 100%)"
     :variant==="ghost"?"#13151c":"#1a1d27";
   const border=variant==="ghost"?"1px solid #2a2f3f":"none";
-  const shadow=(variant==="primary"||variant==="success")?"0 4px 14px rgba(99,102,241,.25)":"none";
+  const shadow=(variant==="primary"||variant==="success")?"0 4px 14px rgba(139,21,56,.25)":"none";
   return <button onClick={onClick} style={{background:bg,border,color:variant==="ghost"?"#c1c8d4":"#fff",borderRadius:10,padding:"8px 16px",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6,boxShadow:shadow,transition:"transform .12s ease, box-shadow .12s ease",...s}}
-    onMouseEnter={e=>{if(variant==="primary"||variant==="success"){e.currentTarget.style.transform="translateY(-1px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(99,102,241,.35)";}}}
+    onMouseEnter={e=>{if(variant==="primary"||variant==="success"){e.currentTarget.style.transform="translateY(-1px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(139,21,56,.35)";}}}
     onMouseLeave={e=>{if(variant==="primary"||variant==="success"){e.currentTarget.style.transform="";e.currentTarget.style.boxShadow=shadow;}}}>{children}</button>;
 }
-function Badge({text,color="#818cf8",bg="#22263350"}){
+function Badge({text,color="#336699",bg="#22263350"}){
   return <span style={{background:bg,borderRadius:99,padding:"3px 10px",fontSize:11,fontWeight:600,color,letterSpacing:".01em"}}>{text}</span>;
 }
 
@@ -1022,7 +1082,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
   const casaNeta=casaActual.valor-deudaUSD;
   const byAsset=useMemo(()=>{
     const items=enriched.map((p,i)=>({name:p.ticker,value:p.montoActual,color:COLORS[i%COLORS.length]}));
-    if(casaNeta>0) items.push({name:"Casa",value:casaNeta,color:"#a78bfa"});
+    if(casaNeta>0) items.push({name:"Casa",value:casaNeta,color:"#A52447"});
     return items.sort((a,b)=>b.value-a.value);
   },[enriched,casaNeta]);
   const bySector=useMemo(()=>{
@@ -1051,7 +1111,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
   return <div style={{display:"flex",flexDirection:"column",gap:20}}>
     {/* ── KPIs — todos en una fila ── */}
     <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:14}}>
-      <Stat label="Patrimonio Neto" value={fU(patrimonioNeto)} sub="Port + Casa - Hipoteca - Caución" color="#a78bfa"/>
+      <Stat label="Patrimonio Neto" value={fU(patrimonioNeto)} sub="Port + Casa - Hipoteca - Caución" color="#A52447"/>
       <div style={{background:"#13151c",border:"1px solid #22263350",borderRadius:18,padding:"16px 18px",animation:"fadeIn .3s ease",minWidth:0}}>
         <div style={{fontSize:11,color:"#7a8497",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em",fontWeight:500}}>Portfolio Total</div>
         <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#f1f5f9",fontVariantNumeric:"tabular-nums",letterSpacing:"-.015em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{fU(portfolioTotal)}</div>
@@ -1063,10 +1123,10 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
           <span style={{color:dailyPL.monto>=0?"#10b981":"#f43f5e"}}>({dailyPL.monto>=0?"+":""}USD {fmt(Math.abs(dailyPL.monto),2)})</span>
         </div>
       </div>
-      <Stat label="Portfolio Líquido CCL" value={fU(portfolioLiquido)} sub={caucionUSD>0?`Caución: ${fU(caucionUSD)}`:"Sin caución"} color="#818cf8"/>
+      <Stat label="Portfolio Líquido CCL" value={fU(portfolioLiquido)} sub={caucionUSD>0?`Caución: ${fU(caucionUSD)}`:"Sin caución"} color="#336699"/>
       {(()=>{const portOf=(macro.dolarOficial>0&&macro.dolarCCL>0)?portfolioLiquido*(macro.dolarCCL/macro.dolarOficial):portfolioLiquido;return <div style={{background:"#13151c",border:"1px solid #22263350",borderRadius:18,padding:"16px 18px",animation:"fadeIn .3s ease",minWidth:0}}>
         <div style={{fontSize:11,color:"#7a8497",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em",fontWeight:500}}>Portfolio Líquido OFICIAL</div>
-        <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#818cf8",fontVariantNumeric:"tabular-nums",letterSpacing:"-.015em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{fU(portOf)}</div>
+        <div className="stat-val" style={{fontSize:22,fontWeight:700,color:"#336699",fontVariantNumeric:"tabular-nums",letterSpacing:"-.015em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{fU(portOf)}</div>
         <div style={{fontSize:10,color:"#f59e0b",marginTop:4}}>Com. venta: -{fU(totalComVenta)}</div>
       </div>;})()}
       <div style={{background:"#13151c",border:"1px solid #22263350",borderRadius:18,padding:"16px 18px",animation:"fadeIn .3s ease",minWidth:0}}>
@@ -1110,7 +1170,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600,color:p.pl>=0?"#10b981":"#f43f5e"}}>{fU(p.pl)}</td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:600,color:p.rendimiento>=0?"#10b981":"#f43f5e"}}>{fP(p.rendimiento)}</td>
           </tr>)}</tbody>
-          <tfoot><tr style={{borderTop:"2px solid #6366f1"}}>
+          <tfoot><tr style={{borderTop:"2px solid #8B1538"}}>
             <td colSpan={4} style={{padding:10,fontWeight:700,fontSize:13}}>TOTAL</td>
             <td style={{padding:10,textAlign:"right",fontWeight:700,fontVariantNumeric:"tabular-nums",fontSize:12,color:dailyPL.pct>=0?"#10b981":"#f43f5e"}}><div>{dailyPL.pct>=0?"+":""}{fmt(dailyPL.pct,2)}%</div><div style={{fontSize:10}}>{dailyPL.monto>=0?"+":""}{fU(dailyPL.monto)}</div></td>
             <td style={{padding:10,textAlign:"right",fontWeight:700,fontVariantNumeric:"tabular-nums",fontSize:12}}>{fU(invertido)}</td>
@@ -1194,8 +1254,8 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
               const y=i*44+5;const w=maxCap>0?(d.capital/maxCap)*barW:0;
               const isNeg=d.rend<0;const isCur=d.year===curYear;
               return <g key={d.year}>
-                <text x={40} y={y+18} textAnchor="end" fill={isCur?"#818cf8":"#e6edf3"} fontSize="13" fontWeight="700">{d.year}</text>
-                <rect x={48} y={y} width={w} height={28} rx={4} fill={isCur?"#6366f1":isNeg?"#dc2626":"#10b981"} opacity={isCur?.9:.7}/>
+                <text x={40} y={y+18} textAnchor="end" fill={isCur?"#336699":"#e6edf3"} fontSize="13" fontWeight="700">{d.year}</text>
+                <rect x={48} y={y} width={w} height={28} rx={4} fill={isCur?"#8B1538":isNeg?"#dc2626":"#10b981"} opacity={isCur?.9:.7}/>
                 <text x={54+w} y={y+12} fill="#e6edf3" fontSize="11" fontWeight="600">{fU(d.capital)}</text>
                 <text x={54+w} y={y+24} fill={d.pl>=0?"#10b981":"#f43f5e"} fontSize="10" fontWeight="500">{d.pl>=0?"+":""}{fU(d.pl)} ({d.rend>=0?"+":""}{d.rend.toFixed(1)}%)</text>
               </g>;
@@ -1209,7 +1269,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
             <tbody>{all.map(d=>{
               const isCur=d.year===curYear;
               return <tr key={d.year} style={{borderBottom:"1px solid #1a1d27",background:isCur?"#1a1d2744":"transparent"}}>
-                <td style={{padding:"6px",fontSize:12,fontWeight:isCur?700:500,color:isCur?"#818cf8":"#e6edf3"}}>{d.year}{isCur?" *":""}</td>
+                <td style={{padding:"6px",fontSize:12,fontWeight:isCur?700:500,color:isCur?"#336699":"#e6edf3"}}>{d.year}{isCur?" *":""}</td>
                 <td style={{padding:"6px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums",fontWeight:600}}>{fU(d.capital)}</td>
                 <td style={{padding:"6px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums",fontWeight:600,color:d.pl>=0?"#10b981":"#f43f5e"}}>{d.pl>=0?"+":""}{fU(d.pl)}</td>
                 <td style={{padding:"6px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums",fontWeight:600,color:d.rend>=0?"#10b981":"#f43f5e"}}>{d.rend>=0?"+":""}{d.rend.toFixed(2)}%</td>
@@ -1234,7 +1294,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
                   <span style={{fontSize:10,fontWeight:700,color:n.sentiment==="positive"?"#10b981":"#f43f5e",letterSpacing:".03em"}}>{n.ticker}</span>
                   <span style={{fontSize:10,color:"#4d5365"}}>· {n.source}</span>
                 </div>
-                <a href={n.link||`https://www.google.com/search?q=${encodeURIComponent(n.title)}&tbm=nws`} target="_blank" rel="noopener" style={{fontSize:12,fontWeight:500,color:"#e6edf3",lineHeight:1.4,display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textDecoration:"none",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.color="#818cf8"} onMouseLeave={e=>e.currentTarget.style.color="#e6edf3"}>{n.title}</a>
+                <a href={n.link||`https://www.google.com/search?q=${encodeURIComponent(n.title)}&tbm=nws`} target="_blank" rel="noopener" style={{fontSize:12,fontWeight:500,color:"#e6edf3",lineHeight:1.4,display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textDecoration:"none",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.color="#336699"} onMouseLeave={e=>e.currentTarget.style.color="#e6edf3"}>{n.title}</a>
               </div>
             </div>
           </div>)}
@@ -1353,7 +1413,7 @@ function Operaciones({ops,setOps,macro,enriched}){
         <div><label style={{fontSize:11,color:"#7a8497",display:"block",marginBottom:4}}>Mercado</label><div style={{padding:"8px 12px",background:"#0c0e14",borderRadius:6,fontSize:13,color:"#c1c8d4"}}>{form.broker==="CS"?"NYSE":"BYMA"} · {form.broker==="CS"?"USD":"ARS"}</div></div>
         <div><label style={{fontSize:11,color:"#7a8497",display:"block",marginBottom:4}}>Fecha</label><input type="date" value={form.fecha} onChange={e=>setForm({...form,fecha:e.target.value})} style={{width:"100%",colorScheme:"dark"}}/></div>
         <div style={{display:"flex",flexDirection:"column",gap:4}}>
-          {(form.moneda==="ARS")&&<div><label style={{fontSize:11,color:"#7a8497",display:"block",marginBottom:4}}>CCL {!editId&&<span style={{color:"#818cf8"}}>(auto: ${fmt(macro.dolarCCL)})</span>}</label><input type="number" step="0.01" value={form.ccl} onChange={e=>setForm({...form,ccl:e.target.value})} placeholder={String(macro.dolarCCL)} style={{width:"100%"}}/></div>}
+          {(form.moneda==="ARS")&&<div><label style={{fontSize:11,color:"#7a8497",display:"block",marginBottom:4}}>CCL {!editId&&<span style={{color:"#336699"}}>(auto: ${fmt(macro.dolarCCL)})</span>}</label><input type="number" step="0.01" value={form.ccl} onChange={e=>setForm({...form,ccl:e.target.value})} placeholder={String(macro.dolarCCL)} style={{width:"100%"}}/></div>}
           <div style={{display:"flex",alignItems:"flex-end",gap:8,flex:1,marginTop:4}}><Btn variant="success" onClick={submit} style={{flex:1}}>{editId?"Actualizar":"Guardar"}</Btn><Btn variant="ghost" onClick={cancelForm}>✕</Btn></div>
         </div>
       </form>
@@ -1369,13 +1429,13 @@ function Operaciones({ops,setOps,macro,enriched}){
       <div className="table-wrap" style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",minWidth:950}}>
           <thead><tr>{["Fecha","Ticker","Tipo","Cantidad","Precio","CCL","Monto ARS","Monto USD","Comisión","Broker",""].map(h2=><th key={h2} style={{padding:"10px 8px",textAlign:["Fecha","Ticker","Tipo",""].includes(h2)?"left":"right",fontSize:11,fontWeight:600,color:"#7a8497",textTransform:"uppercase",borderBottom:"1px solid #22263350",background:"#151a27"}}>{h2}</th>)}</tr></thead>
-          <tbody>{[...fl].reverse().map(op=>{const usd=montoUSD(op);const ep=enriched&&enriched.find(e=>e.ticker===op.ticker);const tipoActivo=ep?ep.tipo:"Acción";const com=usd!=null?calcComision(usd,op.broker,tipoActivo):0;return <tr key={op.id} style={{borderBottom:"1px solid #1a1d27",background:editId===op.id?"#6366f111":"transparent"}} onMouseEnter={e=>{if(editId!==op.id)e.currentTarget.style.background="#2226335033"}} onMouseLeave={e=>{if(editId!==op.id)e.currentTarget.style.background=editId===op.id?"#6366f111":"transparent"}}>
+          <tbody>{[...fl].reverse().map(op=>{const usd=montoUSD(op);const ep=enriched&&enriched.find(e=>e.ticker===op.ticker);const tipoActivo=ep?ep.tipo:"Acción";const com=usd!=null?calcComision(usd,op.broker,tipoActivo):0;return <tr key={op.id} style={{borderBottom:"1px solid #1a1d27",background:editId===op.id?"#8B153811":"transparent"}} onMouseEnter={e=>{if(editId!==op.id)e.currentTarget.style.background="#2226335033"}} onMouseLeave={e=>{if(editId!==op.id)e.currentTarget.style.background=editId===op.id?"#8B153811":"transparent"}}>
             <td style={{padding:"10px 8px",fontSize:13}}>{op.fecha}</td>
             <td style={{padding:"10px 8px",fontWeight:700,fontSize:14}}>{op.ticker}</td>
             <td style={{padding:"10px 8px"}}><Badge text={op.tipo} color={op.tipo==="COMPRA"?"#10b981":"#f43f5e"} bg={op.tipo==="COMPRA"?"#065f4622":"#7f1d2e22"}/></td>
             <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{fmt(op.cantidad)}</td>
             <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{op.moneda==="USD"?fU(op.precio):`$${fmt(op.precio)}`}</td>
-            <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,color:op.ccl?"#818cf8":"#2a2f3f"}}>{op.ccl?`$${fmt(op.ccl,2)}`:"—"}</td>
+            <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,color:op.ccl?"#336699":"#2a2f3f"}}>{op.ccl?`$${fmt(op.ccl,2)}`:"—"}</td>
             <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{op.moneda==="ARS"?`$${fmt(op.cantidad*op.precio)}`:"—"}</td>
             <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontWeight:600,color:"#f1f5f9"}}>{usd!=null?fU(usd):"—"}</td>
             <td style={{padding:"10px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12,color:com>0?"#f59e0b":"#4d5365"}}>{com>0?fU(com):"—"}</td>
@@ -1604,12 +1664,12 @@ function Dividendos({enriched}){
         </div>
         <div style={statSt}>
           <div style={{fontSize:10,color:"#7a8497",textTransform:"uppercase",marginBottom:4}}>Confirmados</div>
-          <div style={{fontSize:22,fontWeight:700,color:"#818cf8"}}>{fU0(totalUpcoming)}</div>
+          <div style={{fontSize:22,fontWeight:700,color:"#336699"}}>{fU0(totalUpcoming)}</div>
           <div style={{fontSize:11,color:"#c1c8d4"}}>{upcoming.length} pago{upcoming.length!==1?"s":""} declarado{upcoming.length!==1?"s":""}</div>
         </div>
         <div style={statSt}>
           <div style={{fontSize:10,color:"#7a8497",textTransform:"uppercase",marginBottom:4}}>Cobrados (12m)</div>
-          <div style={{fontSize:22,fontWeight:700,color:"#a78bfa"}}>{fU0(totalPast)}</div>
+          <div style={{fontSize:22,fontWeight:700,color:"#A52447"}}>{fU0(totalPast)}</div>
           <div style={{fontSize:11,color:"#c1c8d4"}}>{past.length} pago{past.length!==1?"s":""}</div>
         </div>
         <div style={statSt}>
@@ -1624,7 +1684,7 @@ function Dividendos({enriched}){
         <div style={{fontSize:12,fontWeight:600,color:"#c1c8d4",marginBottom:8,textTransform:"uppercase",letterSpacing:".04em",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
           <span>Flujo proyectado próximos 12 meses</span>
           <span style={{fontSize:10,color:"#4d5365",textTransform:"none",fontWeight:400}}>
-            <span style={{color:"#818cf8"}}>■</span> Confirmado &nbsp;
+            <span style={{color:"#336699"}}>■</span> Confirmado &nbsp;
             <span style={{color:"#10b981"}}>■</span> Proyectado (basado en histórico) &nbsp;
             <span style={{color:"#f59e0b"}}>┄</span> Promedio
           </span>
@@ -1645,7 +1705,7 @@ function Dividendos({enriched}){
               const yBase=PAD_T+chartH;
               return <g key={m.month}>
                 {projH>0&&<rect x={x} y={yBase-totalH} width={barW} height={projH} fill="#10b981" fillOpacity="0.55" stroke="#10b981" strokeWidth="0.6" rx="2"/>}
-                {confH>0&&<rect x={x} y={yBase-confH} width={barW} height={confH} fill="#818cf8" rx="2"/>}
+                {confH>0&&<rect x={x} y={yBase-confH} width={barW} height={confH} fill="#336699" rx="2"/>}
                 {m.total>0&&<text x={x+barW/2} y={yBase-totalH-4} fill="#e6edf3" fontSize="9" textAnchor="middle" fontWeight="600">${Math.round(m.total)}</text>}
                 <text x={x+barW/2} y={H-PAD_B+14} fill="#7a8497" fontSize="10" textAnchor="middle">{monthName(m.month+"-15")}</text>
                 <text x={x+barW/2} y={H-PAD_B+26} fill="#4d5365" fontSize="8" textAnchor="middle">'{m.month.slice(2,4)}</text>
@@ -1681,14 +1741,14 @@ function Dividendos({enriched}){
       {merged.length>0&&<div style={{marginBottom:16}}>
         <div style={{fontSize:12,fontWeight:600,color:"#c1c8d4",marginBottom:8,textTransform:"uppercase",letterSpacing:".04em"}}>Calendario · próximos pagos</div>
         {Object.entries(upByMonth).sort((a,b)=>a[0].localeCompare(b[0])).map(([month,divs])=><div key={month} style={{marginBottom:12}}>
-          <div style={{fontSize:13,fontWeight:700,color:"#818cf8",marginBottom:6,display:"flex",alignItems:"center",gap:8}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#336699",marginBottom:6,display:"flex",alignItems:"center",gap:8}}>
             <span style={{background:"#1e40af33",padding:"2px 10px",borderRadius:12,fontSize:12}}>{monthLong(month)} {month.slice(0,4)}</span>
             <span style={{fontSize:11,color:"#4d5365",fontWeight:400}}>Total: {fU(divs.reduce((s,d)=>s+d.total,0))}</span>
           </div>
           {divs.map((d,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 12px",background:"#0c0e14",borderRadius:8,marginBottom:4,border:"1px solid #1a1d27"}}>
             <div style={{minWidth:70,fontSize:12,color:"#7a8497"}}>{d.date.slice(5)}</div>
             <div style={{minWidth:60,fontWeight:700,color:"#e6edf3",fontSize:13}}>{d.ticker}</div>
-            <div style={{fontSize:9,padding:"2px 7px",borderRadius:8,background:d.isProjected?"#2a2f3f55":"#1e40af55",color:d.isProjected?"#c1c8d4":"#818cf8",fontWeight:600,textTransform:"uppercase",letterSpacing:".03em"}}>
+            <div style={{fontSize:9,padding:"2px 7px",borderRadius:8,background:d.isProjected?"#2a2f3f55":"#1e40af55",color:d.isProjected?"#c1c8d4":"#336699",fontWeight:600,textTransform:"uppercase",letterSpacing:".03em"}}>
               {d.isProjected?"proyectado":"confirmado"}
             </div>
             <div style={{fontSize:11,color:"#c1c8d4",flex:1}}>${d.amount.toFixed(4)} × {d.cantidad} acc</div>
@@ -1713,7 +1773,7 @@ function Dividendos({enriched}){
             <td style={{padding:6,fontWeight:600,color:"#c1c8d4"}}>{d.ticker}</td>
             <td style={{padding:6,textAlign:"right",color:"#7a8497"}}>${d.amount.toFixed(4)}</td>
             <td style={{padding:6,textAlign:"right",color:"#7a8497"}}>{d.cantidad}</td>
-            <td style={{padding:6,textAlign:"right",fontWeight:600,color:"#a78bfa"}}>{fU(d.total)}</td>
+            <td style={{padding:6,textAlign:"right",fontWeight:600,color:"#A52447"}}>{fU(d.total)}</td>
           </tr>)}</tbody>
         </table>
       </details>}
@@ -1800,7 +1860,7 @@ function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetc
           {tna1d!=null&&tna1d>0?
             <div style={{fontSize:28,fontWeight:800,color:"#10b981",fontVariantNumeric:"tabular-nums",lineHeight:1}}>{tna1d}%<span style={{fontSize:13,fontWeight:500,color:"#7a8497",marginLeft:4}}>TNA</span></div>:
             iolStatus?.status==="fetching"?
-              <div style={{fontSize:14,color:"#818cf8",animation:"pulse 1s infinite"}}>Consultando...</div>:
+              <div style={{fontSize:14,color:"#336699",animation:"pulse 1s infinite"}}>Consultando...</div>:
               <div style={{fontSize:14,color:"#4d5365"}}>Sin datos</div>
           }
           {te1d!=null&&<div style={{fontSize:10,color:"#7a8497",marginTop:4}}>T.E. diaria: {te1d.toFixed(4)}%</div>}
@@ -1835,7 +1895,7 @@ function Caucion({caucion:caucionState,setCaucion:setCaucionState,iolStatus,fetc
           <label style={{fontSize:10,color:"#7a8497",display:"block",marginBottom:4}}>Contraseña</label>
           <input type="password" value={iolPass} onChange={e=>setIolPass(e.target.value)} style={{background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:6,padding:"6px 10px",color:"#e6edf3",fontSize:13,width:"100%"}} placeholder="••••"/>
         </div>
-        <button onClick={()=>{saveLS("iol_creds",{user:iolUser,pass:iolPass});saveLS("iol_token",null);fetchCaucionRate();setShowIOLConfig(false);}} style={{background:"#6366f1",border:"none",color:"#fff",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600,height:34}}>Guardar</button>
+        <button onClick={()=>{saveLS("iol_creds",{user:iolUser,pass:iolPass});saveLS("iol_token",null);fetchCaucionRate();setShowIOLConfig(false);}} style={{background:"#8B1538",border:"none",color:"#fff",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600,height:34}}>Guardar</button>
       </div>
       <div style={{fontSize:10,color:"#4d5365",marginTop:8}}>Las credenciales se guardan solo en tu browser (localStorage).</div>
       <div style={{fontSize:10,color:"#f59e0b",marginTop:6,background:"#f59e0b11",padding:"8px 10px",borderRadius:6,lineHeight:1.5}}>
@@ -1966,7 +2026,8 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
     setTradingPriceLoading(true);
     fetchTimerRef.current=setTimeout(async()=>{
       try{
-        const fetchD912=async(ep)=>{try{const r=await fetchWithProxies(DATA912_BASE+"/"+ep);return await r.json()}catch(e){return[]}};
+        /* Reusa cache compartido data912 (TTL 30s) — no re-baja si ya están frescas */
+        const fetchD912=async(ep)=>{try{const c=await fetchD912Endpoints();const k=ep==="arg_cedears"?"cedears":ep==="arg_stocks"?"argStocks":ep==="arg_bonds"?"argBonds":ep==="usa_stocks"?"usaStocks":null;return k?c[k]||[]:[];}catch(e){return[]}};
         const [cedears,argStocks,argBonds,usaStocks]=await Promise.all([fetchD912("arg_cedears"),fetchD912("arg_stocks"),fetchD912("arg_bonds"),fetchD912("usa_stocks")]);
         const find=(arr)=>(arr||[]).find(x=>(x.symbol||"").toUpperCase()===ticker);
         const hit=find(cedears)||find(argStocks)||find(argBonds)||find(usaStocks);
@@ -2213,7 +2274,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
   const fAlt=n=>n==null||isNaN(n)?"—":isBYMA?fUSD(n/mep):fARS(n*mep);
   const fAltLabel=isBYMA?"MEP":"ARS";
 
-  const mercadoBtnSt=(active)=>({background:active?"#6366f1":"#1a1d27",border:`1px solid ${active?"#6366f1":"#2a2f3f"}`,color:active?"#fff":"#c1c8d4",borderRadius:6,padding:"4px 12px",fontSize:11,cursor:"pointer",fontWeight:600});
+  const mercadoBtnSt=(active)=>({background:active?"#8B1538":"#1a1d27",border:`1px solid ${active?"#8B1538":"#2a2f3f"}`,color:active?"#fff":"#c1c8d4",borderRadius:6,padding:"4px 12px",fontSize:11,cursor:"pointer",fontWeight:600});
 
   return <div style={{display:"flex",flexDirection:"column",gap:18}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
@@ -2270,11 +2331,11 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
               <input value={inlineStop} onChange={e=>setInlineStop(e.target.value.replace(/[^\d.,]/g,""))} placeholder={curPrice>0?Math.round(curPrice*0.95).toLocaleString("es-AR"):"—"} style={{...inputSt,fontSize:12,padding:"4px 8px",width:110,borderColor:inlineStop?"#f43f5e66":"#2a2f3f"}}/>
               {sParsed>0&&cant>0&&pc>0&&(()=>{const mv=cant*sParsed;const cv=mv*ventaFactor;const n=mv-montoCompra-comCompra-cv;return <span style={{fontSize:10,color:"#f43f5e"}}>{isBYMA?fARS(n):`USD ${n.toFixed(0)}`}</span>})()}
             </div>
-            <button onClick={createInlineAlerts} disabled={tParsed<=0&&sParsed<=0} style={{background:"#6366f1",border:"none",color:"#fff",borderRadius:5,padding:"4px 12px",fontSize:11,cursor:"pointer",fontWeight:600,opacity:(tParsed<=0&&sParsed<=0)?0.4:1}}>+ Alerta</button>
+            <button onClick={createInlineAlerts} disabled={tParsed<=0&&sParsed<=0} style={{background:"#8B1538",border:"none",color:"#fff",borderRadius:5,padding:"4px 12px",fontSize:11,cursor:"pointer",fontWeight:600,opacity:(tParsed<=0&&sParsed<=0)?0.4:1}}>+ Alerta</button>
             {(hasTarget||hasStop)&&<span style={{fontSize:10,color:"#10b981",marginLeft:4}}>{hasTarget?"⬆️ ":""}{hasStop?"⬇️ ":""}activa{hasTarget&&hasStop?"s":""}</span>}
             <span style={{flex:1}}/>
             {canAdd&&<button onClick={addToWatchlist} title={(tParsed>0||sParsed>0)?"Agrega la posición y crea las alertas":"Agrega la posición a la watchlist"} style={{background:"#16a34a",border:"none",color:"#fff",borderRadius:5,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:700}}>+ Watchlist {(tParsed>0||sParsed>0)?<span style={{fontSize:10,opacity:0.85}}>· 🔔 {tParsed>0?"⬆️":""}{sParsed>0?"⬇️":""}</span>:null}</button>}
-            {!loadLS("tg_token","")&&<button onClick={onOpenConfig} style={{fontSize:10,color:"#818cf8",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>⚙️ Configurar Telegram</button>}
+            {!loadLS("tg_token","")&&<button onClick={onOpenConfig} style={{fontSize:10,color:"#336699",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>⚙️ Configurar Telegram</button>}
           </div>
         </div>;
       })()}
@@ -2291,15 +2352,15 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
           <h3 style={{margin:0,fontSize:15,fontWeight:700,color:"#e6edf3"}}>Precio Breakeven</h3>
           <div style={{fontSize:12,color:"#c1c8d4",marginTop:2}}>Vendé a este precio o más para no perder plata</div>
           <div style={{fontSize:11,color:"#7a8497",marginTop:4}}>Spread intra: {fM2(breakeven-pc)} ({fPct((breakeven-pc)/pc*100,3)}) sobre compra</div>
-          {isBYMA&&breakevenOvernight!==breakeven&&<div style={{fontSize:11,color:"#a78bfa",marginTop:6}}>📅 Si carriás overnight → BE sube a <b>{fM2(breakevenOvernight)}</b> ({fPct((breakevenOvernight-pc)/pc*100,3)})</div>}
+          {isBYMA&&breakevenOvernight!==breakeven&&<div style={{fontSize:11,color:"#A52447",marginTop:6}}>📅 Si carriás overnight → BE sube a <b>{fM2(breakevenOvernight)}</b> ({fPct((breakevenOvernight-pc)/pc*100,3)})</div>}
         </div>
       </div>
       <div style={{textAlign:"right"}}>
         <div style={{fontSize:11,color:"#7a8497"}}>Monto Compra</div>
         <div style={{fontSize:16,fontWeight:700,color:"#e6edf3",fontVariantNumeric:"tabular-nums"}}>{fM(montoCompra)}</div>
         <div style={{fontSize:10,color:"#f59e0b",marginTop:2}}>+ {fM2(comCompra)} gastos intra</div>
-        {isBYMA&&comCompraOvernight!==comCompra&&<div style={{fontSize:10,color:"#a78bfa",marginTop:1}}>(overnight: + {fM2(comCompraOvernight)})</div>}
-        <div style={{fontSize:10,color:"#818cf8",marginTop:2}}>{fAlt(montoCompra)} ({fAltLabel})</div>
+        {isBYMA&&comCompraOvernight!==comCompra&&<div style={{fontSize:10,color:"#A52447",marginTop:1}}>(overnight: + {fM2(comCompraOvernight)})</div>}
+        <div style={{fontSize:10,color:"#336699",marginTop:2}}>{fAlt(montoCompra)} ({fAltLabel})</div>
       </div>
     </div>}
 
@@ -2319,7 +2380,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
             <td style={{padding:"8px 10px",textAlign:"right",fontSize:13,fontVariantNumeric:"tabular-nums"}}>{fM(mvS)}</td>
             <td style={{padding:"8px 10px",textAlign:"right",fontSize:12,color:"#f59e0b",fontVariantNumeric:"tabular-nums"}}>{fM2(gastosTotal)}</td>
             <td style={{padding:"8px 10px",textAlign:"right",fontSize:13,fontWeight:700,color:s.neto>=0?"#10b981":"#f43f5e",fontVariantNumeric:"tabular-nums"}}>{fM(s.neto)}</td>
-            <td style={{padding:"8px 10px",textAlign:"right",fontSize:12,color:"#818cf8",fontVariantNumeric:"tabular-nums"}}>{fAlt(s.neto)}</td>
+            <td style={{padding:"8px 10px",textAlign:"right",fontSize:12,color:"#336699",fontVariantNumeric:"tabular-nums"}}>{fAlt(s.neto)}</td>
           </tr>;
         })}</tbody>
       </table>
@@ -2382,7 +2443,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
                   <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                     <span style={{fontSize:12,fontWeight:700,color:"#e6edf3"}}>Cerrar {item.ticker}</span>
                     <span style={{fontSize:11,color:"#7a8497"}}>×{item.cantidad.toLocaleString("es-AR")} @ {fT2(item.precioCompra)}</span>
-                    {fees.isCarriedOver&&<span style={{fontSize:10,color:"#a78bfa",background:"#3730a322",border:"1px solid #6366f155",borderRadius:4,padding:"2px 6px"}} title={`Posición carriada · sin comisión intra venta`}>📅 Overnight +{fees.daysCarried}d</span>}
+                    {fees.isCarriedOver&&<span style={{fontSize:10,color:"#A52447",background:"#3730a322",border:"1px solid #8B153855",borderRadius:4,padding:"2px 6px"}} title={`Posición carriada · sin comisión intra venta`}>📅 Overnight +{fees.daysCarried}d</span>}
                     <label style={{fontSize:10,color:"#7a8497"}}>Precio Venta:</label>
                     <input value={closingPrice} onChange={e=>setClosingPrice(e.target.value.replace(/[^\d.,]/g,""))} placeholder={pAct>0?(isBM?Math.round(pAct).toLocaleString("es-AR"):pAct.toFixed(2)):"—"} style={{background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:6,padding:"6px 10px",color:"#e6edf3",fontSize:13,fontWeight:600,width:130,fontVariantNumeric:"tabular-nums"}} autoFocus/>
                     {pAct>0&&<button onClick={()=>setClosingPrice(isBM?String(Math.round(pAct*100)/100):pAct.toFixed(2))} style={{background:"#1a1d27",border:"1px solid #2a2f3f",color:"#c1c8d4",borderRadius:5,padding:"4px 8px",fontSize:10,cursor:"pointer"}}>Usar actual</button>}
@@ -2403,7 +2464,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
             return <tr key={item.id} style={{borderBottom:"1px solid #1a1d27",background:netoLive>=0?"#065f4608":"#7f1d2e08"}}>
               <td style={{padding:"6px 8px",fontSize:10,color:"#c1c8d4"}}>
                 <div>{fechaShort}</div>
-                {fees.isCarriedOver&&<div style={{color:"#a78bfa",fontSize:9,fontWeight:600,marginTop:2}}>📅 +{fees.daysCarried}d overnight</div>}
+                {fees.isCarriedOver&&<div style={{color:"#A52447",fontSize:9,fontWeight:600,marginTop:2}}>📅 +{fees.daysCarried}d overnight</div>}
               </td>
               <td style={{padding:"6px 8px",fontSize:13,fontWeight:700}}>{item.ticker} <span style={{fontSize:10,color:"#7a8497"}}>{isBM?"🇦🇷":"🇺🇸"}</span></td>
               <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontVariantNumeric:"tabular-nums"}}>{item.cantidad.toLocaleString("es-AR")}</td>
@@ -2413,7 +2474,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
               </td>
               <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}} title={fees.isCarriedOver?`Posición carriada ${fees.daysCarried}d → ambas patas pagan tarifa normal (no intra). El breakeven sube. Si hubieras cerrado intra: ${fT2(fees.breakevenIfIntra)}`:"Breakeven con tarifa intra (compra y venta el mismo día)"}>
                 <div style={{fontSize:12,color:"#f59e0b",fontWeight:600}}>{fT2(fees.breakeven)}</div>
-                {fees.isCarriedOver&&<div style={{fontSize:9,color:"#a78bfa",marginTop:2}} title="Si hubieras cerrado mismo día">vs intra: {fT2(fees.breakevenIfIntra)}</div>}
+                {fees.isCarriedOver&&<div style={{fontSize:9,color:"#A52447",marginTop:2}} title="Si hubieras cerrado mismo día">vs intra: {fT2(fees.breakevenIfIntra)}</div>}
               </td>
               <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
                 {pAct>0?<div style={{fontSize:13,fontWeight:700,color:netoLive>=0?"#10b981":"#f43f5e"}}>{fT(netoLive)}</div>:<span style={{fontSize:11,color:"#7a8497"}}>—</span>}
@@ -2460,7 +2521,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
             <td style={{padding:"6px 8px",textAlign:"right",fontSize:11,color:"#f59e0b",fontVariantNumeric:"tabular-nums"}}>{fT2(t.totalGastos)}</td>
             <td style={{padding:"6px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
               <div style={{fontSize:13,fontWeight:700,color:t.neto>=0?"#10b981":"#f43f5e"}}>{fT(t.neto)}</div>
-              <div style={{fontSize:10,color:"#818cf8"}}>{fTalt(t.neto)}</div>
+              <div style={{fontSize:10,color:"#336699"}}>{fTalt(t.neto)}</div>
             </td>
             <td style={{padding:"6px 8px",textAlign:"right",fontSize:12,fontWeight:600,color:rendPct>=0?"#10b981":"#f43f5e"}}>{rendPct.toFixed(2)}%</td>
             <td style={{padding:"6px 8px",textAlign:"right"}}><button onClick={()=>removeTrade(t.id)} style={{background:"none",border:"none",color:"#7a8497",cursor:"pointer",fontSize:12,padding:2}} title="Eliminar">✕</button></td>
@@ -2470,7 +2531,7 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
           <td colSpan={7} style={{padding:"8px",fontSize:12,fontWeight:700,color:"#c1c8d4"}}>TOTAL ({trades.length} ops)</td>
           <td style={{padding:"8px",textAlign:"right"}}>
             <div style={{fontSize:14,fontWeight:800,color:tradesTotals.netoARS>=0?"#10b981":"#f43f5e"}}>{fARS(tradesTotals.netoARS)}</div>
-            <div style={{fontSize:11,color:"#818cf8",fontWeight:600}}>{fUSD(tradesTotals.netoUSD)}</div>
+            <div style={{fontSize:11,color:"#336699",fontWeight:600}}>{fUSD(tradesTotals.netoUSD)}</div>
           </td>
           <td style={{padding:"8px",textAlign:"right",fontSize:12,fontWeight:600,color:tradesTotals.netoARS>=0?"#10b981":"#f43f5e"}}>{tradesTotals.montoARS>0?(tradesTotals.netoARS/tradesTotals.montoARS*100).toFixed(2)+"%":"—"}</td>
           <td></td>
@@ -2695,7 +2756,7 @@ function Potencial({pos,prices,macro}){
     return{currentTotal,maxTotal,minTotal,upsidePct,downsidePct};
   },[analysis]);
 
-  const rangeBtnSt=(r)=>({background:range===r?"#6366f1":"#1a1d27",border:`1px solid ${range===r?"#6366f1":"#2a2f3f"}`,color:range===r?"#fff":"#c1c8d4",borderRadius:6,padding:"5px 14px",fontSize:12,cursor:"pointer",fontWeight:600});
+  const rangeBtnSt=(r)=>({background:range===r?"#8B1538":"#1a1d27",border:`1px solid ${range===r?"#8B1538":"#2a2f3f"}`,color:range===r?"#fff":"#c1c8d4",borderRadius:6,padding:"5px 14px",fontSize:12,cursor:"pointer",fontWeight:600});
   const rangeLabel={"1y":"1 Año","5y":"5 Años","10y":"10 Años"};
 
   return <div style={{display:"flex",flexDirection:"column",gap:18}}>
@@ -2808,18 +2869,18 @@ function Noticias({pos,news}){
   return <div style={{display:"flex",flexDirection:"column",gap:18}}>
     <div><h2 style={{margin:0,fontSize:18,fontWeight:700}}>Noticias del Portfolio</h2><p style={{margin:"4px 0 0",fontSize:13,color:"#7a8497"}}>Feed de noticias relevantes para tus activos.</p></div>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-      <button onClick={()=>setSel("Todos")} style={{background:sel==="Todos"?"#6366f1":"#1a1d27",border:`1px solid ${sel==="Todos"?"#6366f1":"#2a2f3f"}`,color:sel==="Todos"?"#fff":"#c1c8d4",borderRadius:6,padding:"5px 12px",fontSize:12,cursor:"pointer",fontWeight:500}}>Todos</button>
-      {tickers.map(t=><button key={t} onClick={()=>setSel(t)} style={{background:sel===t?"#6366f1":"#1a1d27",border:`1px solid ${sel===t?"#6366f1":"#2a2f3f"}`,color:sel===t?"#fff":"#c1c8d4",borderRadius:6,padding:"5px 12px",fontSize:12,cursor:"pointer",fontWeight:500}}>{t}</button>)}
+      <button onClick={()=>setSel("Todos")} style={{background:sel==="Todos"?"#8B1538":"#1a1d27",border:`1px solid ${sel==="Todos"?"#8B1538":"#2a2f3f"}`,color:sel==="Todos"?"#fff":"#c1c8d4",borderRadius:6,padding:"5px 12px",fontSize:12,cursor:"pointer",fontWeight:500}}>Todos</button>
+      {tickers.map(t=><button key={t} onClick={()=>setSel(t)} style={{background:sel===t?"#8B1538":"#1a1d27",border:`1px solid ${sel===t?"#8B1538":"#2a2f3f"}`,color:sel===t?"#fff":"#c1c8d4",borderRadius:6,padding:"5px 12px",fontSize:12,cursor:"pointer",fontWeight:500}}>{t}</button>)}
     </div>
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       {fl.map((n,i)=><div key={n.id} style={{background:"#13151c",border:"1px solid #22263350",borderRadius:10,padding:"18px 20px",animation:`slideIn .3s ease ${i*.05}s both`}} onMouseEnter={e=>e.currentTarget.style.borderColor="#2a2f3f"} onMouseLeave={e=>e.currentTarget.style.borderColor="#22263350"}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-          <div style={{display:"flex",alignItems:"center",gap:8}}><Badge text={n.ticker} color="#818cf8"/><Badge text={sl2[n.sentiment]} color={sc2[n.sentiment]} bg={sb2[n.sentiment]}/></div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}><Badge text={n.ticker} color="#336699"/><Badge text={sl2[n.sentiment]} color={sc2[n.sentiment]} bg={sb2[n.sentiment]}/></div>
           <span style={{fontSize:11,color:"#4d5365"}}>{n.pubDate?timeAgo(n.pubDate):`Hace ${n.time}`}</span>
         </div>
-        <h4 style={{margin:"0 0 6px",fontSize:15,fontWeight:600,color:"#f1f5f9",lineHeight:1.4}}><a href={n.link||`https://www.google.com/search?q=${encodeURIComponent(n.title)}&tbm=nws`} target="_blank" rel="noopener" style={{color:"inherit",textDecoration:"none"}} onMouseEnter={e=>e.currentTarget.style.color="#818cf8"} onMouseLeave={e=>e.currentTarget.style.color="#f1f5f9"}>{n.title}</a></h4>
+        <h4 style={{margin:"0 0 6px",fontSize:15,fontWeight:600,color:"#f1f5f9",lineHeight:1.4}}><a href={n.link||`https://www.google.com/search?q=${encodeURIComponent(n.title)}&tbm=nws`} target="_blank" rel="noopener" style={{color:"inherit",textDecoration:"none"}} onMouseEnter={e=>e.currentTarget.style.color="#336699"} onMouseLeave={e=>e.currentTarget.style.color="#f1f5f9"}>{n.title}</a></h4>
         <p style={{margin:"0 0 8px",fontSize:13,color:"#c1c8d4",lineHeight:1.5}}>{n.summary}</p>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:11,color:"#4d5365"}}>{n.source}</span>{n.link&&<a href={n.link} target="_blank" rel="noopener" style={{fontSize:11,color:"#818cf8",textDecoration:"none",fontWeight:500}}>Abrir publicación ↗</a>}</div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:11,color:"#4d5365"}}>{n.source}</span>{n.link&&<a href={n.link} target="_blank" rel="noopener" style={{fontSize:11,color:"#336699",textDecoration:"none",fontWeight:500}}>Abrir publicación ↗</a>}</div>
       </div>)}
     </div>
   </div>;
@@ -2832,7 +2893,7 @@ function saveLS(key,val){try{localStorage.setItem("eid_"+key,JSON.stringify(val)
 const INIT_CASA={precioCompra:0,anios:0,tasaAnual:0};
 const INIT_HIPOTECA={uvas:0};
 const INIT_CAUCION={montoARS:0,tna:21,dias:1};
-const INIT_CAUCION_FORM={monto:"66521399",diasTom:"4"};
+const INIT_CAUCION_FORM={monto:"",diasTom:"1"};
 
 /* ── GIST SYNC ENGINE ───────────────────── */
 const GIST_FILENAME="fin-cloud-data.json";
@@ -2928,7 +2989,7 @@ function SyncConfigPanel({onClose}){
   };
 
   const clearHistCache=()=>{
-    try{localStorage.removeItem("hist_cache_v1");setAvStatus("✅ Cache histórico borrado. La próxima carga del tab Potencial bajará todo de nuevo.");}catch(e){}
+    try{localStorage.removeItem(HIST_CACHE_KEY);setAvStatus("✅ Cache histórico borrado. La próxima carga del tab Potencial bajará todo de nuevo.");}catch(e){}
   };
 
   const testConnection=async()=>{
@@ -2950,18 +3011,16 @@ function SyncConfigPanel({onClose}){
       saveLS("tg_token",tgToken);saveLS("tg_chat_id",tgChatId);
       const url=`https://api.telegram.org/bot${tgToken}/sendMessage?chat_id=${tgChatId}&text=${encodeURIComponent("✅ Fin-Cloud alertas conectadas!")}`;
       let ok=false;
-      try{const res=await fetch(url);ok=res.ok;}catch(e){}
-      if(!ok){try{const res=await fetch(PROXY+encodeURIComponent(url));ok=res.ok;}catch(e){}}
-      if(!ok){try{const res=await fetch("https://corsproxy.io/?"+encodeURIComponent(url));ok=res.ok;}catch(e){}}
+      try{const res=await fetchWithProxies(url);ok=res.ok;}catch(e){console.warn("Telegram test failed:",e?.message||e);}
       if(ok){setTgStatus("✅ Mensaje enviado, revisá tu Telegram!");}
       else{setTgStatus("❌ Error de conexión. Verificá el token y chat ID.");}
     }catch(e){setTgStatus("❌ "+e.message);}
     setTgTesting(false);
   };
 
-  const btnSt={background:"#6366f1",border:"none",color:"#fff",borderRadius:6,padding:"8px 16px",fontSize:13,cursor:"pointer",fontWeight:600};
+  const btnSt={background:"#8B1538",border:"none",color:"#fff",borderRadius:6,padding:"8px 16px",fontSize:13,cursor:"pointer",fontWeight:600};
   const inpSt={background:"#1a1d27",border:"1px solid #2a2f3f",borderRadius:6,padding:"8px 12px",color:"#e6edf3",fontSize:13,width:"100%",outline:"none"};
-  const tabBtnSt=(t)=>({background:activeTab===t?"#6366f1":"transparent",border:"none",color:activeTab===t?"#fff":"#c1c8d4",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600});
+  const tabBtnSt=(t)=>({background:activeTab===t?"#8B1538":"transparent",border:"none",color:activeTab===t?"#fff":"#c1c8d4",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600});
 
   return <div style={{position:"fixed",inset:0,background:"#000c",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
     <div style={{background:"#13151c",border:"1px solid #22263350",borderRadius:12,padding:24,maxWidth:500,width:"100%"}} onClick={e=>e.stopPropagation()}>
@@ -2978,7 +3037,7 @@ function SyncConfigPanel({onClose}){
           <label style={{fontSize:12,color:"#7a8497",display:"block",marginBottom:4}}>GitHub Personal Access Token</label>
           <input type="password" value={token} onChange={e=>setToken(e.target.value)} placeholder="ghp_xxxxxxxxxxxx" style={inpSt}/>
           <div style={{fontSize:11,color:"#4d5365",marginTop:4}}>
-            Crealo en: <a href="https://github.com/settings/tokens/new?scopes=gist&description=Fin-Cloud-Sync" target="_blank" rel="noopener" style={{color:"#818cf8"}}>github.com/settings/tokens</a> → solo marcá "gist"
+            Crealo en: <a href="https://github.com/settings/tokens/new?scopes=gist&description=Fin-Cloud-Sync" target="_blank" rel="noopener" style={{color:"#336699"}}>github.com/settings/tokens</a> → solo marcá "gist"
           </div>
         </div>
         <div>
@@ -3000,7 +3059,7 @@ function SyncConfigPanel({onClose}){
           1. Buscá <strong style={{color:"#10b981"}}>@BotFather</strong> en Telegram y mandá <code style={{color:"#f59e0b"}}>/newbot</code><br/>
           2. Seguí los pasos para crear tu bot y copiá el <strong style={{color:"#e6edf3"}}>token</strong><br/>
           3. Abrí tu bot nuevo y mandále un mensaje (ej: "hola")<br/>
-          4. Visitá <code style={{color:"#818cf8",fontSize:11}}>https://api.telegram.org/bot[TOKEN]/getUpdates</code> para obtener tu <strong style={{color:"#e6edf3"}}>chat ID</strong>
+          4. Visitá <code style={{color:"#336699",fontSize:11}}>https://api.telegram.org/bot[TOKEN]/getUpdates</code> para obtener tu <strong style={{color:"#e6edf3"}}>chat ID</strong>
         </div>
         <div>
           <label style={{fontSize:12,color:"#7a8497",display:"block",marginBottom:4}}>Bot Token</label>
@@ -3022,7 +3081,7 @@ function SyncConfigPanel({onClose}){
         <p style={{margin:0,fontSize:13,color:"#c1c8d4"}}>El tab Potencial usa Alpha Vantage si configurás tu API key (CORS abierto, sin proxy = más rápido y confiable). Si la dejás vacía, usa Yahoo Finance vía proxy CORS (intermitente).</p>
         <div style={{background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:8,padding:12,fontSize:12,color:"#c1c8d4"}}>
           <strong style={{color:"#e6edf3"}}>Setup (1 minuto, gratis):</strong><br/>
-          1. Andá a <a href="https://www.alphavantage.co/support/#api-key" target="_blank" rel="noopener" style={{color:"#818cf8"}}>alphavantage.co/support/#api-key</a><br/>
+          1. Andá a <a href="https://www.alphavantage.co/support/#api-key" target="_blank" rel="noopener" style={{color:"#336699"}}>alphavantage.co/support/#api-key</a><br/>
           2. Completá email + qué hacés (cualquier cosa válida)<br/>
           3. Te dan la key al toque (16 caracteres alfanuméricos)<br/>
           4. Pegala acá abajo y "Probar"<br/>
@@ -3047,8 +3106,8 @@ function SyncConfigPanel({onClose}){
 }
 
 /* ── TESIS ACTIVA ─────────────────────────── */
-const VEREDICTO_COLORS={Comprar:"#22c55e",Mantener:"#818cf8",Reducir:"#f59e0b",Vender:"#ef4444",Esperar:"#c1c8d4"};
-const VEREDICTO_BG={Comprar:"#22c55e22",Mantener:"#818cf822",Reducir:"#f59e0b22",Vender:"#ef444422",Esperar:"#c1c8d422"};
+const VEREDICTO_COLORS={Comprar:"#22c55e",Mantener:"#336699",Reducir:"#f59e0b",Vender:"#ef4444",Esperar:"#c1c8d4"};
+const VEREDICTO_BG={Comprar:"#22c55e22",Mantener:"#33669922",Reducir:"#f59e0b22",Vender:"#ef444422",Esperar:"#c1c8d422"};
 
 function TesisBar({stop,entry,target,actual}){
   /* Bar visual con 4 marcadores: stop (rojo) | entry (gris) | actual (azul) | target (verde)
@@ -3255,7 +3314,7 @@ function TesisActiva({enriched,tesis}){
     <Card title="🧠 Tesis Activa por Posición">
       <div style={{background:"#0c0e1455",border:"1px solid #1a1d27",borderRadius:8,padding:"8px 12px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
         <div style={{fontSize:11,color:"#c1c8d4",lineHeight:1.4}}>
-          <span style={{color:"#818cf8",fontWeight:700}}>◉ Auto-refresh 2x/día</span> · Se actualiza solo en cada briefing (08:00 y 18:00 ART L-V) — lectura directa del Gist.
+          <span style={{color:"#336699",fontWeight:700}}>◉ Auto-refresh 2x/día</span> · Se actualiza solo en cada briefing (08:00 y 18:00 ART L-V) — lectura directa del Gist.
         </div>
         {lastUpdate&&<div style={{fontSize:10,color:"#7a8497",textTransform:"uppercase",letterSpacing:0.5,fontWeight:600}}>
           Última: <span style={{color:"#e6edf3"}}>{relativeTime(lastUpdate)}</span>
@@ -3358,9 +3417,7 @@ function App(){
     const chatId=loadLS("tg_chat_id","");
     if(!token||!chatId)return;
     const url=`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(msg)}`;
-    try{await fetch(url);return;}catch(e){}
-    try{await fetch(PROXY+encodeURIComponent(url));return;}catch(e){}
-    try{await fetch("https://corsproxy.io/?"+encodeURIComponent(url));}catch(e){console.warn("Telegram send failed — all proxies tried");}
+    try{await fetchWithProxies(url);}catch(e){console.warn("Telegram send failed:",e?.message||e);}
   },[]);
 
   /* Send browser notification */
@@ -3395,8 +3452,8 @@ function App(){
           const msg=`${dir} ${a.ticker} ${a.condition==="above"?"superó":"cayó a"} ${targetStr} → Precio actual: ${priceStr}${a.label?" | "+a.label:""}`;
           /* Browser notification */
           sendBrowserNotif(`🚨 Alerta ${a.ticker}`,msg);
-          /* Telegram */
-          sendTelegram(`🚨 TRADE ALERT\n${msg}`);
+          /* Telegram (fire-and-forget pero con catch para no caer como unhandled rejection) */
+          sendTelegram(`🚨 TRADE ALERT\n${msg}`).catch(err=>console.warn("sendTelegram failed:",err?.message||err));
           /* Play sound */
           try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator();const g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.frequency.value=880;o.type="sine";g.gain.value=0.3;o.start();setTimeout(()=>{o.stop();ctx.close()},300);}catch(e){}
           return{...a,active:false,triggeredAt:new Date().toISOString()};
@@ -3584,11 +3641,16 @@ function App(){
     }else{setDataSource("fallback")}
   },[allTickers]);
 
+  /* Mounted ref: evita setState después de unmount en fetches en vuelo. */
+  const mountedRef=React.useRef(true);
+  useEffect(()=>{mountedRef.current=true;return()=>{mountedRef.current=false;};},[]);
+
   /* Fetch completo (carga inicial) */
   const fetchAllData=useCallback(async()=>{
     const[macroData,priceData,newsData]=await Promise.all([
       fetchMacroReal(),fetchPricesReal(allTickers),fetchNewsReal(allTickers)
     ]);
+    if(!mountedRef.current)return;
     updateMacro(macroData);
     updatePrices(priceData);
     if(newsData){setNews(newsData);saveNewsCache(newsData);}
@@ -3599,6 +3661,7 @@ function App(){
   const fetchPricesOnly=useCallback(async()=>{
     if(!isMarketOpen().any)return;
     const priceData=await fetchPricesReal(allTickers);
+    if(!mountedRef.current)return;
     updatePrices(priceData);
     setLastUp(new Date());
   },[allTickers,updatePrices,isMarketOpen]);
@@ -3607,6 +3670,7 @@ function App(){
   const fetchMacroNews=useCallback(async()=>{
     if(!isMarketOpen().any)return;
     const[macroData,newsData]=await Promise.all([fetchMacroReal(),fetchNewsReal(allTickers)]);
+    if(!mountedRef.current)return;
     updateMacro(macroData);
     if(newsData){setNews(newsData);saveNewsCache(newsData);}
     setLastUp(new Date());
@@ -3708,33 +3772,34 @@ function App(){
   const [perfSnapshots,setPerfSnapshots]=useState(()=>loadLS("perf_snapshots",[]));
   useEffect(()=>{
     if(portfolioTotal<=0||!macro.dolarCCL)return;
+    let cancelled=false;
     const today=new Date().toISOString().split("T")[0];
-    const existing=perfSnapshots.find(s=>s.date===today);
     const snap={date:today,portfolioUSD:Math.round(portfolioTotal*100)/100,invertidoUSD:Math.round(invertido*100)/100,portfolioARS:Math.round(portfolioTotal*macro.dolarCCL),dolarCCL:macro.dolarCCL};
-    /* Intentar guardar benchmarks (Merval en USD y S&P) — se obtienen via Yahoo */
+    /* Intentar guardar benchmarks (Merval en USD y S&P) — usa fetchJSONWithProxies con cadena */
     const fetchBenchmarks=async()=>{
       try{
-        const url=PROXY+encodeURIComponent("https://query1.finance.yahoo.com/v8/finance/chart/%5EMERV?range=1d&interval=1d");
-        const r=await fetch(url);const j=await r.json();
+        const j=await fetchJSONWithProxies("https://query1.finance.yahoo.com/v8/finance/chart/%5EMERV?range=1d&interval=1d");
         const mervalARS=j.chart?.result?.[0]?.meta?.regularMarketPrice||0;
         if(mervalARS>0)snap.merval=Math.round((mervalARS/macro.dolarCCL)*100)/100;
-      }catch(e){}
+      }catch(e){console.warn("Merval benchmark fetch failed:",e?.message||e);}
       try{
-        const url2=PROXY+encodeURIComponent("https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=1d&interval=1d");
-        const r2=await fetch(url2);const j2=await r2.json();
+        const j2=await fetchJSONWithProxies("https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=1d&interval=1d");
         snap.sp500=j2.chart?.result?.[0]?.meta?.regularMarketPrice||0;
-      }catch(e){}
-      let updated;
-      if(existing){
-        updated=perfSnapshots.map(s=>s.date===today?{...existing,...snap}:s);
-      }else{
-        updated=[...perfSnapshots,snap].slice(-365); /* max 1 año */
-      }
-      setPerfSnapshots(updated);
-      saveLS("perf_snapshots",updated);
+      }catch(e){console.warn("S&P benchmark fetch failed:",e?.message||e);}
+      if(cancelled)return;
+      /* Functional updater para evitar race con snapshots concurrentes */
+      setPerfSnapshots(prev=>{
+        const existing=prev.find(s=>s.date===today);
+        const updated=existing
+          ?prev.map(s=>s.date===today?{...existing,...snap}:s)
+          :[...prev,snap].slice(-365); /* max 1 año */
+        saveLS("perf_snapshots",updated);
+        return updated;
+      });
     };
     fetchBenchmarks();
-  },[portfolioTotal,invertido,macro.dolarCCL]); /* eslint-disable-line react-hooks/exhaustive-deps */
+    return()=>{cancelled=true;};
+  },[portfolioTotal,invertido,macro.dolarCCL]);
 
   const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"tesis",label:"Tesis",emoji:"🧠"},{id:"dividendos",label:"Dividendos",emoji:"💰"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"noticias",label:"Noticias",emoji:"📰"},{id:"caucion",label:"Caución",emoji:"🏦"},{id:"trading",label:"Trading",emoji:"⚡"},{id:"potencial",label:"Potencial",emoji:"🎯"}];
 
