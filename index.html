@@ -1473,17 +1473,10 @@ function Dividendos({enriched}){
       if(!pos)return [];
       const sym=yfSym(ticker);
       const url=`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?period1=${oneYearAgo}&period2=${oneYearFwd}&interval=1mo&events=dividends`;
-      const tryFetch=async u=>{
-        const ctrl=new AbortController();
-        const tid=setTimeout(()=>ctrl.abort(),8000);
-        try{const r=await fetch(u,{signal:ctrl.signal});clearTimeout(tid);return r;}
-        catch(e){clearTimeout(tid);return null;}
-      };
       try{
-        let r=await tryFetch(PROXY+encodeURIComponent(url));
-        if(!r||!r.ok)r=await tryFetch("https://corsproxy.io/?"+encodeURIComponent(url));
-        if(!r||!r.ok)return [];
-        const j=await r.json();
+        /* fetchJSONWithProxies maneja: directo (Yahoo no tiene CORS, falla) →
+           codetabs → allorigins. Valida que el body parsee como JSON antes de aceptar. */
+        const j=await fetchJSONWithProxies(url);
         const divs=j.chart?.result?.[0]?.events?.dividends;
         if(!divs)return [];
         const price=pos.precioActual||pos.ppc;
@@ -1495,12 +1488,19 @@ function Dividendos({enriched}){
           yield:price>0?((d.amount/price)*100):0,
           isPast:d.date<now
         }));
-      }catch(e){console.warn("Div fetch error for",ticker,e);return [];}
+      }catch(e){console.warn("Div fetch error for",ticker,e?.message||e);return [];}
       finally{setProgress(p=>({done:p.done+1,total:p.total}));}
     };
 
-    /* Parallel fetch: all tickers at once */
-    const all=await Promise.all(tickers.map(fetchOne));
+    /* Secuencial con delay 350ms (igual que Potencial) para no saturar el proxy.
+       Allorigins/codetabs tienen rate limits agresivos cuando se les tira 6 paralelas. */
+    const results=[];
+    for(let i=0;i<tickers.length;i++){
+      const r=await fetchOne(tickers[i]);
+      results.push(r);
+      if(i<tickers.length-1)await new Promise(rs=>setTimeout(rs,350));
+    }
+    const all=results;
     const results=all.flat().sort((a,b)=>a.date.localeCompare(b.date));
     setDivData(results);
     setLastFetch(new Date());
