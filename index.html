@@ -268,7 +268,7 @@ function calcCaucion(m,tna,d,esColocadora){
     const montoPagar=montoFuturo+totalGastos;
     const cft=m>0?(montoPagar-m)/m*(365/d)*100:0;
     const tePeriodo=m>0?((montoPagar-m)/m)*100:0;
-    return{monto:m,tna,dias:d,tasa:tasa*100,interes,montoFuturo,comision,derMercado,gtoGtia,gastos,iva,totalGastos,montoPagar,costoNeto:-totalGastos,cft,tePeriodo,fechaOp:fmtDate(hoy),fechaVenc:fmtDate(venc)};
+    return{monto:m,tna,dias:d,tasa:tasa*100,interes,montoFuturo,comision,derMercado,gtoGtia,gastos,iva,totalGastos,montoPagar,costoNeto:-(montoPagar-m),cft,tePeriodo,fechaOp:fmtDate(hoy),fechaVenc:fmtDate(venc)};
   }
 }
 
@@ -3504,6 +3504,348 @@ function TesisActiva({enriched,tesis}){
   </div>;
 }
 
+/* ── OPCIONES AR (data912 + Black-Scholes en JS) ────────────── */
+const OPC_UNDERLYING_MAP={ALU:"ALUA",BBA:"BBAR",BHI:"BHIP",BMA:"BMA",BYM:"BYMA",CEC:"CECO2",CEP:"CEPU",COM:"COME",CRE:"CRES",EDN:"EDN",GFG:"GGAL",LOM:"LOMA",MET:"METR",MIR:"MIRG",PAM:"PAMP",SUP:"SUPV",TEC:"TECO2",TGN:"TGNO4",TGS:"TGSU2",TRA:"TRAN",TXA:"TXAR",YPF:"YPFD"};
+const OPC_EXPIRY_MAP={EN:1,F:2,FE:2,MR:3,AB:4,A:4,MY:5,JU:6,J:6,JL:7,AG:8,G:8,SE:9,OC:10,O:10,Y:10,NO:11,N:11,DI:12,D:12};
+const OPC_TOP5=["GGAL","YPFD","PAMP","COME","ALUA"];
+
+function opcNormCdf(x){const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;const sign=x<0?-1:1;x=Math.abs(x)/Math.sqrt(2);const t=1.0/(1.0+p*x);const y=1.0-(((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);return 0.5*(1.0+sign*y);}
+function opcNormPdf(x){return Math.exp(-x*x/2)/Math.sqrt(2*Math.PI);}
+function opcBsPrice(S,K,T,r,sigma,type){if(T<=0)return type==='C'?Math.max(S-K,0):Math.max(K-S,0);if(sigma<=0)return 0;const d1=(Math.log(S/K)+(r+0.5*sigma*sigma)*T)/(sigma*Math.sqrt(T));const d2=d1-sigma*Math.sqrt(T);if(type==='C')return S*opcNormCdf(d1)-K*Math.exp(-r*T)*opcNormCdf(d2);return K*Math.exp(-r*T)*opcNormCdf(-d2)-S*opcNormCdf(-d1);}
+function opcImpliedVol(price,S,K,T,r,type){if(T<=0||price<=0||S<=0||K<=0)return null;const intrinsic=type==='C'?Math.max(S-K,0):Math.max(K-S,0);if(price<intrinsic-0.01)return null;let lo=0.001,hi=5.0;const pLo=opcBsPrice(S,K,T,r,lo,type);const pHi=opcBsPrice(S,K,T,r,hi,type);if(price<pLo-0.01||price>pHi+0.01)return null;for(let i=0;i<80;i++){const mid=(lo+hi)/2;const p=opcBsPrice(S,K,T,r,mid,type);if(Math.abs(p-price)<0.0001||(hi-lo)<0.00001)return mid;if(p<price)lo=mid;else hi=mid;}return(lo+hi)/2;}
+function opcGreeks(S,K,T,r,sigma,type){if(T<=0||!sigma||sigma<=0)return{delta:null,gamma:null,vega:null,theta:null};const d1=(Math.log(S/K)+(r+0.5*sigma*sigma)*T)/(sigma*Math.sqrt(T));const d2=d1-sigma*Math.sqrt(T);const pdf=opcNormPdf(d1);const delta=type==='C'?opcNormCdf(d1):-opcNormCdf(-d1);const gamma=pdf/(S*sigma*Math.sqrt(T));const vega=S*pdf*Math.sqrt(T)/100;const theta=type==='C'?(-S*pdf*sigma/(2*Math.sqrt(T))-r*K*Math.exp(-r*T)*opcNormCdf(d2))/365:(-S*pdf*sigma/(2*Math.sqrt(T))+r*K*Math.exp(-r*T)*opcNormCdf(-d2))/365;return{delta,gamma,vega,theta};}
+function opcParseSymbol(symbol){if(!symbol||symbol.length<7)return null;const code=symbol.slice(0,3);const ot=symbol[3];const optType=ot==='C'?'C':ot==='V'?'P':null;if(!optType)return null;const rest=symbol.slice(4);let i=rest.length;while(i>0&&/[A-Z]/.test(rest[i-1]))i--;const expiryCode=rest.slice(i);const strikeStr=rest.slice(0,i).replace(/\.+$/,'');if(!strikeStr)return null;const strikeRaw=parseFloat(strikeStr);if(isNaN(strikeRaw))return null;return{symbol,code,optType,strikeRaw,expiryCode,underlying:OPC_UNDERLYING_MAP[code]||code};}
+function opcThirdFriday(year,month){const d=new Date(year,month-1,1);const offset=(5-d.getDay()+7)%7;return new Date(year,month-1,1+offset+14);}
+function opcResolveExpiry(code,today){const m=OPC_EXPIRY_MAP[code.toUpperCase()];if(!m)return null;let cand=opcThirdFriday(today.getFullYear(),m);if(cand<today)cand=opcThirdFriday(today.getFullYear()+1,m);return cand;}
+function opcResolveStrike(raw,spot){if(!spot||raw<=0)return null;const cands=[raw,raw/10,raw/100,raw*10];const valid=cands.filter(k=>k>=0.3*spot&&k<=3.0*spot);if(!valid.length)return null;return valid.reduce((b,k)=>Math.abs(k-spot)<Math.abs(b-spot)?k:b);}
+
+function opcEnrichChain(rawOpts,spotMap,r){
+  const today=new Date();today.setHours(0,0,0,0);
+  return rawOpts.map(opt=>{
+    const p=opcParseSymbol(opt.symbol);if(!p)return null;
+    const spot=spotMap[p.underlying];if(!spot||spot<=0)return null;
+    const strike=opcResolveStrike(p.strikeRaw,spot);if(!strike)return null;
+    const expiry=opcResolveExpiry(p.expiryCode,today);if(!expiry)return null;
+    const dte=Math.round((expiry-today)/(1000*60*60*24));if(dte<=0)return null;
+    const T=dte/365;
+    const bid=opt.px_bid||0,ask=opt.px_ask||0,last=opt.c||0;
+    let mid,sprPct;
+    if(bid>0&&ask>0){mid=(bid+ask)/2;sprPct=(ask-bid)/mid*100;}
+    else if(last>0){mid=last;sprPct=null;}
+    else{mid=null;sprPct=null;}
+    let iv=null,gks={delta:null,gamma:null,vega:null,theta:null};
+    if(mid&&mid>0){iv=opcImpliedVol(mid,spot,strike,T,r,p.optType);if(iv)gks=opcGreeks(spot,strike,T,r,iv,p.optType);}
+    const breakeven=p.optType==='C'?strike+(mid||0):strike-(mid||0);
+    const bePct=mid?(breakeven-spot)/spot*100:null;
+    const moneyPct=p.optType==='C'?(spot-strike)/spot*100:(strike-spot)/spot*100;
+    const arsVol=(opt.v||0)*(mid||0);
+    return{symbol:opt.symbol,underlying:p.underlying,optType:p.optType,strike,expiry:expiry.toISOString().slice(0,10),dte,spot,bid,ask,last,mid,sprPct,iv,delta:gks.delta,gamma:gks.gamma,vega:gks.vega,theta:gks.theta,breakeven:mid?breakeven:null,bePct,moneyPct,arsVol,volQty:opt.v||0,qOp:opt.q_op||0};
+  }).filter(Boolean);
+}
+
+function opcScoreLongCall(o){
+  if(o.optType!=='C'||o.delta==null)return 0;
+  const sp=o.sprPct;
+  const liq=sp==null?25:sp<5?100:sp<10?60:sp<20?25:0;
+  const d=o.delta;
+  let dq;if(d>=0.40&&d<=0.50)dq=100;else if((d>=0.30&&d<0.40)||(d>0.50&&d<=0.60))dq=75;else if((d>=0.20&&d<0.30)||(d>0.60&&d<=0.70))dq=40;else dq=10;
+  const ivv=50;
+  const dte=o.dte;
+  let dteq;if(dte>=30&&dte<=60)dteq=100;else if((dte>=20&&dte<30)||(dte>60&&dte<=90))dteq=60;else if((dte>=14&&dte<20)||(dte>90&&dte<=120))dteq=30;else dteq=10;
+  const be=o.bePct;let beq;
+  if(be==null)beq=0;else{const ad=Math.abs(be);if(ad<5)beq=100;else if(ad<8)beq=70;else if(ad<12)beq=35;else beq=5;}
+  return Math.round(0.25*liq+0.25*dq+0.20*ivv+0.15*dteq+0.15*beq);
+}
+
+function Opciones({macro}){
+  const [subTab,setSubTab]=useState("cadena");
+  const [underlying,setUnderlying]=useState("GGAL");
+  const [rawOpts,setRawOpts]=useState([]);
+  const [spots,setSpots]=useState({});
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState(null);
+  const [lastUpdate,setLastUpdate]=useState(null);
+  const [showCalls,setShowCalls]=useState(true);
+  const [showPuts,setShowPuts]=useState(false);
+  const [selSymbol,setSelSymbol]=useState(null);
+  const [pnlSpotShift,setPnlSpotShift]=useState(0);
+  const [pnlIvShift,setPnlIvShift]=useState(0);
+  const [pnlDayShift,setPnlDayShift]=useState(0);
+
+  const r=(macro?.tasa||21)/100;
+
+  const loadData=useCallback(()=>{
+    setLoading(true);setError(null);
+    Promise.all([
+      fetch("https://data912.com/live/arg_options").then(x=>x.json()),
+      fetch("https://data912.com/live/arg_stocks").then(x=>x.json())
+    ]).then(([opts,stocks])=>{
+      const sm={};
+      stocks.forEach(s=>{
+        const p=s.c>0?s.c:(s.px_bid>0&&s.px_ask>0?(s.px_bid+s.px_ask)/2:null);
+        if(p)sm[s.symbol]=p;
+      });
+      setSpots(sm);setRawOpts(opts);setLoading(false);setLastUpdate(new Date());
+    }).catch(e=>{setError(e.message||"Fetch error");setLoading(false);});
+  },[]);
+  useEffect(()=>{loadData();},[loadData]);
+
+  const enriched=useMemo(()=>opcEnrichChain(rawOpts,spots,r),[rawOpts,spots,r]);
+
+  const chain=useMemo(()=>enriched
+    .filter(o=>o.underlying===underlying)
+    .filter(o=>(showCalls&&o.optType==='C')||(showPuts&&o.optType==='P'))
+    .sort((a,b)=>a.strike-b.strike),
+  [enriched,underlying,showCalls,showPuts]);
+
+  const screener=useMemo(()=>enriched
+    .filter(o=>OPC_TOP5.includes(o.underlying)&&o.optType==='C'&&o.delta!=null&&(o.arsVol||0)>=10000)
+    .map(o=>({...o,score:opcScoreLongCall(o)}))
+    .sort((a,b)=>b.score-a.score).slice(0,10),
+  [enriched]);
+
+  const spot=spots[underlying]||0;
+  const ivAtm=useMemo(()=>{
+    const calls=chain.filter(o=>o.optType==='C'&&o.iv);
+    if(!calls.length||!spot)return null;
+    const closest=calls.reduce((b,c)=>Math.abs(c.strike-spot)<Math.abs(b.strike-spot)?c:b);
+    return closest.iv;
+  },[chain,spot]);
+
+  const fmtPct=v=>v==null?"—":`${(v*100).toFixed(0)}%`;
+  const fmtPctSig=v=>v==null?"—":`${v>=0?"+":""}${v.toFixed(1)}%`;
+  const fmtN=(v,d=0)=>v==null||isNaN(v)?"—":new Intl.NumberFormat("es-AR",{minimumFractionDigits:d,maximumFractionDigits:d}).format(v);
+  const fmtMoney=v=>v==null?"—":`$${fmtN(v,0)}`;
+
+  const subTabBtn=(t,label)=>{const a=subTab===t;return <button onClick={()=>setSubTab(t)} style={{background:a?"#1a1d27":"transparent",border:"none",color:a?"#e6edf3":"#7a8497",padding:"7px 16px",cursor:"pointer",fontSize:13,fontWeight:a?600:500,borderRadius:8,boxShadow:a?"0 1px 2px rgba(0,0,0,.35), 0 0 0 1px #2a2f3f55":"none"}}>{label}</button>;};
+  const undBtn=(u)=>{const a=underlying===u;return <button key={u} onClick={()=>setUnderlying(u)} style={{background:a?"#8B1538":"#1a1d27",border:`1px solid ${a?"#8B1538":"#2a2f3f"}`,color:a?"#fff":"#c1c8d4",borderRadius:8,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600}}>{u}{a&&spots[u]?` $${fmtN(spots[u],0)}`:""}</button>;};
+
+  const callColor="#10b981",putColor="#f43f5e";
+  const scoreColor=s=>s>=80?"#10b981":s>=60?"#f59e0b":"#f43f5e";
+
+  const selectedOpt=useMemo(()=>enriched.find(o=>o.symbol===selSymbol)||null,[enriched,selSymbol]);
+
+  return <div style={{display:"flex",flexDirection:"column",gap:18}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
+      <div>
+        <h2 style={{margin:0,fontSize:18,fontWeight:700}}>Opciones AR</h2>
+        <p style={{margin:"4px 0 0",fontSize:13,color:"#7a8497"}}>Cadena enriquecida con IV/Greeks (Black-Scholes) · data912 refresh 20s · risk-free {(r*100).toFixed(1)}% (BADLAR)</p>
+      </div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        {lastUpdate&&<span style={{fontSize:11,color:"#7a8497"}}>Act: {lastUpdate.toLocaleTimeString("es-AR")}</span>}
+        <button onClick={loadData} disabled={loading} style={{background:"#13151c",border:"1px solid #2a2f3f",color:"#c1c8d4",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:loading?"wait":"pointer"}}>{loading?"⏳":"🔄"} Refresh</button>
+      </div>
+    </div>
+
+    <div style={{display:"flex",gap:2,background:"#13151c",border:"1px solid #2a2f3f",borderRadius:12,padding:4,alignSelf:"flex-start"}}>
+      {subTabBtn("cadena","Cadena")}
+      {subTabBtn("screener","Screener Long Calls")}
+      {subTabBtn("calc","Calculadora P&L")}
+    </div>
+
+    {error&&<div style={{padding:14,background:"#f43f5e15",border:"1px solid #f43f5e35",borderRadius:10,color:"#f43f5e",fontSize:13}}>⚠ {error}. data912 puede estar caído o rate-limited. Reintentá en unos segundos.</div>}
+    {loading&&!rawOpts.length&&<div style={{padding:40,textAlign:"center",color:"#f59e0b",fontSize:14}}>⏳ Cargando cadena de opciones…</div>}
+
+    {!loading&&rawOpts.length>0&&subTab==="cadena"&&<div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        <div style={{display:"flex",gap:4}}>{OPC_TOP5.map(undBtn)}</div>
+        <div style={{marginLeft:"auto",display:"flex",gap:6,fontSize:12}}>
+          <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",padding:"6px 10px",background:showCalls?"#10b98120":"#1a1d27",border:`1px solid ${showCalls?"#10b98155":"#2a2f3f"}`,borderRadius:8,color:showCalls?"#10b981":"#7a8497"}}><input type="checkbox" checked={showCalls} onChange={e=>setShowCalls(e.target.checked)} style={{margin:0}}/>Calls</label>
+          <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",padding:"6px 10px",background:showPuts?"#f43f5e20":"#1a1d27",border:`1px solid ${showPuts?"#f43f5e55":"#2a2f3f"}`,borderRadius:8,color:showPuts?"#f43f5e":"#7a8497"}}><input type="checkbox" checked={showPuts} onChange={e=>setShowPuts(e.target.checked)} style={{margin:0}}/>Puts</label>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+        <div style={{background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:10,padding:"10px 12px"}}><div style={{fontSize:10,color:"#7a8497",textTransform:"uppercase"}}>Spot {underlying}</div><div style={{fontSize:18,fontWeight:700,color:"#e6edf3"}}>{fmtMoney(spot)}</div></div>
+        <div style={{background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:10,padding:"10px 12px"}}><div style={{fontSize:10,color:"#7a8497",textTransform:"uppercase"}}>IV ATM</div><div style={{fontSize:18,fontWeight:700,color:"#e6edf3"}}>{fmtPct(ivAtm)}</div></div>
+        <div style={{background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:10,padding:"10px 12px"}}><div style={{fontSize:10,color:"#7a8497",textTransform:"uppercase"}}>Strikes</div><div style={{fontSize:18,fontWeight:700,color:"#e6edf3"}}>{chain.length}</div></div>
+        <div style={{background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:10,padding:"10px 12px"}}><div style={{fontSize:10,color:"#7a8497",textTransform:"uppercase"}}>Risk-free</div><div style={{fontSize:18,fontWeight:700,color:"#e6edf3"}}>{(r*100).toFixed(1)}%</div></div>
+      </div>
+
+      <div className="table-wrap" style={{overflowX:"auto",background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:12}}>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:900,fontSize:12}}>
+          <thead><tr style={{background:"#13151c",borderBottom:"1px solid #2a2f3f"}}>
+            <th style={{padding:"10px 8px",textAlign:"left",fontSize:11,color:"#7a8497",fontWeight:600}}>Symbol</th>
+            <th style={{padding:"10px 8px",textAlign:"center",fontSize:11,color:"#7a8497",fontWeight:600}}>Tipo</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>Strike</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>DTE</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>Bid</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>Ask</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>Spr%</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>IV</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>Δ</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>Γ</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>θ/d</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>BE %</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>Vol $</th>
+          </tr></thead>
+          <tbody>
+            {chain.map((o,i)=>{const isAtm=Math.abs(o.moneyPct)<3;return <tr key={o.symbol} style={{borderTop:"1px solid #1a1d27",background:isAtm?"rgba(139,21,56,.08)":"transparent",cursor:"pointer"}} onClick={()=>{setSelSymbol(o.symbol);setSubTab("calc");}}>
+              <td style={{padding:"7px 8px",fontVariantNumeric:"tabular-nums",color:"#c1c8d4"}}>{o.symbol}{isAtm&&<span style={{fontSize:9,color:"#8B1538",marginLeft:4}}>ATM</span>}</td>
+              <td style={{padding:"7px 8px",textAlign:"center",color:o.optType==='C'?callColor:putColor,fontWeight:600}}>{o.optType==='C'?"CALL":"PUT"}</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontWeight:600}}>{fmtN(o.strike,0)}</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",color:"#7a8497"}}>{o.dte}d</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{o.bid?fmtN(o.bid,1):"—"}</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{o.ask?fmtN(o.ask,1):"—"}</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",color:o.sprPct&&o.sprPct<5?"#10b981":o.sprPct&&o.sprPct<10?"#f59e0b":"#f43f5e"}}>{o.sprPct?o.sprPct.toFixed(0)+"%":"—"}</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{o.iv?(o.iv*100).toFixed(0)+"%":"—"}</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{o.delta!=null?o.delta.toFixed(2):"—"}</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",color:"#7a8497"}}>{o.gamma!=null?o.gamma.toFixed(4):"—"}</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",color:"#f43f5e"}}>{o.theta!=null?o.theta.toFixed(2):"—"}</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",color:o.bePct!=null&&Math.abs(o.bePct)<8?"#10b981":"#7a8497"}}>{o.bePct!=null?fmtPctSig(o.bePct):"—"}</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",color:"#7a8497"}}>{o.arsVol?fmtN(o.arsVol/1000,0)+"k":"—"}</td>
+            </tr>;})}
+            {chain.length===0&&<tr><td colSpan={13} style={{padding:30,textAlign:"center",color:"#7a8497"}}>Sin opciones para {underlying} con los filtros actuales.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <div style={{fontSize:11,color:"#7a8497"}}>💡 Click en una fila para abrirla en Calculadora P&L.</div>
+    </div>}
+
+    {!loading&&rawOpts.length>0&&subTab==="screener"&&<div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{padding:"12px 14px",background:"#8B153810",border:"1px solid #8B153830",borderRadius:10,fontSize:12,color:"#c1c8d4"}}>
+        <b style={{color:"#e6edf3"}}>Cómo se ranquea:</b> Score 0-100 ponderando liquidez (25), delta quality 0.40-0.50 (25), DTE 30-60d (15), breakeven cerca del spot (15), IV neutral (20). Universo: top 5 líquidos AR (GGAL, YPFD, PAMP, COME, ALUA), volumen mín $10k. <b style={{color:"#f59e0b"}}>Ojo:</b> comprar calls es la estrategia con peor R/R estructural — theta y IV crush te comen aunque acertes la dirección.
+      </div>
+      <div className="table-wrap" style={{overflowX:"auto",background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:12}}>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:850,fontSize:12}}>
+          <thead><tr style={{background:"#13151c",borderBottom:"1px solid #2a2f3f"}}>
+            <th style={{padding:"10px 8px",textAlign:"left",fontSize:11,color:"#7a8497",fontWeight:600}}>#</th>
+            <th style={{padding:"10px 8px",textAlign:"left",fontSize:11,color:"#7a8497",fontWeight:600}}>Subyac.</th>
+            <th style={{padding:"10px 8px",textAlign:"left",fontSize:11,color:"#7a8497",fontWeight:600}}>Symbol</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>Strike</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>Mid</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>Δ</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>IV</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>DTE</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>Spr%</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>BE</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>Vol $</th>
+            <th style={{padding:"10px 8px",textAlign:"right",fontSize:11,color:"#7a8497",fontWeight:600}}>Score</th>
+          </tr></thead>
+          <tbody>
+            {screener.map((o,i)=><tr key={o.symbol} style={{borderTop:"1px solid #1a1d27",cursor:"pointer"}} onClick={()=>{setSelSymbol(o.symbol);setSubTab("calc");}}>
+              <td style={{padding:"7px 8px",color:"#7a8497",fontWeight:600}}>{i+1}</td>
+              <td style={{padding:"7px 8px",fontWeight:600,color:"#e6edf3"}}>{o.underlying}</td>
+              <td style={{padding:"7px 8px",fontVariantNumeric:"tabular-nums",color:"#c1c8d4"}}>{o.symbol}</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontWeight:600}}>{fmtN(o.strike,0)}</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{fmtN(o.mid,1)}</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{o.delta.toFixed(2)}</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{(o.iv*100).toFixed(0)}%</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",color:"#7a8497"}}>{o.dte}d</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",color:o.sprPct<5?"#10b981":o.sprPct<10?"#f59e0b":"#f43f5e"}}>{o.sprPct.toFixed(0)}%</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{fmtPctSig(o.bePct)}</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",color:"#7a8497"}}>{fmtN(o.arsVol/1000,0)}k</td>
+              <td style={{padding:"7px 8px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontWeight:700,color:scoreColor(o.score)}}>{o.score}</td>
+            </tr>)}
+            {screener.length===0&&<tr><td colSpan={12} style={{padding:30,textAlign:"center",color:"#7a8497"}}>Sin candidatos. Probable: panel cerrado o sin volumen suficiente.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      {screener.length>0&&<div style={{padding:"14px 16px",background:"#10b98110",border:"1px solid #10b98135",borderRadius:10,fontSize:13,color:"#c1c8d4",lineHeight:1.6}}>
+        <div style={{fontSize:12,color:"#10b981",fontWeight:600,marginBottom:6}}>📌 Veredicto del screener — top pick</div>
+        <b>{screener[0].underlying}</b> {screener[0].optType==='C'?"Call":"Put"} strike <b>{fmtN(screener[0].strike,0)}</b> ({screener[0].symbol}) — score <b style={{color:scoreColor(screener[0].score)}}>{screener[0].score}</b>. Δ {screener[0].delta.toFixed(2)}, IV {(screener[0].iv*100).toFixed(0)}%, breakeven a {fmtPctSig(screener[0].bePct)} del spot. Pagás ~{fmtMoney(screener[0].mid)}, controlás 1 acción al alza. Si {screener[0].underlying} llega a {fmtMoney(screener[0].breakeven)} al vto = empate; movimientos mayores apalancan. <b style={{color:"#f59e0b"}}>Riesgo:</b> theta come ~{Math.abs(screener[0].theta||0).toFixed(1)}/día y si IV cede, perdés vega aunque acertes dirección.
+      </div>}
+    </div>}
+
+    {!loading&&rawOpts.length>0&&subTab==="calc"&&<div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {!selectedOpt&&<div style={{padding:30,textAlign:"center",color:"#7a8497",background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:12}}>Seleccioná una opción desde la pestaña Cadena o Screener para abrir la calculadora.</div>}
+      {selectedOpt&&<div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8,padding:"14px 16px",background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:12}}>
+          <div>
+            <div style={{fontSize:11,color:"#7a8497",textTransform:"uppercase"}}>Opción seleccionada</div>
+            <div style={{fontSize:20,fontWeight:700,color:"#e6edf3"}}>{selectedOpt.symbol}</div>
+            <div style={{fontSize:13,color:"#c1c8d4",marginTop:4}}>{selectedOpt.underlying} {selectedOpt.optType==='C'?"Call":"Put"} strike <b>{fmtN(selectedOpt.strike,0)}</b> · vto {selectedOpt.expiry} ({selectedOpt.dte}d)</div>
+          </div>
+          <div style={{display:"flex",gap:14,fontSize:12}}>
+            <div><div style={{color:"#7a8497"}}>Spot</div><div style={{fontWeight:700,fontSize:15}}>{fmtMoney(selectedOpt.spot)}</div></div>
+            <div><div style={{color:"#7a8497"}}>Mid</div><div style={{fontWeight:700,fontSize:15}}>{fmtMoney(selectedOpt.mid)}</div></div>
+            <div><div style={{color:"#7a8497"}}>IV</div><div style={{fontWeight:700,fontSize:15}}>{fmtPct(selectedOpt.iv)}</div></div>
+            <div><div style={{color:"#7a8497"}}>Δ</div><div style={{fontWeight:700,fontSize:15}}>{selectedOpt.delta?.toFixed(2)}</div></div>
+            <div><div style={{color:"#7a8497"}}>BE</div><div style={{fontWeight:700,fontSize:15}}>{fmtPctSig(selectedOpt.bePct)}</div></div>
+          </div>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
+          <div style={{background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:10,padding:"12px 14px"}}>
+            <label style={{fontSize:11,color:"#7a8497",textTransform:"uppercase"}}>Movimiento spot ({pnlSpotShift>=0?"+":""}{pnlSpotShift}%)</label>
+            <input type="range" min="-30" max="30" step="1" value={pnlSpotShift} onChange={e=>setPnlSpotShift(parseFloat(e.target.value))} style={{width:"100%",marginTop:8}}/>
+          </div>
+          <div style={{background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:10,padding:"12px 14px"}}>
+            <label style={{fontSize:11,color:"#7a8497",textTransform:"uppercase"}}>Cambio IV ({pnlIvShift>=0?"+":""}{pnlIvShift}pp)</label>
+            <input type="range" min="-30" max="30" step="1" value={pnlIvShift} onChange={e=>setPnlIvShift(parseFloat(e.target.value))} style={{width:"100%",marginTop:8}}/>
+          </div>
+          <div style={{background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:10,padding:"12px 14px"}}>
+            <label style={{fontSize:11,color:"#7a8497",textTransform:"uppercase"}}>Días pasados (+{pnlDayShift}d)</label>
+            <input type="range" min="0" max={Math.max(1,selectedOpt.dte-1)} step="1" value={pnlDayShift} onChange={e=>setPnlDayShift(parseFloat(e.target.value))} style={{width:"100%",marginTop:8}}/>
+          </div>
+        </div>
+
+        {(()=>{
+          const points=[];
+          const sMin=selectedOpt.spot*0.7;const sMax=selectedOpt.spot*1.3;
+          const iv=selectedOpt.iv;
+          const T0=selectedOpt.dte/365;
+          const Tnow=Math.max(0.001,(selectedOpt.dte-pnlDayShift)/365);
+          const Tend=0.0001;
+          for(let i=0;i<=60;i++){
+            const s=sMin+(sMax-sMin)*i/60;
+            const pNow=opcBsPrice(s,selectedOpt.strike,Tnow,r,Math.max(0.001,iv+pnlIvShift/100),selectedOpt.optType);
+            const pEnd=opcBsPrice(s,selectedOpt.strike,Tend,r,iv,selectedOpt.optType);
+            const pBuy=selectedOpt.mid;
+            points.push({s,plNow:pNow-pBuy,plEnd:pEnd-pBuy});
+          }
+          const w=600,h=240,padL=50,padR=10,padT=15,padB=30;
+          const allPL=points.flatMap(p=>[p.plNow,p.plEnd]);
+          const minPL=Math.min(...allPL),maxPL=Math.max(...allPL);
+          const sx=s=>padL+(s-sMin)/(sMax-sMin)*(w-padL-padR);
+          const sy=p=>padT+(maxPL-p)/(maxPL-minPL)*(h-padT-padB);
+          const pathNow=points.map((p,i)=>(i===0?"M":"L")+sx(p.s)+" "+sy(p.plNow)).join(" ");
+          const pathEnd=points.map((p,i)=>(i===0?"M":"L")+sx(p.s)+" "+sy(p.plEnd)).join(" ");
+          const breakevenS=sx(selectedOpt.breakeven||selectedOpt.strike);
+          const spotS=sx(selectedOpt.spot*(1+pnlSpotShift/100));
+          const sFut=selectedOpt.spot*(1+pnlSpotShift/100);
+          const plNowAtS=opcBsPrice(sFut,selectedOpt.strike,Tnow,r,Math.max(0.001,iv+pnlIvShift/100),selectedOpt.optType)-selectedOpt.mid;
+          const plEndAtS=opcBsPrice(sFut,selectedOpt.strike,Tend,r,iv,selectedOpt.optType)-selectedOpt.mid;
+          const plPctNow=plNowAtS/selectedOpt.mid*100;
+          const plPctEnd=plEndAtS/selectedOpt.mid*100;
+          return <div style={{background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:12,padding:16}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
+              <div style={{fontSize:12,color:"#7a8497"}}>Payoff diagram — P&L vs spot del subyacente al vencimiento</div>
+              <div style={{display:"flex",gap:14,fontSize:11}}>
+                <span><span style={{display:"inline-block",width:14,height:2,background:"#8B1538",verticalAlign:"middle",marginRight:6}}></span>Hoy + {pnlDayShift}d</span>
+                <span><span style={{display:"inline-block",width:14,height:2,background:"#7a8497",verticalAlign:"middle",marginRight:6,borderTop:"1px dashed"}}></span>Al vencimiento</span>
+              </div>
+            </div>
+            <svg width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet" style={{display:"block"}}>
+              <line x1={padL} y1={sy(0)} x2={w-padR} y2={sy(0)} stroke="#2a2f3f" strokeWidth="1"/>
+              <line x1={breakevenS} y1={padT} x2={breakevenS} y2={h-padB} stroke="#f59e0b" strokeWidth="1" strokeDasharray="3 3"/>
+              <text x={breakevenS} y={padT-3} fontSize="9" fill="#f59e0b" textAnchor="middle">BE</text>
+              <line x1={spotS} y1={padT} x2={spotS} y2={h-padB} stroke="#10b981" strokeWidth="1.5"/>
+              <text x={spotS} y={padT-3} fontSize="9" fill="#10b981" textAnchor="middle">Spot →</text>
+              <path d={pathEnd} stroke="#7a8497" strokeWidth="1.5" fill="none" strokeDasharray="4 3"/>
+              <path d={pathNow} stroke="#8B1538" strokeWidth="2" fill="none"/>
+              {[minPL,(minPL+maxPL)/2,maxPL].map((v,i)=><g key={i}>
+                <text x={padL-5} y={sy(v)+3} fontSize="9" fill="#7a8497" textAnchor="end">{fmtN(v,0)}</text>
+              </g>)}
+              {[sMin,selectedOpt.spot,sMax].map((v,i)=><text key={i} x={sx(v)} y={h-padB+15} fontSize="9" fill="#7a8497" textAnchor="middle">{fmtN(v,0)}</text>)}
+            </svg>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14,marginTop:14}}>
+              <div style={{background:"#13151c",borderRadius:10,padding:"12px 14px",border:"1px solid #2a2f3f"}}>
+                <div style={{fontSize:10,color:"#7a8497",textTransform:"uppercase",marginBottom:4}}>P&L ahora (spot {fmtMoney(sFut)} · IV {((iv+pnlIvShift/100)*100).toFixed(0)}%)</div>
+                <div style={{fontSize:20,fontWeight:700,color:plNowAtS>=0?"#10b981":"#f43f5e"}}>{plNowAtS>=0?"+":""}{fmtMoney(plNowAtS)} <span style={{fontSize:14}}>({plPctNow>=0?"+":""}{plPctNow.toFixed(0)}%)</span></div>
+              </div>
+              <div style={{background:"#13151c",borderRadius:10,padding:"12px 14px",border:"1px solid #2a2f3f"}}>
+                <div style={{fontSize:10,color:"#7a8497",textTransform:"uppercase",marginBottom:4}}>P&L al vencimiento (spot {fmtMoney(sFut)})</div>
+                <div style={{fontSize:20,fontWeight:700,color:plEndAtS>=0?"#10b981":"#f43f5e"}}>{plEndAtS>=0?"+":""}{fmtMoney(plEndAtS)} <span style={{fontSize:14}}>({plPctEnd>=0?"+":""}{plPctEnd.toFixed(0)}%)</span></div>
+              </div>
+            </div>
+          </div>;
+        })()}
+      </div>}
+    </div>}
+  </div>;
+}
+
 /* ── APP ─────────────────────────────────── */
 function App(){
   const [tab,setTab]=useState("resumen");
@@ -3945,7 +4287,7 @@ function App(){
     return()=>{cancelled=true;};
   },[portfolioTotal,invertido,macro.dolarCCL]);
 
-  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"tesis",label:"Tesis",emoji:"🧠"},{id:"dividendos",label:"Dividendos",emoji:"💰"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"noticias",label:"Noticias",emoji:"📰"},{id:"caucion",label:"Caución",emoji:"🏦"},{id:"trading",label:"Trading",emoji:"⚡"},{id:"potencial",label:"Potencial",emoji:"🎯"}];
+  const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"tesis",label:"Tesis",emoji:"🧠"},{id:"dividendos",label:"Dividendos",emoji:"💰"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"noticias",label:"Noticias",emoji:"📰"},{id:"caucion",label:"Caución",emoji:"🏦"},{id:"trading",label:"Trading",emoji:"⚡"},{id:"opciones",label:"Opciones AR",emoji:"🎲"},{id:"potencial",label:"Potencial",emoji:"🎯"}];
 
   return <div style={{minHeight:"100vh"}}>
     <header style={{background:"linear-gradient(90deg,#0A0E17 0%,#1A0F18 45%,#4A0E1A 75%,#8B1538 100%)",borderBottom:"1px solid #22263350",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50,boxShadow:"0 1px 0 rgba(139,21,56,.15)"}}>
@@ -4021,6 +4363,7 @@ function App(){
       {tab==="potencial"&&<Potencial pos={pos} prices={prices} macro={macro}/>}
       {tab==="noticias"&&<Noticias pos={pos} news={news}/>}
       {tab==="caucion"&&<Caucion caucion={caucion} setCaucion={setCaucion} iolStatus={iolStatus} fetchCaucionRate={fetchCaucionRate} caucionForm={caucionForm} setCaucionForm={setCaucionForm}/>}
+      {tab==="opciones"&&<Opciones macro={macro}/>}
     </main>
   </div>;
 }
