@@ -1573,7 +1573,8 @@ function Dividendos({enriched}){
   /* Estado: hidratar desde cache si está fresco para los mismos tickers */
   const [divData,setDivData]=useState(()=>loadDivCache(tickerKey)||[]);
   const [loading,setLoading]=useState(false);
-  const [progress,setProgress]=useState({done:0,total:0});
+  const [progress,setProgress]=useState({done:0,total:0,failed:[]});
+  const [error,setError]=useState(null);
   const [lastFetch,setLastFetch]=useState(()=>{
     try{const raw=JSON.parse(localStorage.getItem(DIV_CACHE_KEY)||"{}");return raw.ts?new Date(raw.ts):null;}catch(e){return null;}
   });
@@ -1582,10 +1583,12 @@ function Dividendos({enriched}){
   const fetchDividends=useCallback(async()=>{
     if(tickers.length===0)return;
     setLoading(true);
-    setProgress({done:0,total:tickers.length});
+    setError(null);
+    setProgress({done:0,total:tickers.length,failed:[]});
     const now=Math.floor(Date.now()/1000);
     const oneYearAgo=now-365*86400;
     const oneYearFwd=now+365*86400;
+    const failed=[];
 
     const fetchOne=async ticker=>{
       const pos=enrichedByTicker.get(ticker);
@@ -1595,7 +1598,7 @@ function Dividendos({enriched}){
       try{
         const j=await fetchJSONWithProxies(url);
         const divs=j.chart?.result?.[0]?.events?.dividends;
-        if(!divs)return [];
+        if(!divs)return []; /* Sin dividendos para este ticker — OK, no es error */
         const price=pos.precioActual||pos.ppc;
         return Object.values(divs).map(d=>({
           ticker,sym,
@@ -1605,17 +1608,29 @@ function Dividendos({enriched}){
           yield:price>0?((d.amount/price)*100):0,
           isPast:d.date<now
         }));
-      }catch(e){console.warn("Div fetch error for",ticker,e?.message||e);return [];}
-      finally{setProgress(p=>({done:p.done+1,total:p.total}));}
+      }catch(e){
+        console.warn("Div fetch error for",ticker,e?.message||e);
+        failed.push(ticker);
+        return [];
+      }finally{setProgress(p=>({done:p.done+1,total:p.total,failed:[...failed]}));}
     };
 
     /* 3 simultáneos: con 6 tickers son 2 batches en lugar de 6 secuenciales (≈3x más rápido) */
     const all=await pMap(tickers,fetchOne,3);
     const sorted=all.flat().sort((a,b)=>a.date.localeCompare(b.date));
-    setDivData(sorted);
-    saveDivCache(tickerKey,sorted);
-    const ts=new Date();
-    setLastFetch(ts);
+
+    /* Si TODOS los tickers fallaron por proxy/network, no sobreescribir cache existente */
+    const allFailed=failed.length===tickers.length;
+    if(allFailed){
+      setError(`Todos los proxies CORS fallaron al consultar Yahoo (${failed.length}/${tickers.length} tickers). Esto suele ser temporal — esperá 1-2 min y reintentá. Tickers afectados: ${failed.join(", ")}.`);
+    }else{
+      setDivData(sorted);
+      saveDivCache(tickerKey,sorted);
+      setLastFetch(new Date());
+      if(failed.length>0){
+        setError(`${failed.length} ticker(s) fallaron: ${failed.join(", ")}. El resto se cargó OK.`);
+      }
+    }
     setLoading(false);
   },[tickers,tickerKey,enrichedByTicker]);
 
@@ -1721,7 +1736,18 @@ function Dividendos({enriched}){
 
     {tickers.length===0&&<div style={{color:"#4d5365",textAlign:"center",padding:20,fontSize:13}}>Agregá posiciones en tu cartera para ver dividendos.</div>}
 
-    {tickers.length>0&&divData.length===0&&!loading&&<div style={{color:"#4d5365",textAlign:"center",padding:20,fontSize:13}}>Presioná "Actualizar" para buscar dividendos de tu cartera.</div>}
+    {/* Loading state con progress visible */}
+    {loading&&<div style={{textAlign:"center",padding:30,color:"#f59e0b",fontSize:14}}>
+      ⏳ Buscando dividendos · {progress.done} de {progress.total} tickers
+      {progress.failed.length>0&&<div style={{fontSize:11,color:"#f43f5e",marginTop:6}}>Fallaron: {progress.failed.join(", ")}</div>}
+    </div>}
+
+    {/* Error banner si todo falló o algunos fallaron */}
+    {!loading&&error&&<div style={{padding:"12px 16px",margin:"0 0 12px 0",background:"#7f1d2e22",border:"1px solid #7f1d2e55",borderRadius:10,color:"#f43f5e",fontSize:13}}>
+      ⚠ {error}
+    </div>}
+
+    {tickers.length>0&&divData.length===0&&!loading&&!error&&<div style={{color:"#4d5365",textAlign:"center",padding:20,fontSize:13}}>Presioná "Actualizar" para buscar dividendos de tu cartera.</div>}
 
     {divData.length>0&&<div>
       {/* ── Resumen cards ── */}
