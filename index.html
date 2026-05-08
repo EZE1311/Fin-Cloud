@@ -210,22 +210,30 @@ function inferMeta(ticker,broker,mercado,d912Info){
 
 /* ── Comisiones Bull Market — Active Trader Plus ── */
 /* Calcula comisión total (broker + derecho mercado + IVA si aplica) sobre un monto */
+/* ── Tarifas BM Active Trader Plus (Marzo 2025) ──────────────────────
+   Single source of truth para fees. Consumido por:
+   - calcComision: monto en ARS para operaciones registradas (asume NORMAL).
+   - calcFeesBYMA (en Trading component): desglose intra/normal para watchlist.
+   Si BM cambia su tarifa, modificar SOLO acá. */
+const BM_FEES={
+  /* Acciones / CEDEARs */
+  acc: { comNormal:0.0010, derNormal:0.0008, comIntra:0.0005, derIntra:0.00055 },
+  /* Bonos / ONs */
+  bono:{ comNormal:0.0010, derNormal:0.00010, comIntra:0.0005, derIntra:0.00010 },
+  /* Letras del Tesoro — no aplica intra (CNV) */
+  letra:{ comNormal:0.0010, derNormal:0.00001, comIntra:0.0010, derIntra:0.00001 },
+  /* IVA y exenciones */
+  ivaMult: 1.21,
+  exentoTipos: new Set(["Bono","Letra","ON"]),
+};
+const _bmFeeBucket=tipo=>(tipo==="Letra")?BM_FEES.letra:(BM_FEES.exentoTipos.has(tipo))?BM_FEES.bono:BM_FEES.acc;
+
 function calcComision(monto, broker, tipo){
   if(broker!=="BM") return 0; /* CS u otros brokers USA: sin comisión */
-  const IVA=1.21;
-  /* Bonos, Letras, ONs → exentos de IVA */
-  const exento=tipo==="Bono"||tipo==="Letra"||tipo==="ON";
-  let comBroker, derechoMercado;
-  if(tipo==="Bono"||tipo==="ON"){
-    comBroker=0.0010; derechoMercado=0.0001; /* 0.10% + 0.01% */
-  } else if(tipo==="Letra"){
-    comBroker=0.0010; derechoMercado=0.00001; /* 0.10% + 0.001% */
-  } else {
-    /* Acciones, CEDEARs */
-    comBroker=0.0010; derechoMercado=0.0008; /* 0.10% + 0.08% */
-  }
-  const subtotal=monto*(comBroker+derechoMercado);
-  return exento?subtotal:subtotal*IVA;
+  const f=_bmFeeBucket(tipo);
+  const exento=BM_FEES.exentoTipos.has(tipo);
+  const subtotal=monto*(f.comNormal+f.derNormal);
+  return exento?subtotal:subtotal*BM_FEES.ivaMult;
 }
 
 /* ── Caución calculation (shared by Caucion tab + Resumen) ── */
@@ -358,6 +366,16 @@ const PROXIES=[
 /* @deprecated — usar fetchWithProxies/fetchJSONWithProxies en lugar de PROXY directo.
    Se mantiene declarado para compat backward (scripts externos que pudieran depender). */
 const PROXY=PROXIES[0];
+
+/* Market hours unificados (minutos del día en hora local del mercado).
+   BYMA incluye pre-market (10:30 ART) — coherente con data912 que ya entrega quotes
+   desde ese horario. NYSE solo regular (9:30-16:00 ET). */
+const MARKET_HOURS={
+  bymaStart: 630,  /* 10:30 ART */
+  bymaEnd:   1020, /* 17:00 ART */
+  nyseStart: 570,  /* 9:30 ET */
+  nyseEnd:   960,  /* 16:00 ET */
+};
 
 /* Timeout default para todos los fetches via proxy. Si un proxy queda hung,
    el browser default es ~30s+. Con 10s saltamos al próximo más rápido. */
@@ -1365,6 +1383,8 @@ function Operaciones({ops,setOps,macro,enriched}){
   const [filter,setFilter]=useState("");
   const [confirmDel,setConfirmDel]=useState(null);
   const emptyForm={ticker:"",tipo:"COMPRA",cantidad:"",precio:"",mercado:"BYMA",broker:"BM",moneda:"ARS",fecha:todayISO(),ccl:""};
+  /* Memoizar lookups por ticker */
+  const enrichedByTicker=useMemo(()=>new Map((enriched||[]).map(e=>[e.ticker,e])),[enriched]);
   const montoUSD=(op)=>{
     if(op.moneda==="USD") return op.cantidad*op.precio;
     if(op.ccl&&op.ccl>0) return (op.cantidad*op.precio)/op.ccl;
@@ -1429,7 +1449,7 @@ function Operaciones({ops,setOps,macro,enriched}){
       <div className="table-wrap" style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",minWidth:950}}>
           <thead><tr>{["Fecha","Ticker","Tipo","Cantidad","Precio","CCL","Monto ARS","Monto USD","Comisión","Broker",""].map(h2=><th key={h2} style={{padding:"10px 8px",textAlign:["Fecha","Ticker","Tipo",""].includes(h2)?"left":"right",fontSize:11,fontWeight:600,color:"#7a8497",textTransform:"uppercase",borderBottom:"1px solid #22263350",background:"#151a27"}}>{h2}</th>)}</tr></thead>
-          <tbody>{[...fl].reverse().map(op=>{const usd=montoUSD(op);const ep=enriched&&enriched.find(e=>e.ticker===op.ticker);const tipoActivo=ep?ep.tipo:"Acción";const com=usd!=null?calcComision(usd,op.broker,tipoActivo):0;return <tr key={op.id} style={{borderBottom:"1px solid #1a1d27",background:editId===op.id?"#8B153811":"transparent"}} onMouseEnter={e=>{if(editId!==op.id)e.currentTarget.style.background="#2226335033"}} onMouseLeave={e=>{if(editId!==op.id)e.currentTarget.style.background=editId===op.id?"#8B153811":"transparent"}}>
+          <tbody>{[...fl].reverse().map(op=>{const usd=montoUSD(op);const ep=enrichedByTicker.get(op.ticker);const tipoActivo=ep?ep.tipo:"Acción";const com=usd!=null?calcComision(usd,op.broker,tipoActivo):0;return <tr key={op.id} style={{borderBottom:"1px solid #1a1d27",background:editId===op.id?"#8B153811":"transparent"}} onMouseEnter={e=>{if(editId!==op.id)e.currentTarget.style.background="#2226335033"}} onMouseLeave={e=>{if(editId!==op.id)e.currentTarget.style.background=editId===op.id?"#8B153811":"transparent"}}>
             <td style={{padding:"10px 8px",fontSize:13}}>{op.fecha}</td>
             <td style={{padding:"10px 8px",fontWeight:700,fontSize:14}}>{op.ticker}</td>
             <td style={{padding:"10px 8px"}}><Badge text={op.tipo} color={op.tipo==="COMPRA"?"#10b981":"#f43f5e"} bg={op.tipo==="COMPRA"?"#065f4622":"#7f1d2e22"}/></td>
@@ -1516,6 +1536,8 @@ function Dividendos({enriched}){
   const [loading,setLoading]=useState(false);
   const [progress,setProgress]=useState({done:0,total:0});
   const [lastFetch,setLastFetch]=useState(null);
+  /* Memoizar lookups por ticker — evita find() O(n) en cada iteración del map */
+  const enrichedByTicker=useMemo(()=>new Map((enriched||[]).map(e=>[e.ticker,e])),[enriched]);
 
   const tickers=[...new Set((enriched||[]).map(e=>e.ticker))];
 
@@ -1529,7 +1551,7 @@ function Dividendos({enriched}){
     const oneYearFwd=now+365*86400;
 
     const fetchOne=async ticker=>{
-      const pos=enriched.find(e=>e.ticker===ticker);
+      const pos=enrichedByTicker.get(ticker);
       if(!pos)return [];
       const sym=yfSym(ticker);
       const url=`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?period1=${oneYearAgo}&period2=${oneYearFwd}&interval=1mo&events=dividends`;
@@ -1577,7 +1599,7 @@ function Dividendos({enriched}){
   const projected=past.map(d=>{
     const nd=new Date(d.date+"T12:00:00");
     nd.setDate(nd.getDate()+365);
-    const pos=enriched.find(e=>e.ticker===d.ticker);
+    const pos=enrichedByTicker.get(d.ticker);
     const cant=pos?pos.cantidad:d.cantidad;
     return {...d,date:nd.toISOString().split("T")[0],cantidad:cant,total:d.amount*cant,isProjected:true};
   }).filter(p=>p.date>=today);
@@ -1603,7 +1625,7 @@ function Dividendos({enriched}){
   });
   /* Use current portfolio cantidad + price for accuracy */
   Object.values(annualByTicker).forEach(a=>{
-    const pos=enriched.find(e=>e.ticker===a.ticker);
+    const pos=enrichedByTicker.get(a.ticker);
     if(pos){a.price=pos.precioActual||pos.ppc;a.cantidad=pos.cantidad;}
   });
 
@@ -1960,9 +1982,12 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
   /* Ticker: acepta cualquier texto, uppercase */
   const ticker=tickerInput.trim().toUpperCase();
 
+  /* Memoizar lookups del portfolio por ticker (Map → O(1)) */
+  const posByTicker=useMemo(()=>new Map((pos||[]).map(p=>[p.ticker,p])),[pos]);
+
   /* Auto-detect mercado from portfolio if ticker found */
-  const posInfo=pos.find(p=>p.ticker===ticker);
-  const detectedMercado=posInfo?.mercado||(pos.find(p=>p.ticker===ticker)?"BYMA":null);
+  const posInfo=posByTicker.get(ticker);
+  const detectedMercado=posInfo?.mercado||(posInfo?"BYMA":null);
   React.useEffect(()=>{if(detectedMercado)setMercado(detectedMercado);},[ticker,detectedMercado]);
 
   /* Derive tipo from pos metadata */
@@ -1984,14 +2009,13 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
          Si carriás overnight, las dos patas pasan a tarifa normal.
      NYSE = Allaria/CS — 0,60% all-in approx, sin distinción intra ni IVA. */
   const calcFeesBYMA=(tipo,isIntra)=>{
-    const isFixed=tipo==="Bono"||tipo==="Letra"||tipo==="ON";
+    /* Reusa BM_FEES como single source of truth. */
+    const isFixed=BM_FEES.exentoTipos.has(tipo);
     const intraApplies=isIntra&&tipo!=="Letra"; /* Letras no aplican intra */
-    const comPct=intraApplies?0.0005:0.0010;
-    let derPct;
-    if(tipo==="Letra")derPct=0.00001;
-    else if(isFixed)derPct=0.00010;
-    else derPct=intraApplies?0.00055:0.00080;
-    const ivaMult=isFixed?1:1.21;
+    const f=_bmFeeBucket(tipo);
+    const comPct=intraApplies?f.comIntra:f.comNormal;
+    const derPct=intraApplies?f.derIntra:f.derNormal;
+    const ivaMult=isFixed?1:BM_FEES.ivaMult;
     return{comPct,derPct,ivaMult,factor:(comPct+derPct)*ivaMult,intraApplies};
   };
   const calcFeesNYSE=(_isIntra)=>({comPct:0.0060,derPct:0,ivaMult:1,factor:0.0060,intraApplies:false});
@@ -2675,6 +2699,8 @@ function Potencial({pos,prices,macro}){
   const [error,setError]=useState(null);
   const [progress,setProgress]=useState({done:0,total:0,failed:[]});
   const mep=macro.dolarMEP||1;
+  /* Memoizar lookups del portfolio por ticker (Map → O(1)) */
+  const posByTicker=useMemo(()=>new Map((pos||[]).map(p=>[p.ticker,p])),[pos]);
 
   const fARS=n=>n==null||isNaN(n)?"—":`$ ${new Intl.NumberFormat("es-AR",{minimumFractionDigits:0,maximumFractionDigits:0}).format(n)}`;
   const fUSD=n=>n==null||isNaN(n)?"—":`USD ${new Intl.NumberFormat("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)}`;
@@ -2715,7 +2741,7 @@ function Potencial({pos,prices,macro}){
   const analysis=useMemo(()=>{
     return tickers.map(t=>{
       const hist=histData[t];
-      const posInfo=pos.find(p=>p.ticker===t);
+      const posInfo=posByTicker.get(t);
       if(!hist||!posInfo||hist.points.length===0)return null;
 
       const closes=hist.points.map(p=>p.close);
@@ -3599,20 +3625,23 @@ function App(){
     return macro.dolarMEP>0?deudaARS/macro.dolarMEP:0;
   },[hipoteca,macro]);
 
-  /* ── Helpers: mercado abierto? ──── */
+  /* ── Helpers: mercado abierto? ────
+     Incluye pre-market BYMA (10:30-11:00) porque ya hay flujo de precios real
+     (data912 los devuelve) y el dashboard se beneficia de mostrar quotes desde
+     ese horario. NYSE 9:30-16:00 ET (regular). Constantes en MARKET_HOURS. */
   const isMarketOpen=useCallback(()=>{
     const now=new Date();
     const day=now.getDay();
     if(day===0||day===6)return{byma:false,nyse:false,any:false};
-    /* BYMA: Lun-Vie 11:00-17:00 ART (UTC-3) */
+    /* BYMA: Lun-Vie 10:30-17:00 ART (UTC-3) */
     const artH=now.getUTCHours()-3;const artM=now.getUTCMinutes();
     const artMin=artH*60+artM;
-    const byma=artMin>=660&&artMin<1020; /* 11:00-17:00 */
+    const byma=artMin>=MARKET_HOURS.bymaStart&&artMin<MARKET_HOURS.bymaEnd;
     /* NYSE: Lun-Vie 9:30-16:00 ET (UTC-4 o UTC-5 DST) */
     const etOff=(() => {const jan=new Date(now.getFullYear(),0,1).getTimezoneOffset();const jul=new Date(now.getFullYear(),6,1).getTimezoneOffset();const isDST=now.getTimezoneOffset()<Math.max(jan,jul);return isDST?-4:-5;})();
     const etH=now.getUTCHours()+etOff;const etM=now.getUTCMinutes();
     const etMin=etH*60+etM;
-    const nyse=etMin>=570&&etMin<960; /* 9:30-16:00 */
+    const nyse=etMin>=MARKET_HOURS.nyseStart&&etMin<MARKET_HOURS.nyseEnd;
     return{byma,nyse,any:byma||nyse};
   },[]);
 
@@ -3812,8 +3841,8 @@ function App(){
           <div style={{fontSize:11,color:"#7a8497"}}>Actualizado: {lastUp.toLocaleTimeString("es-AR")}</div>
           <div style={{display:"flex",gap:10,fontSize:10,marginTop:2}}>
             <span>Data: <span style={{color:dataSource==="live"?"#10b981":dataSource==="fallback"?"#f59e0b":"#7a8497",fontWeight:600}}>{dataSource==="live"?"Online":dataSource==="fallback"?"Offline":"⏳"}</span></span>
-            {(()=>{const now=new Date();const utc=now.getTime()+now.getTimezoneOffset()*60000;const art=new Date(utc-3*3600000);const h=art.getHours();const m=art.getMinutes();const d=art.getDay();const t=h*60+m;const bymaOn=d>=1&&d<=5&&t>=630&&t<1020;return <span>BYMA: <span style={{color:bymaOn?"#10b981":"#f43f5e",fontWeight:600}}>{bymaOn?"Online":"Offline"}</span></span>;})()}
-            {(()=>{const now=new Date();const utc=now.getTime()+now.getTimezoneOffset()*60000;const et=new Date(utc-4*3600000);const h=et.getHours();const m=et.getMinutes();const d=et.getDay();const t=h*60+m;const nyseOn=d>=1&&d<=5&&t>=570&&t<960;return <span>NYSE: <span style={{color:nyseOn?"#10b981":"#f43f5e",fontWeight:600}}>{nyseOn?"Online":"Offline"}</span></span>;})()}
+            {(()=>{const now=new Date();const utc=now.getTime()+now.getTimezoneOffset()*60000;const art=new Date(utc-3*3600000);const h=art.getHours();const m=art.getMinutes();const d=art.getDay();const t=h*60+m;const bymaOn=d>=1&&d<=5&&t>=MARKET_HOURS.bymaStart&&t<MARKET_HOURS.bymaEnd;return <span>BYMA: <span style={{color:bymaOn?"#10b981":"#f43f5e",fontWeight:600}}>{bymaOn?"Online":"Offline"}</span></span>;})()}
+            {(()=>{const now=new Date();const utc=now.getTime()+now.getTimezoneOffset()*60000;const et=new Date(utc-4*3600000);const h=et.getHours();const m=et.getMinutes();const d=et.getDay();const t=h*60+m;const nyseOn=d>=1&&d<=5&&t>=MARKET_HOURS.nyseStart&&t<MARKET_HOURS.nyseEnd;return <span>NYSE: <span style={{color:nyseOn?"#10b981":"#f43f5e",fontWeight:600}}>{nyseOn?"Online":"Offline"}</span></span>;})()}
           </div>
         </div>
       </div>
