@@ -1544,6 +1544,33 @@ function saveDivCache(tickerKey,data){
   try{localStorage.setItem(DIV_CACHE_KEY,JSON.stringify({ts:Date.now(),tickerKey,data}));}catch(e){}
 }
 
+/* Alpha Vantage: dividends via TIME_SERIES_MONTHLY_ADJUSTED.
+   Devuelve histórico mensual con "7. dividend amount" en cada bucket.
+   CORS abierto = sin proxy. Free tier 25 req/día → con cache 6h sobra para 6 tickers. */
+async function fetchDividendsAV(ticker,apiKey){
+  const sym=yfSym(ticker);
+  const url=`https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY_ADJUSTED&symbol=${encodeURIComponent(sym)}&apikey=${encodeURIComponent(apiKey)}`;
+  const res=await fetch(url);
+  if(!res.ok)throw new Error("AV HTTP "+res.status);
+  const data=await res.json();
+  if(data["Error Message"])throw new Error(data["Error Message"]);
+  if(data["Note"])throw new Error("AV rate limit");
+  if(data["Information"])throw new Error("AV info: "+(data["Information"]||"").slice(0,40));
+  const series=data["Monthly Adjusted Time Series"];
+  if(!series)throw new Error("AV: sin serie");
+  /* Filtrar entradas del último año con dividend > 0 */
+  const yearAgoMs=Date.now()-365*86400*1000;
+  const events=[];
+  for(const[date,row]of Object.entries(series)){
+    const amount=parseFloat(row["7. dividend amount"]);
+    if(!amount||amount<=0)continue;
+    const ts=new Date(date+"T12:00:00").getTime();
+    if(ts<yearAgoMs)continue;
+    events.push({date,amount,timestamp:Math.floor(ts/1000)});
+  }
+  return events;
+}
+
 /* Throttled parallel map: ejecuta fn(item) con concurrency configurable.
    Mucho más rápido que secuencial cuando los proxies aguantan (~3 simultáneos). */
 async function pMap(items,fn,concurrency=3){
@@ -1590,24 +1617,35 @@ function Dividendos({enriched}){
     const oneYearFwd=now+365*86400;
     const failed=[];
 
+    const avKey=loadLS("av_api_key","");
+
     const fetchOne=async ticker=>{
       const pos=enrichedByTicker.get(ticker);
       if(!pos)return [];
       const sym=yfSym(ticker);
-      const url=`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?period1=${oneYearAgo}&period2=${oneYearFwd}&interval=1mo&events=dividends`;
+      const price=pos.precioActual||pos.ppc;
+      const buildEvent=d=>({
+        ticker,sym,
+        date:new Date(d.date*1000).toISOString().split("T")[0],
+        amount:d.amount,cantidad:pos.cantidad,
+        total:d.amount*pos.cantidad,
+        yield:price>0?((d.amount/price)*100):0,
+        isPast:d.date<now,
+      });
       try{
+        /* 1) Alpha Vantage primary si hay key (CORS abierto, sin proxy) */
+        if(avKey){
+          try{
+            const events=await fetchDividendsAV(ticker,avKey);
+            return events.map(e=>buildEvent({date:e.timestamp,amount:e.amount}));
+          }catch(e){console.warn("AV dividends failed for",ticker,e?.message||e,"— fallback Yahoo proxy");}
+        }
+        /* 2) Yahoo via proxy (fallback) */
+        const url=`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?period1=${oneYearAgo}&period2=${oneYearFwd}&interval=1mo&events=dividends`;
         const j=await fetchJSONWithProxies(url);
         const divs=j.chart?.result?.[0]?.events?.dividends;
         if(!divs)return []; /* Sin dividendos para este ticker — OK, no es error */
-        const price=pos.precioActual||pos.ppc;
-        return Object.values(divs).map(d=>({
-          ticker,sym,
-          date:new Date(d.date*1000).toISOString().split("T")[0],
-          amount:d.amount,cantidad:pos.cantidad,
-          total:d.amount*pos.cantidad,
-          yield:price>0?((d.amount/price)*100):0,
-          isPast:d.date<now
-        }));
+        return Object.values(divs).map(buildEvent);
       }catch(e){
         console.warn("Div fetch error for",ticker,e?.message||e);
         failed.push(ticker);
@@ -3088,7 +3126,11 @@ function SyncConfigPanel({onClose}){
   };
 
   const clearHistCache=()=>{
-    try{localStorage.removeItem(HIST_CACHE_KEY);setAvStatus("✅ Cache histórico borrado. La próxima carga del tab Potencial bajará todo de nuevo.");}catch(e){}
+    try{
+      localStorage.removeItem(HIST_CACHE_KEY);
+      localStorage.removeItem(DIV_CACHE_KEY);
+      setAvStatus("✅ Cache histórico + cache de dividendos borrados. La próxima carga de los tabs los bajará de nuevo.");
+    }catch(e){}
   };
 
   const testConnection=async()=>{
