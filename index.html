@@ -1528,20 +1528,57 @@ function Operaciones({ops,setOps,macro,enriched}){
   </div>;
 }
 
+/* ── DIVIDENDOS · cache localStorage TTL 6h ───────────────────────────
+   Los pagos de dividendos no cambian frecuentemente; cachear evita re-bajar
+   los 6 tickers via Yahoo+proxy cada vez que abrís el tab. */
+const DIV_CACHE_KEY="div_cache_v1";
+const DIV_CACHE_TTL=6*60*60*1000; /* 6h */
+function loadDivCache(tickerKey){
+  try{
+    const raw=JSON.parse(localStorage.getItem(DIV_CACHE_KEY)||"{}");
+    if(raw.ts&&raw.tickerKey===tickerKey&&Date.now()-raw.ts<DIV_CACHE_TTL)return raw.data;
+  }catch(e){}
+  return null;
+}
+function saveDivCache(tickerKey,data){
+  try{localStorage.setItem(DIV_CACHE_KEY,JSON.stringify({ts:Date.now(),tickerKey,data}));}catch(e){}
+}
+
+/* Throttled parallel map: ejecuta fn(item) con concurrency configurable.
+   Mucho más rápido que secuencial cuando los proxies aguantan (~3 simultáneos). */
+async function pMap(items,fn,concurrency=3){
+  const out=Array(items.length);
+  let idx=0;
+  const worker=async()=>{
+    while(idx<items.length){
+      const i=idx++;
+      out[i]=await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({length:Math.min(concurrency,items.length)},()=>worker()));
+  return out;
+}
+
 /* ── DIVIDENDOS · FLUJO + PROYECCIÓN ─────────── */
 function Dividendos({enriched}){
   const fU=n=>`USD ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(n)}`;
   const fU0=n=>`USD ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(n)}`;
-  const [divData,setDivData]=useState([]);
-  const [loading,setLoading]=useState(false);
-  const [progress,setProgress]=useState({done:0,total:0});
-  const [lastFetch,setLastFetch]=useState(null);
   /* Memoizar lookups por ticker — evita find() O(n) en cada iteración del map */
   const enrichedByTicker=useMemo(()=>new Map((enriched||[]).map(e=>[e.ticker,e])),[enriched]);
 
-  const tickers=[...new Set((enriched||[]).map(e=>e.ticker))];
+  /* Memoizar lista de tickers (evita re-instanciación que rompe deps de useEffect) */
+  const tickers=useMemo(()=>[...new Set((enriched||[]).map(e=>e.ticker))],[enriched]);
+  const tickerKey=tickers.join(",");
 
-  /* Fetch dividends in PARALLEL with per-ticker timeout + progress counter */
+  /* Estado: hidratar desde cache si está fresco para los mismos tickers */
+  const [divData,setDivData]=useState(()=>loadDivCache(tickerKey)||[]);
+  const [loading,setLoading]=useState(false);
+  const [progress,setProgress]=useState({done:0,total:0});
+  const [lastFetch,setLastFetch]=useState(()=>{
+    try{const raw=JSON.parse(localStorage.getItem(DIV_CACHE_KEY)||"{}");return raw.ts?new Date(raw.ts):null;}catch(e){return null;}
+  });
+
+  /* Fetch paralelo controlado (3 simultáneos): rápido sin saturar proxies */
   const fetchDividends=useCallback(async()=>{
     if(tickers.length===0)return;
     setLoading(true);
@@ -1556,8 +1593,6 @@ function Dividendos({enriched}){
       const sym=yfSym(ticker);
       const url=`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?period1=${oneYearAgo}&period2=${oneYearFwd}&interval=1mo&events=dividends`;
       try{
-        /* fetchJSONWithProxies maneja: directo (Yahoo no tiene CORS, falla) →
-           codetabs → allorigins. Valida que el body parsee como JSON antes de aceptar. */
         const j=await fetchJSONWithProxies(url);
         const divs=j.chart?.result?.[0]?.events?.dividends;
         if(!divs)return [];
@@ -1574,83 +1609,95 @@ function Dividendos({enriched}){
       finally{setProgress(p=>({done:p.done+1,total:p.total}));}
     };
 
-    /* Secuencial con delay 350ms (igual que Potencial) para no saturar el proxy.
-       Allorigins/codetabs tienen rate limits agresivos cuando se les tira 6 paralelas. */
-    const all=[];
-    for(let i=0;i<tickers.length;i++){
-      const r=await fetchOne(tickers[i]);
-      all.push(r);
-      if(i<tickers.length-1)await new Promise(rs=>setTimeout(rs,350));
-    }
+    /* 3 simultáneos: con 6 tickers son 2 batches en lugar de 6 secuenciales (≈3x más rápido) */
+    const all=await pMap(tickers,fetchOne,3);
     const sorted=all.flat().sort((a,b)=>a.date.localeCompare(b.date));
     setDivData(sorted);
-    setLastFetch(new Date());
+    saveDivCache(tickerKey,sorted);
+    const ts=new Date();
+    setLastFetch(ts);
     setLoading(false);
-  },[enriched,tickers.join(",")]); /* eslint-disable-line */
+  },[tickers,tickerKey,enrichedByTicker]);
 
-  useEffect(()=>{if(tickers.length>0&&divData.length===0)fetchDividends();},[tickers.length]); /* eslint-disable-line */
+  /* Auto-fetch solo si no hay cache válido (el cache hidratado en useState evita el round-trip) */
+  useEffect(()=>{
+    if(tickers.length>0&&divData.length===0&&!loading)fetchDividends();
+  },[tickers.length]); /* eslint-disable-line react-hooks/exhaustive-deps */
 
-  /* Split into past and upcoming */
   const today=new Date().toISOString().split("T")[0];
-  const upcoming=divData.filter(d=>d.date>=today).map(u=>({...u,isProjected:false}));
-  const past=divData.filter(d=>d.date<today);
 
-  /* Forward projection: shift past dividends +365 days. Snapshot current cantidad. */
-  const projected=past.map(d=>{
-    const nd=new Date(d.date+"T12:00:00");
-    nd.setDate(nd.getDate()+365);
-    const pos=enrichedByTicker.get(d.ticker);
-    const cant=pos?pos.cantidad:d.cantidad;
-    return {...d,date:nd.toISOString().split("T")[0],cantidad:cant,total:d.amount*cant,isProjected:true};
-  }).filter(p=>p.date>=today);
+  /* ── Cálculos derivados (memoizados) ──
+     Antes se recalculaban en cada render. Ahora solo cuando cambia divData o
+     enrichedByTicker. Reducción significativa de CPU en re-renders del tab. */
+  const{upcoming,past,projected,merged,annualByTicker,next12,
+        totalNext12,totalAnnualProjection,portfolioTotal,fwdYield,
+        totalUpcoming,totalPast,avgMonth}=useMemo(()=>{
+    const upcoming=divData.filter(d=>d.date>=today).map(u=>({...u,isProjected:false}));
+    const past=divData.filter(d=>d.date<today);
 
-  /* Merge confirmed + projected, dedup within ±15d window per ticker (prefer confirmed) */
-  const merged=[...upcoming];
-  projected.forEach(p=>{
-    const pT=new Date(p.date+"T12:00:00").getTime();
-    const dup=merged.find(u=>u.ticker===p.ticker&&Math.abs(new Date(u.date+"T12:00:00").getTime()-pT)<15*86400000);
-    if(!dup)merged.push(p);
-  });
-  merged.sort((a,b)=>a.date.localeCompare(b.date));
+    /* Forward projection: shift past dividends +365 días. Snapshot current cantidad. */
+    const projected=past.map(d=>{
+      const nd=new Date(d.date+"T12:00:00");
+      nd.setDate(nd.getDate()+365);
+      const pos=enrichedByTicker.get(d.ticker);
+      const cant=pos?pos.cantidad:d.cantidad;
+      return {...d,date:nd.toISOString().split("T")[0],cantidad:cant,total:d.amount*cant,isProjected:true};
+    }).filter(p=>p.date>=today);
 
-  /* Annual projection: sum of last 12 months dividends per ticker, projected forward */
-  const annualByTicker={};
-  past.forEach(d=>{
-    if(!annualByTicker[d.ticker])annualByTicker[d.ticker]={ticker:d.ticker,annual:0,cantidad:d.cantidad,price:0,count:0};
-    annualByTicker[d.ticker].annual+=d.amount;
-    annualByTicker[d.ticker].count++;
-  });
-  upcoming.forEach(d=>{
-    if(!annualByTicker[d.ticker])annualByTicker[d.ticker]={ticker:d.ticker,annual:0,cantidad:d.cantidad,price:0,count:0};
-  });
-  /* Use current portfolio cantidad + price for accuracy */
-  Object.values(annualByTicker).forEach(a=>{
-    const pos=enrichedByTicker.get(a.ticker);
-    if(pos){a.price=pos.precioActual||pos.ppc;a.cantidad=pos.cantidad;}
-  });
+    /* Merge confirmed + projected, dedup ±15d por ticker (prefer confirmed) */
+    const merged=[...upcoming];
+    projected.forEach(p=>{
+      const pT=new Date(p.date+"T12:00:00").getTime();
+      const dup=merged.find(u=>u.ticker===p.ticker&&Math.abs(new Date(u.date+"T12:00:00").getTime()-pT)<15*86400000);
+      if(!dup)merged.push(p);
+    });
+    merged.sort((a,b)=>a.date.localeCompare(b.date));
 
-  /* Build next 12-month forward buckets from merged */
-  const next12=[];
-  const startD=new Date();startD.setDate(1);
-  for(let i=0;i<12;i++){
-    const d=new Date(startD);d.setMonth(d.getMonth()+i);
-    next12.push({month:d.toISOString().slice(0,7),total:0,confirmed:0,projected:0,items:[]});
-  }
-  merged.forEach(d=>{
-    const slot=next12.find(s=>s.month===d.date.slice(0,7));
-    if(!slot)return;
-    slot.total+=d.total;
-    if(d.isProjected)slot.projected+=d.total;else slot.confirmed+=d.total;
-    slot.items.push(d);
-  });
+    /* Annual projection */
+    const annualByTicker={};
+    past.forEach(d=>{
+      if(!annualByTicker[d.ticker])annualByTicker[d.ticker]={ticker:d.ticker,annual:0,cantidad:d.cantidad,price:0,count:0};
+      annualByTicker[d.ticker].annual+=d.amount;
+      annualByTicker[d.ticker].count++;
+    });
+    upcoming.forEach(d=>{
+      if(!annualByTicker[d.ticker])annualByTicker[d.ticker]={ticker:d.ticker,annual:0,cantidad:d.cantidad,price:0,count:0};
+    });
+    Object.values(annualByTicker).forEach(a=>{
+      const pos=enrichedByTicker.get(a.ticker);
+      if(pos){a.price=pos.precioActual||pos.ppc;a.cantidad=pos.cantidad;}
+    });
 
-  const totalNext12=next12.reduce((s,m)=>s+m.total,0);
-  const totalAnnualProjection=Object.values(annualByTicker).reduce((s,a)=>s+a.annual*a.cantidad,0);
-  const portfolioTotal=enriched.reduce((s,p)=>s+p.montoActual,0);
-  const fwdYield=portfolioTotal>0?(totalNext12/portfolioTotal)*100:0;
-  const totalUpcoming=upcoming.reduce((s,d)=>s+d.total,0);
-  const totalPast=past.reduce((s,d)=>s+d.total,0);
-  const avgMonth=totalNext12/12;
+    /* Next 12-month forward buckets — usa Map por mes para O(1) lookup */
+    const next12=[];
+    const monthIdx=new Map();
+    const startD=new Date();startD.setDate(1);
+    for(let i=0;i<12;i++){
+      const dt=new Date(startD);dt.setMonth(dt.getMonth()+i);
+      const slot={month:dt.toISOString().slice(0,7),total:0,confirmed:0,projected:0,items:[]};
+      next12.push(slot);
+      monthIdx.set(slot.month,slot);
+    }
+    merged.forEach(d=>{
+      const slot=monthIdx.get(d.date.slice(0,7));
+      if(!slot)return;
+      slot.total+=d.total;
+      if(d.isProjected)slot.projected+=d.total;else slot.confirmed+=d.total;
+      slot.items.push(d);
+    });
+
+    const totalNext12=next12.reduce((s,m)=>s+m.total,0);
+    const totalAnnualProjection=Object.values(annualByTicker).reduce((s,a)=>s+a.annual*a.cantidad,0);
+    const portfolioTotal=(enriched||[]).reduce((s,p)=>s+(p.montoActual||0),0);
+    const fwdYield=portfolioTotal>0?(totalNext12/portfolioTotal)*100:0;
+    const totalUpcoming=upcoming.reduce((s,d)=>s+d.total,0);
+    const totalPast=past.reduce((s,d)=>s+d.total,0);
+    const avgMonth=totalNext12/12;
+
+    return{upcoming,past,projected,merged,annualByTicker,next12,
+           totalNext12,totalAnnualProjection,portfolioTotal,fwdYield,
+           totalUpcoming,totalPast,avgMonth};
+  },[divData,enrichedByTicker,today,enriched]);
 
   /* Month names */
   const monthName=d=>{const m=new Date(d+"T12:00:00").toLocaleDateString("es-AR",{month:"short"});return m.charAt(0).toUpperCase()+m.slice(1);};
