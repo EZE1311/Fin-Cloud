@@ -3740,7 +3740,7 @@ function App(){
   const tabs=[{id:"resumen",label:"Resumen",emoji:"🏠"},{id:"tesis",label:"Tesis",emoji:"🧠"},{id:"dividendos",label:"Dividendos",emoji:"💰"},{id:"operaciones",label:"Operaciones",emoji:"📝"},{id:"noticias",label:"Noticias",emoji:"📰"},{id:"caucion",label:"Caución",emoji:"🏦"},{id:"trading",label:"Trading",emoji:"⚡"},{id:"potencial",label:"Potencial",emoji:"🎯"}];
 
   return <div style={{minHeight:"100vh"}}>
-    <header style={{background:"linear-gradient(90deg,#0c0e14,#1a1d27)",borderBottom:"1px solid #1a1d27",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
+    <header style={{background:"linear-gradient(90deg,#0A0E17 0%,#1A0F18 45%,#4A0E1A 75%,#8B1538 100%)",borderBottom:"1px solid #22263350",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50,boxShadow:"0 1px 0 rgba(139,21,56,.15)"}}>
       <div style={{display:"flex",alignItems:"center",gap:14}}>
         <img src="logo.png" alt="Eze & Claude Finance" style={{height:38,width:"auto",flexShrink:0,objectFit:"contain"}} onError={e=>{e.target.outerHTML='<div style="font-size:28;line-height:1;flex-shrink:0">🐻⚔️🐂</div>';}}/>
         <div>
@@ -3754,7 +3754,7 @@ function App(){
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-        <div className="macro-strip" style={{display:"flex",gap:12,fontSize:12}}>
+        <div className="macro-strip" style={{display:"flex",gap:12,fontSize:12,background:"rgba(8,9,13,0.55)",backdropFilter:"blur(8px)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:"8px 14px"}}>
           {(()=>{
             const of1=macro.dolarOficial;
             const bMEP=((macro.dolarMEP-of1)/of1*100).toFixed(1);
