@@ -2263,6 +2263,28 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
   const [watchlistPrices,setWatchlistPrices]=useState({});
   const [closingId,setClosingId]=useState(null);
   const [closingPrice,setClosingPrice]=useState("");
+  /* Edición inline de posición del watchlist (corregir datos cargados mal) */
+  const [editingId,setEditingId]=useState(null);
+  const [editForm,setEditForm]=useState({cantidad:"",precioCompra:""});
+  const startEditWatchlistItem=(id)=>{
+    const w=watchlist.find(x=>x.id===id);if(!w)return;
+    setClosingId(null);setClosingPrice("");
+    setEditingId(id);
+    setEditForm({
+      cantidad:String(w.cantidad??""),
+      precioCompra:w.mercado==="BYMA"
+        ?new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(w.precioCompra||0)
+        :(w.precioCompra||0).toFixed(2)
+    });
+  };
+  const cancelEditWatchlistItem=()=>{setEditingId(null);setEditForm({cantidad:"",precioCompra:""});};
+  const saveEditWatchlistItem=()=>{
+    const cantN=parseNum(editForm.cantidad);
+    const pcN=parseNum(editForm.precioCompra);
+    if(cantN<=0||pcN<=0){alert("Ingresá cantidad y precio de compra válidos");return;}
+    setWatchlist(prev=>prev.map(x=>x.id===editingId?{...x,cantidad:cantN,precioCompra:pcN,montoCompra:cantN*pcN}:x));
+    setEditingId(null);setEditForm({cantidad:"",precioCompra:""});
+  };
 
   /* Helper único para calcular fees de una posición del watchlist.
      Si la posición está carriada (overnight), AMBAS patas (compra y venta) usan tarifa normal,
@@ -2568,10 +2590,31 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
           <tbody>{rowsLive.map(({item,pAct,netoLive,rendPct,fees})=>{
             const{fT,fT2,isBM}=rowFmt(item);
             const isClosing=closingId===item.id;
+            const isEditing=editingId===item.id;
             const fechaShort=item.fechaApertura?new Date(item.fechaApertura).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—";
             const tickerAlerts=priceAlerts.filter(a=>a.ticker===item.ticker&&a.active);
             const tAlert=tickerAlerts.find(a=>a.condition==="above");
             const sAlert=tickerAlerts.find(a=>a.condition==="below");
+            if(isEditing){
+              const cantN=parseNum(editForm.cantidad);
+              const pcN=parseNum(editForm.precioCompra);
+              const newMonto=cantN*pcN;
+              return <tr key={item.id} style={{background:"#1a1432",borderBottom:"1px solid #1a1d27"}}>
+                <td colSpan={10} style={{padding:"10px 12px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                    <span style={{fontSize:12,fontWeight:700,color:"#e6edf3"}}>Editar {item.ticker} <span style={{fontSize:10,color:"#7a8497",fontWeight:400}}>{isBM?"🇦🇷 BYMA":"🇺🇸 NYSE"}</span></span>
+                    <label style={{fontSize:10,color:"#7a8497"}}>Cantidad:</label>
+                    <input value={editForm.cantidad} onChange={e=>setEditForm(f=>({...f,cantidad:e.target.value.replace(/[^\d]/g,"")}))} placeholder="Nominales" style={{background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:6,padding:"6px 10px",color:"#e6edf3",fontSize:13,fontWeight:600,width:110,fontVariantNumeric:"tabular-nums"}} autoFocus/>
+                    <label style={{fontSize:10,color:"#7a8497"}}>P. Compra ({isBM?"$":"USD"}):</label>
+                    <input value={editForm.precioCompra} onChange={e=>setEditForm(f=>({...f,precioCompra:e.target.value.replace(/[^\d.,]/g,"")}))} placeholder={isBM?"34.800":"232.50"} style={{background:"#0c0e14",border:"1px solid #2a2f3f",borderRadius:6,padding:"6px 10px",color:"#e6edf3",fontSize:13,fontWeight:600,width:130,fontVariantNumeric:"tabular-nums"}}/>
+                    {cantN>0&&pcN>0&&<span style={{fontSize:11,color:"#c1c8d4"}}>Monto: <b style={{color:"#e6edf3"}}>{fT(newMonto)}</b></span>}
+                    {(cantN!==item.cantidad||pcN!==item.precioCompra)&&cantN>0&&pcN>0&&<span style={{fontSize:10,color:"#f59e0b"}}>Δ desde {item.cantidad.toLocaleString("es-AR")} × {fT2(item.precioCompra)}</span>}
+                    <button onClick={saveEditWatchlistItem} style={{background:"#8B1538",color:"#fff",border:"none",borderRadius:6,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer",marginLeft:"auto"}}>✓ Guardar</button>
+                    <button onClick={cancelEditWatchlistItem} style={{background:"#1a1d27",color:"#c1c8d4",border:"1px solid #2a2f3f",borderRadius:6,padding:"6px 12px",fontSize:11,cursor:"pointer"}}>Cancelar</button>
+                  </div>
+                </td>
+              </tr>;
+            }
             if(isClosing){
               return <tr key={item.id} style={{background:"#0c1322",borderBottom:"1px solid #1a1d27"}}>
                 <td colSpan={10} style={{padding:"10px 12px"}}>
@@ -2622,7 +2665,8 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
                 </div>
               </td>
               <td style={{padding:"6px 8px",textAlign:"right",whiteSpace:"nowrap"}}>
-                <button onClick={()=>{setClosingId(item.id);setClosingPrice(pAct>0?(isBM?String(Math.round(pAct*100)/100):pAct.toFixed(2)):"");}} style={{background:"#16a34a",color:"#fff",border:"none",borderRadius:5,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",marginRight:4}}>Cerrar</button>
+                <button onClick={()=>{setEditingId(null);setClosingId(item.id);setClosingPrice(pAct>0?(isBM?String(Math.round(pAct*100)/100):pAct.toFixed(2)):"");}} style={{background:"#16a34a",color:"#fff",border:"none",borderRadius:5,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",marginRight:4}}>Cerrar</button>
+                <button onClick={()=>startEditWatchlistItem(item.id)} style={{background:"#1a1d27",border:"1px solid #2a2f3f",color:"#c1c8d4",borderRadius:5,padding:"4px 8px",fontSize:11,cursor:"pointer",marginRight:4}} title="Editar cantidad o precio de compra">✎</button>
                 <button onClick={()=>removeFromWatchlist(item.id)} style={{background:"none",border:"none",color:"#7a8497",cursor:"pointer",fontSize:13,padding:2}} title="Eliminar sin cerrar">✕</button>
               </td>
             </tr>;
