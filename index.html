@@ -4025,6 +4025,7 @@ function App(){
         if(d.hipoteca)setHipoteca(d.hipoteca);
         if(d.caucion)setCaucion(d.caucion);
         if(d.perfSnapshots){setPerfSnapshots(d.perfSnapshots);saveLS("perf_snapshots",d.perfSnapshots);}
+        if(d.trades)setTrades(d.trades);
       }
       setSyncStatus("ok");setLastSync(new Date());
       setTimeout(()=>{isFirstLoad.current=false},500);
@@ -4044,6 +4045,7 @@ function App(){
         if(!d)return;
         if(d.tesis)setTesis(d.tesis);
         if(d.perfSnapshots){setPerfSnapshots(d.perfSnapshots);saveLS("perf_snapshots",d.perfSnapshots);}
+        if(d.trades)setTrades(d.trades);
         setLastSync(new Date());
       }).catch(()=>{});
     };
@@ -4070,7 +4072,7 @@ function App(){
     const macroSnap={dolarCCL:macro.dolarCCL,dolarMEP:macro.dolarMEP,dolarBlue:macro.dolarBlue,
       riesgoPais:macro.riesgoPais,inflacion:macro.inflacion,inflacionIA:macro.inflacionIA,
       tasa:macro.tasa,reservas:macro.reservas,mervalChg:macro.mervalChg,sp500Chg:macro.sp500Chg};
-    const data={ops,priceAlerts,tesis,casa,hipoteca,caucion,perfSnapshots,
+    const data={ops,priceAlerts,tesis,casa,hipoteca,caucion,perfSnapshots,trades,
       portfolioSnapshot,macroSnapshot:macroSnap,
       portfolioTotal:Math.round(portfolioTotal*100)/100,
       invertido:Math.round(invertido*100)/100,
@@ -4096,7 +4098,7 @@ function App(){
 
   /* Exportar datos como JSON (backup local) */
   const exportData=useCallback(()=>{
-    const data={ops,priceAlerts,tesis,casa,hipoteca,caucion,perfSnapshots,exportDate:new Date().toISOString()};
+    const data={ops,priceAlerts,tesis,casa,hipoteca,caucion,perfSnapshots,trades,exportDate:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");a.href=url;a.download="fin-cloud-backup-"+new Date().toISOString().slice(0,10)+".json";
@@ -4106,7 +4108,7 @@ function App(){
   /* Resetear — limpia todo a vacío */
   const resetData=useCallback(()=>{
     if(!confirm("¿Estás seguro? Esto borra todas tus operaciones, alertas y configuración."))return;
-    setOps([]);setPriceAlerts([]);setTesis({});setCasa({precioCompra:0,anios:0,tasaAnual:0});setHipoteca({uvas:0});setCaucion({montoARS:0,tna:21,dias:1});setCaucionForm(INIT_CAUCION_FORM);setPerfSnapshots([]);saveLS("perf_snapshots",[]);
+    setOps([]);setPriceAlerts([]);setTesis({});setCasa({precioCompra:0,anios:0,tasaAnual:0});setHipoteca({uvas:0});setCaucion({montoARS:0,tna:21,dias:1});setCaucionForm(INIT_CAUCION_FORM);setPerfSnapshots([]);saveLS("perf_snapshots",[]);setTrades([]);
   },[]);
 
   /* Posiciones derivadas 100% de operaciones */
