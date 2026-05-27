@@ -3094,8 +3094,26 @@ async function gistSave(token,gistId,data){
         /* Si el server tiene tesis más nuevas que las del cliente → usar server.
            Si son iguales o el cliente no tiene → usar el que tenga contenido real. */
         const keepServerTesis=serverTesisTs>=clientTesisTs&&Object.keys(current.tesis||{}).length>0;
-        payload={...data,tesis:keepServerTesis?current.tesis:(data.tesis||current.tesis||{}),
-          perfSnapshots:data.perfSnapshots&&data.perfSnapshots.length>=((current.perfSnapshots||[]).length)?data.perfSnapshots:current.perfSnapshots};
+        /* Merge de ops por id: si el server tiene ops que el cliente no tiene (porque
+           se cargaron desde otro lugar: script Python, otro device, etc.), las preservamos.
+           El cliente puede borrar/editar ops localmente, pero nunca pierde ops "huérfanas"
+           que aparecieron en el server. Edits y deletes del cliente ganan: si una op está
+           en cliente, usamos la versión del cliente; si está sólo en server, la traemos. */
+        const clientOps=Array.isArray(data.ops)?data.ops:[];
+        const serverOps=Array.isArray(current.ops)?current.ops:[];
+        const clientIds=new Set(clientOps.map(o=>o.id));
+        const serverLastSaved=current.lastSaved?Date.parse(current.lastSaved):0;
+        const clientLastSaved=data.lastSaved?Date.parse(data.lastSaved):0;
+        /* Solo mergeamos si el server fue actualizado DESPUÉS de la última carga del cliente.
+           Si el cliente es más nuevo (o iguales), confiamos en el cliente. */
+        const serverNewer=serverLastSaved>clientLastSaved;
+        const mergedOps=serverNewer
+          ?[...clientOps,...serverOps.filter(o=>!clientIds.has(o.id))]
+          :clientOps;
+        payload={...data,
+          tesis:keepServerTesis?current.tesis:(data.tesis||current.tesis||{}),
+          perfSnapshots:data.perfSnapshots&&data.perfSnapshots.length>=((current.perfSnapshots||[]).length)?data.perfSnapshots:current.perfSnapshots,
+          ops:mergedOps};
       }
     }catch(e){/* si falla el fetch, seguimos con data tal cual — mejor escribir algo que nada */}
   }
