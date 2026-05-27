@@ -3106,7 +3106,9 @@ async function gistSave(token,gistId,data){
   const method=gistId?"PATCH":"POST";
   if(!gistId) body.description="Fin-Cloud Dashboard Data (auto-sync)";
   if(!gistId) body.public=false;
-  const res=await fetch(url,{method,headers:{"Authorization":`token ${token}`,"Content-Type":"application/json"},body:JSON.stringify(body)});
+  /* keepalive:true → la request sobrevive al unload (refresh / cerrar pestaña).
+     Sin esto, si el save dispara en beforeunload el browser cancela el fetch en cuanto la página se descarga. */
+  const res=await fetch(url,{method,headers:{"Authorization":`token ${token}`,"Content-Type":"application/json"},body:JSON.stringify(body),keepalive:true});
   if(!res.ok) throw new Error(`GitHub ${res.status}`);
   return res.json();
 }
@@ -3927,7 +3929,9 @@ function App(){
   const [tesis,setTesis]=useState(()=>loadLS("tesis",{}));
 
   const addPriceAlert=useCallback((alert)=>{
-    setPriceAlerts(prev=>[{id:Date.now(),...alert,active:true,createdAt:new Date().toISOString(),triggeredAt:null},...prev]);
+    /* id único — evita colisión cuando se crean Target+Stop en el mismo tick síncrono (Date.now() devuelve el mismo ms) */
+    const uid=`${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+    setPriceAlerts(prev=>[{id:uid,...alert,active:true,createdAt:new Date().toISOString(),triggeredAt:null},...prev]);
   },[]);
 
   const removePriceAlert=useCallback((id)=>{
@@ -4025,7 +4029,6 @@ function App(){
         if(d.hipoteca)setHipoteca(d.hipoteca);
         if(d.caucion)setCaucion(d.caucion);
         if(d.perfSnapshots){setPerfSnapshots(d.perfSnapshots);saveLS("perf_snapshots",d.perfSnapshots);}
-        if(d.trades)setTrades(d.trades);
       }
       setSyncStatus("ok");setLastSync(new Date());
       setTimeout(()=>{isFirstLoad.current=false},500);
@@ -4045,7 +4048,6 @@ function App(){
         if(!d)return;
         if(d.tesis)setTesis(d.tesis);
         if(d.perfSnapshots){setPerfSnapshots(d.perfSnapshots);saveLS("perf_snapshots",d.perfSnapshots);}
-        if(d.trades)setTrades(d.trades);
         setLastSync(new Date());
       }).catch(()=>{});
     };
@@ -4072,7 +4074,7 @@ function App(){
     const macroSnap={dolarCCL:macro.dolarCCL,dolarMEP:macro.dolarMEP,dolarBlue:macro.dolarBlue,
       riesgoPais:macro.riesgoPais,inflacion:macro.inflacion,inflacionIA:macro.inflacionIA,
       tasa:macro.tasa,reservas:macro.reservas,mervalChg:macro.mervalChg,sp500Chg:macro.sp500Chg};
-    const data={ops,priceAlerts,tesis,casa,hipoteca,caucion,perfSnapshots,trades,
+    const data={ops,priceAlerts,tesis,casa,hipoteca,caucion,perfSnapshots,
       portfolioSnapshot,macroSnapshot:macroSnap,
       portfolioTotal:Math.round(portfolioTotal*100)/100,
       invertido:Math.round(invertido*100)/100,
@@ -4087,18 +4089,45 @@ function App(){
     }).catch(()=>setSyncStatus("error"));
   },[ops,priceAlerts,tesis,casa,hipoteca,caucion,enriched,macro,portfolioTotal,invertido,pl,rend,caucionUSD]);
 
+  /* Ref que siempre apunta a la última versión de doGistSave (para el handler de unload) */
+  const doGistSaveRef=React.useRef(doGistSave);
+  useEffect(()=>{doGistSaveRef.current=doGistSave},[doGistSave]);
+
   useEffect(()=>{
     if(isFirstLoad.current)return;
     const token=loadLS("gh_token","");
     if(!token)return;
     if(syncTimer.current)clearTimeout(syncTimer.current);
-    syncTimer.current=setTimeout(doGistSave,3000);
+    /* Debounce a 800ms — antes era 3000ms y creaba race con refresh */
+    syncTimer.current=setTimeout(doGistSave,800);
     return()=>{if(syncTimer.current)clearTimeout(syncTimer.current)};
   },[ops,priceAlerts,tesis,casa,hipoteca,caucion,doGistSave]);
 
+  /* Flush al refrescar/cerrar — si hay un save pendiente, lo disparamos sincrónicamente.
+     fetch con keepalive:true en gistSave permite que la request sobreviva al unload. */
+  useEffect(()=>{
+    const flush=()=>{
+      if(syncTimer.current){
+        clearTimeout(syncTimer.current);
+        syncTimer.current=null;
+        try{doGistSaveRef.current&&doGistSaveRef.current()}catch(e){}
+      }
+    };
+    window.addEventListener("beforeunload",flush);
+    window.addEventListener("pagehide",flush);
+    /* visibilitychange→hidden cubre el caso mobile (Safari iOS no dispara beforeunload) */
+    const onVis=()=>{if(document.visibilityState==="hidden")flush()};
+    document.addEventListener("visibilitychange",onVis);
+    return()=>{
+      window.removeEventListener("beforeunload",flush);
+      window.removeEventListener("pagehide",flush);
+      document.removeEventListener("visibilitychange",onVis);
+    };
+  },[]);
+
   /* Exportar datos como JSON (backup local) */
   const exportData=useCallback(()=>{
-    const data={ops,priceAlerts,tesis,casa,hipoteca,caucion,perfSnapshots,trades,exportDate:new Date().toISOString()};
+    const data={ops,priceAlerts,tesis,casa,hipoteca,caucion,perfSnapshots,exportDate:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");a.href=url;a.download="fin-cloud-backup-"+new Date().toISOString().slice(0,10)+".json";
@@ -4108,7 +4137,7 @@ function App(){
   /* Resetear — limpia todo a vacío */
   const resetData=useCallback(()=>{
     if(!confirm("¿Estás seguro? Esto borra todas tus operaciones, alertas y configuración."))return;
-    setOps([]);setPriceAlerts([]);setTesis({});setCasa({precioCompra:0,anios:0,tasaAnual:0});setHipoteca({uvas:0});setCaucion({montoARS:0,tna:21,dias:1});setCaucionForm(INIT_CAUCION_FORM);setPerfSnapshots([]);saveLS("perf_snapshots",[]);setTrades([]);
+    setOps([]);setPriceAlerts([]);setTesis({});setCasa({precioCompra:0,anios:0,tasaAnual:0});setHipoteca({uvas:0});setCaucion({montoARS:0,tna:21,dias:1});setCaucionForm(INIT_CAUCION_FORM);setPerfSnapshots([]);saveLS("perf_snapshots",[]);
   },[]);
 
   /* Posiciones derivadas 100% de operaciones */
