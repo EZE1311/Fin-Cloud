@@ -3102,8 +3102,13 @@ async function gistSave(token,gistId,data){
         const clientOps=Array.isArray(data.ops)?data.ops:[];
         const serverOps=Array.isArray(current.ops)?current.ops:[];
         const clientIds=new Set(clientOps.map(o=>o.id));
-        const serverLastSaved=current.lastSaved?Date.parse(current.lastSaved):0;
-        const clientLastSaved=data.lastSaved?Date.parse(data.lastSaved):0;
+        /* lastSaved puede venir como ISO string (dashboard) o epoch-ms numérico
+           (scripts Python / writes externos al gist). Date.parse() devuelve NaN
+           sobre un número → serverNewer quedaba siempre false y el merge se
+           desactivaba en silencio, pisando ops escritas desde afuera. */
+        const _parseTs=v=>{if(v==null)return 0;if(typeof v==="number")return v;const n=Date.parse(v);return Number.isNaN(n)?0:n;};
+        const serverLastSaved=_parseTs(current.lastSaved);
+        const clientLastSaved=_parseTs(data.lastSaved);
         /* Solo mergeamos si el server fue actualizado DESPUÉS de la última carga del cliente.
            Si el cliente es más nuevo (o iguales), confiamos en el cliente. */
         const serverNewer=serverLastSaved>clientLastSaved;
