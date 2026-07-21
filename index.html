@@ -298,8 +298,10 @@ async function refreshMetaCache(tickers,priceData){
 function calcPositions(ops){
   const map={};
   ops.forEach(op=>{
-    const t=op.ticker;
-    if(!map[t]) map[t]={ticker:t,cantCompra:0,costoTotal:0,cantVenta:0,mercado:op.mercado,broker:op.broker,moneda:op.moneda};
+    /* Clave ticker+broker: un mismo ticker puede existir como accion NYSE (CS) y CEDEAR BYMA (BM)
+       a la vez (ej: IBM jul-2026). Mezclarlos rompe cantidad, PPC y valuacion. */
+    const t=op.ticker+"|"+(op.broker||"");
+    if(!map[t]) map[t]={ticker:op.ticker,cantCompra:0,costoTotal:0,cantVenta:0,mercado:op.mercado,broker:op.broker,moneda:op.moneda};
     /* Normalizar precio a USD para operaciones ARS */
     const precioUSD=op.moneda==="ARS"&&op.ccl>0?op.precio/op.ccl:op.precio;
     if(op.tipo==="COMPRA"){
@@ -1177,7 +1179,7 @@ function Resumen({enriched,total,invertido,pl,rend,macro,ops,prices,casa,setCasa
               <th key={h.c} onClick={()=>toggle(h.c)} style={{padding:"8px 6px",textAlign:h.a||"right",fontSize:11,fontWeight:600,color:"#7a8497",textTransform:"uppercase",letterSpacing:".04em",cursor:"pointer",userSelect:"none",whiteSpace:"nowrap",borderBottom:"1px solid #22263350",background:"#151a27"}}>{h.l}{sortBy===h.c?(sortDir==="desc"?" ↓":" ↑"):""}</th>
             )}
           </tr></thead>
-          <tbody>{sorted.map(p=><tr key={p.ticker} style={{borderBottom:"1px solid #1a1d27"}}>
+          <tbody>{sorted.map(p=><tr key={p.ticker+"|"+p.broker} style={{borderBottom:"1px solid #1a1d27"}}>
             <td style={{padding:"8px 6px"}}><div style={{fontWeight:700,fontSize:13}}>{p.ticker}</div><div style={{fontSize:10,color:"#7a8497"}}>{p.mercado}·{p.broker}</div></td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12}}>{fmt(p.cantidad)}</td>
             <td style={{padding:"8px 6px",textAlign:"right",fontVariantNumeric:"tabular-nums",fontSize:12}}>{fU(p.ppc)}</td>
@@ -1503,7 +1505,7 @@ function Operaciones({ops,setOps,macro,enriched}){
             </tr></thead>
             <tbody>{enriched.map(p=>{
               const exento=p.tipo==="Bono"||p.tipo==="Letra"||p.tipo==="ON";
-              return<tr key={p.ticker} style={{borderBottom:"1px solid #1a1d27"}}>
+              return<tr key={p.ticker+"|"+p.broker} style={{borderBottom:"1px solid #1a1d27"}}>
                 <td style={{padding:"6px 8px",fontWeight:700,fontSize:12}}>{p.ticker}</td>
                 <td style={{padding:"6px 8px",fontSize:11,color:"#c1c8d4"}}>{p.tipo}</td>
                 <td style={{padding:"6px 8px",fontSize:11,color:"#c1c8d4"}}>{p.broker}</td>
@@ -3566,7 +3568,7 @@ function TesisActiva({enriched,tesis}){
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(360px,1fr))",gap:12}}>
       {visible.length===0?<div style={{gridColumn:"1/-1",textAlign:"center",padding:40,color:"#7a8497",fontStyle:"italic"}}>No hay posiciones que coincidan con este filtro.</div>:
        visible.map(p=>(
-        <TesisCard key={p.ticker} p={p} t={tesis[p.ticker]}/>
+        <TesisCard key={p.ticker+"|"+p.broker} p={p} t={tesis[p.ticker]}/>
        ))
       }
     </div>
