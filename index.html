@@ -158,8 +158,44 @@ function saveMetaCache(cache){try{localStorage.setItem(META_CACHE_KEY,JSON.strin
 /* Traducciones de sector Yahoo → español */
 const SECTOR_MAP={"Technology":"Tecnología","Energy":"Energía","Healthcare":"Salud","Financial Services":"Finanzas","Consumer Cyclical":"Consumo","Consumer Defensive":"Consumo","Communication Services":"Comunicación","Industrials":"Industrial","Basic Materials":"Materiales","Real Estate":"Real Estate","Utilities":"Servicios Públicos"};
 
-/* Buscar sector + nombre de empresa de Yahoo Finance */
-async function fetchProfileYahoo(symbol){
+/* Buscar sector + nombre de empresa.
+   Yahoo quoteSummary (v10) pide cookie + crumb desde 2025 y devuelve 401 "Invalid Crumb"
+   tanto directo como via proxy CORS (los proxies no mandan cookie). Por eso la fuente
+   primaria pasa a ser v1/finance/search, que NO pide crumb y trae sector, industria y
+   nombre en el mismo payload. quoteSummary queda como fallback por si vuelve a andar.
+   Orden de candidatos: primero SYM.BA (listado BYMA) para no confundir un ticker local
+   con un homonimo del exterior (ECOG es Ecogas en BYMA, pero EcoGraf en Australia).
+   Se exige match EXACTO de simbolo: search hace fuzzy y devuelve parecidos. */
+const US_EXCH_RE=/nyse|nasdaq|amex|otc|pink/i;
+async function fetchProfileYahooSearch(symbol){
+  const sym=String(symbol).toUpperCase();
+  const usaSym=String(d912Sym(symbol,D912_USA_ALIAS)).toUpperCase();
+  const candidates=[];
+  if(!sym.includes("."))candidates.push(sym+".BA");
+  candidates.push(usaSym);
+  if(usaSym!==sym)candidates.push(sym);
+  for(const cand of Array.from(new Set(candidates))){
+    const url=`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(cand)}&quotesCount=6&newsCount=0&enableFuzzyQuery=false`;
+    try{
+      let data=null;
+      try{data=await fetchJSONWithProxies(url);}catch(e){data=null;}
+      const quotes=(data&&data.quotes)||[];
+      const hit=quotes.find(q=>String(q&&q.symbol||"").toUpperCase()===cand&&(q.quoteType==="EQUITY"||q.quoteType==="ETF"));
+      if(!hit)continue;
+      const rawSector=hit.sectorDisp||hit.sector||null;
+      const sector=rawSector?(SECTOR_MAP[rawSector]||rawSector):null;
+      const name=hit.longname||hit.shortname||null;
+      /* Pais solo desde el listado primario: el CEDEAR cotiza en Buenos Aires pero la
+         empresa puede ser de afuera, asi que un match .BA no dice nada del domicilio. */
+      const country=(!cand.endsWith(".BA")&&US_EXCH_RE.test(hit.exchDisp||""))?"United States":null;
+      if(sector||name)return{sector,name,country};
+    }catch(e){}
+  }
+  return null;
+}
+
+/* Fallback legacy: quoteSummary (roto por crumb desde 2025, se deja por si Yahoo lo reabre) */
+async function fetchProfileYahooSummary(symbol){
   const usaSym=d912Sym(symbol,D912_USA_ALIAS);
   /* Intentar múltiples variantes del símbolo: original, alias USA, y con sufijo .BA (BYMA) */
   const candidates=[usaSym];
@@ -182,6 +218,12 @@ async function fetchProfileYahoo(symbol){
     }catch(e){}
   }
   return{sector:null,name:null,country:null};
+}
+
+async function fetchProfileYahoo(symbol){
+  const viaSearch=await fetchProfileYahooSearch(symbol);
+  if(viaSearch&&(viaSearch.sector||viaSearch.name))return viaSearch;
+  return await fetchProfileYahooSummary(symbol);
 }
 
 /* Construir metadata para un ticker basándose en data912 membership + Yahoo sector */
