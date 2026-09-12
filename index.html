@@ -158,6 +158,33 @@ function saveMetaCache(cache){try{localStorage.setItem(META_CACHE_KEY,JSON.strin
 /* Traducciones de sector Yahoo → español */
 const SECTOR_MAP={"Technology":"Tecnología","Energy":"Energía","Healthcare":"Salud","Financial Services":"Finanzas","Consumer Cyclical":"Consumo","Consumer Defensive":"Consumo","Communication Services":"Comunicación","Industrials":"Industrial","Basic Materials":"Materiales","Real Estate":"Real Estate","Utilities":"Servicios Públicos"};
 
+/* Semilla local de sectores — el grafico no depende de la red para los tickers conocidos.
+   Generada desde Yahoo v1/finance/search (12/09/26) y fijada en el codigo porque el sector
+   de una empresa no cambia y las fuentes que lo dan no tienen CORS: en redes que bloquean
+   los proxies (corporativas con filtro DNS) el lookup en vivo nunca resuelve y todo quedaba
+   en "Sin clasificar". refreshMetaCache sigue consultando Yahoo para los que NO esten aca. */
+const SECTOR_SEED={
+  AAPL:"Tecnología",ABBV:"Salud",ABNB:"Consumo",ADBE:"Tecnología",AGRO:"Industrial",
+  ALUA:"Materiales",AMD:"Tecnología",AMZN:"Consumo",ASTS:"Tecnología",AVGO:"Tecnología",
+  BA:"Industrial",BABA:"Consumo",BAC:"Finanzas",BBAR:"Finanzas",BKUCF:"Energía",
+  BMA:"Finanzas",BMY:"Salud",BYMA:"Finanzas",C:"Finanzas",CARC:"Materiales",
+  CAT:"Industrial",CEPU:"Servicios Públicos",COIN:"Finanzas",COME:"Industrial",COST:"Consumo",
+  CRES:"Industrial",CRM:"Tecnología",CTIO:"Real Estate",CVX:"Energía",DIS:"Comunicación",
+  ECOG:"Servicios Públicos",EDN:"Servicios Públicos",GE:"Industrial",GGAL:"Finanzas",GLOB:"Tecnología",
+  GOLD:"Materiales",GOOGL:"Comunicación",GS:"Finanzas",HARG:"Materiales",HD:"Consumo",
+  IBM:"Tecnología",INTC:"Tecnología",IRSA:"Real Estate",JNJ:"Salud",JPM:"Finanzas",
+  KO:"Consumo",LLY:"Salud",LOMA:"Materiales",LOW:"Consumo",MA:"Finanzas",
+  MCD:"Consumo",MELI:"Consumo",META:"Comunicación",METR:"Servicios Públicos",MIRG:"Tecnología",
+  MRK:"Salud",MSFT:"Tecnología",MSTR:"Tecnología",NFLX:"Comunicación",NKE:"Consumo",
+  NU:"Finanzas",NVDA:"Tecnología",ORCL:"Tecnología",PAMP:"Industrial",PBR:"Energía",
+  PEP:"Consumo",PFE:"Salud",PYPL:"Finanzas",QCOM:"Tecnología",SBUX:"Consumo",
+  SEMI:"Consumo",SHOP:"Tecnología",SUPV:"Finanzas",T:"Comunicación",TGNO4:"Energía",
+  TGSU2:"Energía",TRAN:"Servicios Públicos",TSLA:"Consumo",TSM:"Tecnología",TX:"Materiales",
+  TXAR:"Materiales",UBER:"Tecnología",UNH:"Salud",V:"Finanzas",VALE:"Materiales",
+  VALO:"Finanzas",VIST:"Energía",VZ:"Comunicación",WFC:"Finanzas",WMT:"Consumo",
+  XOM:"Energía",YPFD:"Energía",
+};
+
 /* Buscar sector + nombre de empresa.
    Yahoo quoteSummary (v10) pide cookie + crumb desde 2025 y devuelve 401 "Invalid Crumb"
    tanto directo como via proxy CORS (los proxies no mandan cookie). Por eso la fuente
@@ -314,13 +341,18 @@ function calcCaucion(m,tna,d,esColocadora){
   }
 }
 
-/* Sector seed eliminado — sectores se obtienen dinámicamente via refreshMetaCache (Yahoo Finance) */
-/* Si un ticker no tiene sector en cache, se muestra "Sin clasificar" hasta que Yahoo responda */
+/* Sectores: primero SECTOR_SEED (local, instantaneo), despues Yahoo para tickers desconocidos */
 
 /* Actualizar cache de metadata con sectores y nombres (async, no bloquea render) */
 async function refreshMetaCache(tickers,priceData){
   const cache=loadMetaCache();
   let updated=false;
+  /* 1) Semilla local: resuelve al instante y sin red los tickers conocidos. */
+  tickers.forEach(t=>{
+    const tu=String(t).toUpperCase();
+    if((!cache[t]||!cache[t].sector)&&SECTOR_SEED[tu]){cache[t]={...cache[t],sector:SECTOR_SEED[tu]};updated=true;}
+  });
+  /* 2) Solo para los que quedaron sin sector se pega a Yahoo (puede fallar sin proxies). */
   const promises=tickers.filter(t=>!cache[t]||!cache[t].sector).map(async t=>{
     const{sector,name,country}=await fetchProfileYahoo(t);
     if(sector||name){
@@ -366,7 +398,7 @@ function applyMeta(positions,prices,metaCache){
     const cached=metaCache[p.ticker]||{};
     const d912=prices[p.ticker]?.d912||null;
     const inferred=inferMeta(p.ticker,p.broker,p.mercado,d912);
-    return{...p,sector:cached.sector||"Sin clasificar",pais:cached.pais||inferred.pais,tipo:cached.tipo||inferred.tipo};
+    return{...p,sector:cached.sector||SECTOR_SEED[String(p.ticker).toUpperCase()]||"Sin clasificar",pais:cached.pais||inferred.pais,tipo:cached.tipo||inferred.tipo};
   });
 }
 
