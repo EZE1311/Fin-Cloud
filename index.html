@@ -4538,7 +4538,7 @@ function App(){
         <div>
           <h1 className="hdr-title" style={{margin:0,fontSize:18,fontWeight:700,color:"#f1f5f9",letterSpacing:"-.02em"}}>Dashboard de Eze 🇦🇷</h1>
           <div style={{fontSize:11,color:"#7a8497"}}>
-            Actualizado {lastUp.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"})}
+            Actualizado {lastUp.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit",hour12:false})}
             <span style={{margin:"0 5px",opacity:.45}}>·</span>
             <span style={{color:dataSource==="live"?"#10b981":dataSource==="fallback"?"#f59e0b":"#7a8497"}}>
               {dataSource==="live"?"datos en vivo":dataSource==="fallback"?"datos sin conexión":"cargando datos"}
