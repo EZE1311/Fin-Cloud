@@ -61,6 +61,22 @@ const today=()=>{const d=new Date();return`${String(d.getDate()).padStart(2,"0")
 const todayISO=()=>{const d=new Date();return d.toISOString().split("T")[0]};
 const toISO=(ddmmyy)=>{if(!ddmmyy)return"";const p=ddmmyy.split("-");if(p.length!==3)return"";const yy=parseInt(p[2],10);const yyyy=yy<50?2000+yy:1900+yy;return`${yyyy}-${p[1].padStart(2,"0")}-${p[0].padStart(2,"0")}`};
 const fromISO=(iso)=>{if(!iso)return"";const p=iso.split("-");if(p.length!==3)return"";return`${p[2]}-${p[1]}-${p[0].slice(2)}`};
+/* Tenencia de un ticker a una fecha (ISO), reconstruida desde las operaciones.
+   La usa el tab Dividendos: un pago pasado hay que valuarlo con la cantidad que se
+   tenia ESE dia, no con la de hoy, o se acreditan dividendos de meses en los que la
+   posicion todavia no existia. */
+function cantidadEnFecha(ops,ticker,fechaISO){
+  if(!ops||!ops.length)return 0;
+  const tu=String(ticker).toUpperCase();
+  let q=0;
+  for(const o of ops){
+    if(String(o.ticker).toUpperCase()!==tu)continue;
+    const iso=toISO(o.fecha);
+    if(!iso||iso>fechaISO)continue;
+    q+=(o.tipo==="COMPRA"?o.cantidad:-o.cantidad);
+  }
+  return q>0?q:0;
+}
 
 /* ── SVG Charts ──────────────────────────── */
 /* 3D Pie with labels near slices + leader lines */
@@ -436,12 +452,17 @@ const d912Sym=(ticker,aliases={})=>aliases[ticker.toUpperCase()]||ticker.toUpper
    Verificado 2026-05-07: allorigins caído (502/520), corsproxy.io bloqueado (403),
    codetabs OK. Si todos fallan, el ticker queda con ⚠ price fallback. */
 const PROXIES=[
-  "https://api.codetabs.com/v1/proxy?quest=",
-  "https://api.allorigins.win/raw?url=",
+  /* r.jina.ai primero: medido 12/09/26 en la red del usuario responde ~640ms mientras
+     codetabs y allorigins quedan colgados ~20s (bloqueados por el filtro DNS corporativo).
+     Espera la URL CRUDA, sin encodear, y envuelve el body en markdown -> wraps:true,
+     asi que solo lo usa fetchJSONWithProxies, que extrae el JSON con parseJSONLoose. */
+  {name:"r.jina.ai",build:u=>"https://r.jina.ai/"+u,wraps:true},
+  {name:"codetabs",build:u=>"https://api.codetabs.com/v1/proxy?quest="+encodeURIComponent(u)},
+  {name:"allorigins",build:u=>"https://api.allorigins.win/raw?url="+encodeURIComponent(u)},
 ];
 /* @deprecated — usar fetchWithProxies/fetchJSONWithProxies en lugar de PROXY directo.
    Se mantiene declarado para compat backward (scripts externos que pudieran depender). */
-const PROXY=PROXIES[0];
+const PROXY="https://api.codetabs.com/v1/proxy?quest=";
 
 /* Market hours unificados (minutos del día en hora local del mercado).
    BYMA incluye pre-market (10:30 ART) — coherente con data912 que ya entrega quotes
@@ -456,6 +477,22 @@ const MARKET_HOURS={
 /* Timeout default para todos los fetches via proxy. Si un proxy queda hung,
    el browser default es ~30s+. Con 10s saltamos al próximo más rápido. */
 const FETCH_TIMEOUT_MS=10000;
+/* Timeout mas corto para los saltos por proxy: un proxy bloqueado no responde nunca,
+   y esperarle 10s por intento hacia que tabs como Potencial tardaran minutos. */
+const PROXY_TIMEOUT_MS=6000;
+
+/* parseJSONLoose — parsea JSON aunque venga envuelto en texto (r.jina.ai devuelve
+   el body dentro de markdown). Primero intenta el parse directo; si falla, recorta
+   desde el primer { o [ hasta el ultimo } o ]. Devuelve null si no hay JSON valido. */
+function parseJSONLoose(txt){
+  if(!txt)return null;
+  try{return JSON.parse(txt);}catch(e){}
+  const s=txt.search(/[\{\[]/);
+  if(s<0)return null;
+  const e2=Math.max(txt.lastIndexOf("}"),txt.lastIndexOf("]"));
+  if(e2<=s)return null;
+  try{return JSON.parse(txt.slice(s,e2+1));}catch(e){return null;}
+}
 
 /* fetchWithTimeout — wrapper sobre fetch con AbortController.
    Si timeout, throw específico (timeout) en lugar de quedar colgado. */
@@ -478,13 +515,15 @@ async function fetchWithProxies(url,opts={}){
     if(r&&r.ok)return r;
     errors.push(`direct:${r?.status||"no-response"}`);
   }catch(e){errors.push(`direct:${e?.name||e?.message||"err"}`);}
-  /* 2) Cadena de proxies */
+  /* 2) Cadena de proxies — se saltean los que envuelven el body (wraps), porque
+        esta funcion devuelve el Response crudo y el caller hace r.json(). */
   for(const p of PROXIES){
+    if(p.wraps)continue;
     try{
-      const r=await fetchWithTimeout(p+encodeURIComponent(url),opts);
+      const r=await fetchWithTimeout(p.build(url),opts,PROXY_TIMEOUT_MS);
       if(r&&r.ok)return r;
-      errors.push(`${p.slice(0,30)}:${r?.status||"no-response"}`);
-    }catch(e){errors.push(`${p.slice(0,30)}:${e?.name||e?.message||"err"}`);}
+      errors.push(`${p.name}:${r?.status||"no-response"}`);
+    }catch(e){errors.push(`${p.name}:${e?.name||e?.message||"err"}`);}
   }
   const err=new Error(`All proxies failed for ${url} [${errors.join(" | ")}]`);
   err.proxyErrors=errors;
@@ -496,7 +535,7 @@ async function fetchWithProxies(url,opts={}){
    cuando están rate-limited. Esta variante intenta parsear cada proxy y solo
    devuelve si el JSON es válido; si falla, sigue con el siguiente proxy. */
 async function fetchJSONWithProxies(url,opts={}){
-  const tryParse=async(r)=>{try{const t=await r.text();return JSON.parse(t);}catch(e){return null;}};
+  const tryParse=async(r)=>{try{return parseJSONLoose(await r.text());}catch(e){return null;}};
   const errors=[];
   /* 1) Directo */
   try{
@@ -507,10 +546,10 @@ async function fetchJSONWithProxies(url,opts={}){
   /* 2) Cadena de proxies */
   for(const p of PROXIES){
     try{
-      const r=await fetchWithTimeout(p+encodeURIComponent(url),opts);
-      if(r&&r.ok){const j=await tryParse(r);if(j)return j;errors.push(`${p.slice(0,30)}:bad-json`);}
-      else errors.push(`${p.slice(0,30)}:${r?.status||"no-response"}`);
-    }catch(e){errors.push(`${p.slice(0,30)}:${e?.name||e?.message||"err"}`);}
+      const r=await fetchWithTimeout(p.build(url),opts,PROXY_TIMEOUT_MS);
+      if(r&&r.ok){const j=await tryParse(r);if(j)return j;errors.push(`${p.name}:bad-json`);}
+      else errors.push(`${p.name}:${r?.status||"no-response"}`);
+    }catch(e){errors.push(`${p.name}:${e?.name||e?.message||"err"}`);}
   }
   const err=new Error(`All proxies failed (no valid JSON) for ${url} [${errors.join(" | ")}]`);
   err.proxyErrors=errors;
@@ -1663,7 +1702,7 @@ async function pMap(items,fn,concurrency=3){
 }
 
 /* ── DIVIDENDOS · FLUJO + PROYECCIÓN ─────────── */
-function Dividendos({enriched}){
+function Dividendos({enriched,ops=[]}){
   const fU=n=>`USD ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(n)}`;
   const fU0=n=>`USD ${new Intl.NumberFormat("es-AR",{maximumFractionDigits:0}).format(n)}`;
   /* Memoizar lookups por ticker — evita find() O(n) en cada iteración del map */
@@ -1700,20 +1739,27 @@ function Dividendos({enriched}){
       if(!pos)return [];
       const sym=yfSym(ticker);
       const price=pos.precioActual||pos.ppc;
-      const buildEvent=d=>({
-        ticker,sym,
-        date:new Date(d.date*1000).toISOString().split("T")[0],
-        amount:d.amount,cantidad:pos.cantidad,
-        total:d.amount*pos.cantidad,
-        yield:price>0?((d.amount/price)*100):0,
-        isPast:d.date<now,
-      });
+      const buildEvent=d=>{
+        const fecha=new Date(d.date*1000).toISOString().split("T")[0];
+        const isPast=d.date<now;
+        /* Pago pasado -> tenencia de esa fecha; pago futuro -> tenencia actual. */
+        const cantidad=isPast?cantidadEnFecha(ops,ticker,fecha):pos.cantidad;
+        return{
+          ticker,sym,date:fecha,
+          amount:d.amount,cantidad,
+          total:d.amount*cantidad,
+          yield:price>0?((d.amount/price)*100):0,
+          isPast,
+        };
+      };
+      /* Los pagos anteriores a la primera compra se descartan: no son plata que cobraste. */
+      const soloTenidos=evs=>evs.filter(e=>!(e.isPast&&e.cantidad<=0));
       try{
         /* 1) Alpha Vantage primary si hay key (CORS abierto, sin proxy) */
         if(avKey){
           try{
             const events=await fetchDividendsAV(ticker,avKey);
-            return events.map(e=>buildEvent({date:e.timestamp,amount:e.amount}));
+            return soloTenidos(events.map(e=>buildEvent({date:e.timestamp,amount:e.amount})));
           }catch(e){console.warn("AV dividends failed for",ticker,e?.message||e,"— fallback Yahoo proxy");}
         }
         /* 2) Yahoo via proxy (fallback) */
@@ -1721,7 +1767,7 @@ function Dividendos({enriched}){
         const j=await fetchJSONWithProxies(url);
         const divs=j.chart?.result?.[0]?.events?.dividends;
         if(!divs)return []; /* Sin dividendos para este ticker — OK, no es error */
-        return Object.values(divs).map(buildEvent);
+        return soloTenidos(Object.values(divs).map(buildEvent));
       }catch(e){
         console.warn("Div fetch error for",ticker,e?.message||e);
         failed.push(ticker);
@@ -1746,7 +1792,7 @@ function Dividendos({enriched}){
       }
     }
     setLoading(false);
-  },[tickers,tickerKey,enrichedByTicker]);
+  },[tickers,tickerKey,enrichedByTicker,ops]);
 
   /* Auto-fetch solo si no hay cache válido (el cache hidratado en useState evita el round-trip) */
   useEffect(()=>{
@@ -4531,7 +4577,7 @@ function App(){
     <main className="main-content" style={{padding:24,maxWidth:1400,margin:"0 auto"}}>
       {tab==="resumen"&&<Resumen enriched={enriched} total={portfolioTotal} invertido={invertido} pl={pl} rend={rend} macro={macro} ops={ops} prices={prices} casa={casa} setCasa={setCasa} casaActual={casaActual} hipoteca={hipoteca} setHipoteca={setHipoteca} deudaUSD={deudaUSD} patrimonioNeto={patrimonioNeto} caucion={caucion} setCaucion={setCaucion} caucionUSD={caucionUSD} portfolioLiquido={portfolioLiquido} portfolioTotal={portfolioTotal} dailyPL={dailyPL} news={news} portfolioNeto={portfolioNeto} totalComVenta={totalComVenta}/>}
       {tab==="tesis"&&<TesisActiva enriched={enriched} tesis={tesis}/>}
-      {tab==="dividendos"&&<Dividendos enriched={enriched}/>}
+      {tab==="dividendos"&&<Dividendos enriched={enriched} ops={ops}/>}
       {tab==="operaciones"&&<Operaciones ops={ops} setOps={setOps} macro={macro} enriched={enriched}/>}
       {tab==="trading"&&<Trading macro={macro} prices={prices} pos={pos} priceAlerts={priceAlerts} addPriceAlert={addPriceAlert} removePriceAlert={removePriceAlert} togglePriceAlert={togglePriceAlert} onOpenConfig={()=>setShowConfig(true)} tradingForm={tradingForm} setTradingForm={setTradingForm}/>}
       {tab==="potencial"&&<Potencial pos={pos} prices={prices} macro={macro}/>}
