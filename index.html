@@ -2399,11 +2399,11 @@ function Trading({macro,prices,pos,priceAlerts=[],addPriceAlert,removePriceAlert
 
   /* ── Intraday Trades List (persisted) ── */
   const [trades,setTrades]=useState(()=>loadLS("intraday_trades",[]));
-  useEffect(()=>{saveLS("intraday_trades",trades)},[trades]);
+  useEffect(()=>{saveLS("intraday_trades",trades);window.dispatchEvent(new Event("fincloud:intraday"))},[trades]);
 
   /* ── Watchlist (posiciones intraday abiertas) ── */
   const [watchlist,setWatchlist]=useState(()=>loadLS("intraday_watchlist",[]));
-  useEffect(()=>{saveLS("intraday_watchlist",watchlist)},[watchlist]);
+  useEffect(()=>{saveLS("intraday_watchlist",watchlist);window.dispatchEvent(new Event("fincloud:intraday"))},[watchlist]);
   const [watchlistPrices,setWatchlistPrices]=useState({});
   const [closingId,setClosingId]=useState(null);
   const [closingPrice,setClosingPrice]=useState("");
@@ -3259,7 +3259,11 @@ async function gistSave(token,gistId,data){
         const mergedOps=serverNewer
           ?[...clientOps,...serverOps.filter(o=>!clientIds.has(o.id))]
           :clientOps;
+        /* Un cliente sin trades (storage limpio, otro device) no debe vaciar los del server. */
+        const keepArr=(cli,srv)=>(Array.isArray(cli)&&cli.length)?cli:(Array.isArray(srv)?srv:cli);
         payload={...data,
+          intradayTrades:keepArr(data.intradayTrades,current.intradayTrades),
+          intradayWatchlist:keepArr(data.intradayWatchlist,current.intradayWatchlist),
           tesis:keepServerTesis?current.tesis:(data.tesis||current.tesis||{}),
           perfSnapshots:data.perfSnapshots&&data.perfSnapshots.length>=((current.perfSnapshots||[]).length)?data.perfSnapshots:current.perfSnapshots,
           ops:mergedOps};
@@ -4196,6 +4200,10 @@ function App(){
         if(d.hipoteca)setHipoteca(d.hipoteca);
         if(d.caucion)setCaucion(d.caucion);
         if(d.perfSnapshots){setPerfSnapshots(d.perfSnapshots);saveLS("perf_snapshots",d.perfSnapshots);}
+        /* Trading intraday: se restauran al storage; el componente Trading los lee
+           cuando se monta (al entrar al tab), asi que quedan disponibles enseguida. */
+        if(Array.isArray(d.intradayTrades)&&d.intradayTrades.length)saveLS("intraday_trades",d.intradayTrades);
+        if(Array.isArray(d.intradayWatchlist)&&d.intradayWatchlist.length)saveLS("intraday_watchlist",d.intradayWatchlist);
       }
       setSyncStatus("ok");setLastSync(new Date());
       setTimeout(()=>{isFirstLoad.current=false},500);
@@ -4242,6 +4250,11 @@ function App(){
       riesgoPais:macro.riesgoPais,inflacion:macro.inflacion,inflacionIA:macro.inflacionIA,
       tasa:macro.tasa,reservas:macro.reservas,mervalChg:macro.mervalChg,sp500Chg:macro.sp500Chg};
     const data={ops,priceAlerts,tesis,casa,hipoteca,caucion,perfSnapshots,
+      /* Trading intraday: viven en localStorage (state interno del componente Trading),
+         asi que se leen aca en el momento del save. Sin esto se perdian con cualquier
+         limpieza del storage del sitio, como paso el 12/09/26. */
+      intradayTrades:loadLS("intraday_trades",[]),
+      intradayWatchlist:loadLS("intraday_watchlist",[]),
       portfolioSnapshot,macroSnapshot:macroSnap,
       portfolioTotal:Math.round(portfolioTotal*100)/100,
       invertido:Math.round(invertido*100)/100,
@@ -4259,6 +4272,20 @@ function App(){
   /* Ref que siempre apunta a la última versión de doGistSave (para el handler de unload) */
   const doGistSaveRef=React.useRef(doGistSave);
   useEffect(()=>{doGistSaveRef.current=doGistSave},[doGistSave]);
+
+  /* El tab Trading guarda sus trades y su watchlist en localStorage (son state interno
+     del componente). Avisa por evento para que el sync los suba sin tener que esperar a
+     que cambie alguna otra cosa del dashboard. */
+  useEffect(()=>{
+    const onIntraday=()=>{
+      if(isFirstLoad.current)return;
+      if(!loadLS("gh_token",""))return;
+      if(syncTimer.current)clearTimeout(syncTimer.current);
+      syncTimer.current=setTimeout(()=>doGistSaveRef.current(),1500);
+    };
+    window.addEventListener("fincloud:intraday",onIntraday);
+    return()=>window.removeEventListener("fincloud:intraday",onIntraday);
+  },[]);
 
   useEffect(()=>{
     if(isFirstLoad.current)return;
@@ -4294,7 +4321,10 @@ function App(){
 
   /* Exportar datos como JSON (backup local) */
   const exportData=useCallback(()=>{
-    const data={ops,priceAlerts,tesis,casa,hipoteca,caucion,perfSnapshots,exportDate:new Date().toISOString()};
+    const data={ops,priceAlerts,tesis,casa,hipoteca,caucion,perfSnapshots,
+      intradayTrades:loadLS("intraday_trades",[]),
+      intradayWatchlist:loadLS("intraday_watchlist",[]),
+      exportDate:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");a.href=url;a.download="fin-cloud-backup-"+new Date().toISOString().slice(0,10)+".json";
