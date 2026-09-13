@@ -1752,14 +1752,12 @@ function Dividendos({enriched,ops=[]}){
           isPast,
         };
       };
-      /* Los pagos anteriores a la primera compra se descartan: no son plata que cobraste. */
-      const soloTenidos=evs=>evs.filter(e=>!(e.isPast&&e.cantidad<=0));
       try{
         /* 1) Alpha Vantage primary si hay key (CORS abierto, sin proxy) */
         if(avKey){
           try{
             const events=await fetchDividendsAV(ticker,avKey);
-            return soloTenidos(events.map(e=>buildEvent({date:e.timestamp,amount:e.amount})));
+            return events.map(e=>buildEvent({date:e.timestamp,amount:e.amount}));
           }catch(e){console.warn("AV dividends failed for",ticker,e?.message||e,"— fallback Yahoo proxy");}
         }
         /* 2) Yahoo via proxy (fallback) */
@@ -1767,7 +1765,7 @@ function Dividendos({enriched,ops=[]}){
         const j=await fetchJSONWithProxies(url);
         const divs=j.chart?.result?.[0]?.events?.dividends;
         if(!divs)return []; /* Sin dividendos para este ticker — OK, no es error */
-        return soloTenidos(Object.values(divs).map(buildEvent));
+        return Object.values(divs).map(buildEvent);
       }catch(e){
         console.warn("Div fetch error for",ticker,e?.message||e);
         failed.push(ticker);
@@ -1808,10 +1806,15 @@ function Dividendos({enriched,ops=[]}){
         totalNext12,totalAnnualProjection,portfolioTotal,fwdYield,
         totalUpcoming,totalPast,avgMonth}=useMemo(()=>{
     const upcoming=divData.filter(d=>d.date>=today).map(u=>({...u,isProjected:false}));
-    const past=divData.filter(d=>d.date<today);
+    /* pastAll = historial completo del emisor (lo necesita la proyeccion).
+       past    = solo los pagos que realmente cobraste, es decir aquellos en los que la
+                 tenencia a esa fecha era > 0. Separarlos evita el bug de acreditar
+                 dividendos de meses en los que la posicion todavia no existia. */
+    const pastAll=divData.filter(d=>d.date<today);
+    const past=pastAll.filter(d=>(d.cantidad||0)>0);
 
     /* Forward projection: shift past dividends +365 días. Snapshot current cantidad. */
-    const projected=past.map(d=>{
+    const projected=pastAll.map(d=>{
       const nd=new Date(d.date+"T12:00:00");
       nd.setDate(nd.getDate()+365);
       const pos=enrichedByTicker.get(d.ticker);
@@ -1830,7 +1833,7 @@ function Dividendos({enriched,ops=[]}){
 
     /* Annual projection */
     const annualByTicker={};
-    past.forEach(d=>{
+    pastAll.forEach(d=>{
       if(!annualByTicker[d.ticker])annualByTicker[d.ticker]={ticker:d.ticker,annual:0,cantidad:d.cantidad,price:0,count:0};
       annualByTicker[d.ticker].annual+=d.amount;
       annualByTicker[d.ticker].count++;
