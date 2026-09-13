@@ -474,6 +474,25 @@ const MARKET_HOURS={
   nyseEnd:   960,  /* 16:00 ET */
 };
 
+/* Offset horario de Nueva York respecto de UTC para la fecha dada: -4 con horario de
+   verano (EDT) y -5 con horario estandar (EST). Se calcula con Intl en vez de asumir
+   -4 fijo, porque de noviembre a marzo la rueda de NYSE arranca una hora mas tarde
+   en hora argentina (Argentina no cambia de hora). */
+function etOffsetHours(d=new Date()){
+  const ny=new Date(d.toLocaleString("en-US",{timeZone:"America/New_York"}));
+  const utc=new Date(d.toLocaleString("en-US",{timeZone:"UTC"}));
+  return Math.round((ny-utc)/3600000);
+}
+const hhmm=mins=>`${String(Math.floor(((mins%1440)+1440)%1440/60)).padStart(2,"0")}:${String(mins%60).padStart(2,"0")}`;
+/* Horarios de rueda expresados SIEMPRE en hora argentina. */
+function marketHoursART(){
+  const shift=(-3)-etOffsetHours();  /* +1 con EDT, +2 con EST */
+  return{
+    byma:`${hhmm(MARKET_HOURS.bymaStart)}-${hhmm(MARKET_HOURS.bymaEnd)}`,
+    nyse:`${hhmm(MARKET_HOURS.nyseStart+shift*60)}-${hhmm(MARKET_HOURS.nyseEnd+shift*60)}`,
+  };
+}
+
 /* Timeout default para todos los fetches via proxy. Si un proxy queda hung,
    el browser default es ~30s+. Con 10s saltamos al próximo más rápido. */
 const FETCH_TIMEOUT_MS=10000;
@@ -4522,8 +4541,13 @@ function App(){
           <div style={{display:"flex",gap:10,fontSize:10,marginTop:2}}>
             <span>Data: <span style={{color:dataSource==="live"?"#10b981":dataSource==="fallback"?"#f59e0b":"#7a8497",fontWeight:600}}>{dataSource==="live"?"Online":dataSource==="fallback"?"Offline":"⏳"}</span></span>
             {(()=>{const now=new Date();const utc=now.getTime()+now.getTimezoneOffset()*60000;const art=new Date(utc-3*3600000);const h=art.getHours();const m=art.getMinutes();const d=art.getDay();const t=h*60+m;const bymaOn=d>=1&&d<=5&&t>=MARKET_HOURS.bymaStart&&t<MARKET_HOURS.bymaEnd;return <span>BYMA: <span style={{color:bymaOn?"#10b981":"#f43f5e",fontWeight:600}}>{bymaOn?"Online":"Offline"}</span></span>;})()}
-            {(()=>{const now=new Date();const utc=now.getTime()+now.getTimezoneOffset()*60000;const et=new Date(utc-4*3600000);const h=et.getHours();const m=et.getMinutes();const d=et.getDay();const t=h*60+m;const nyseOn=d>=1&&d<=5&&t>=MARKET_HOURS.nyseStart&&t<MARKET_HOURS.nyseEnd;return <span>NYSE: <span style={{color:nyseOn?"#10b981":"#f43f5e",fontWeight:600}}>{nyseOn?"Online":"Offline"}</span></span>;})()}
+            {(()=>{const now=new Date();const utc=now.getTime()+now.getTimezoneOffset()*60000;const et=new Date(utc+etOffsetHours()*3600000);const h=et.getHours();const m=et.getMinutes();const d=et.getDay();const t=h*60+m;const nyseOn=d>=1&&d<=5&&t>=MARKET_HOURS.nyseStart&&t<MARKET_HOURS.nyseEnd;return <span>NYSE: <span style={{color:nyseOn?"#10b981":"#f43f5e",fontWeight:600}}>{nyseOn?"Online":"Offline"}</span></span>;})()}
           </div>
+          {(()=>{const mh=marketHoursART();return <div style={{display:"flex",gap:10,fontSize:9,color:"#5f6b80",marginTop:2}}>
+            <span>BYMA {mh.byma}</span>
+            <span>NYSE {mh.nyse}</span>
+            <span style={{opacity:.75}}>L-V · hora ARG</span>
+          </div>;})()}
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
