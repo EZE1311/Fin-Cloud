@@ -4537,17 +4537,39 @@ function App(){
         <img src="logo.png" alt="Eze & Claude Finance" style={{height:38,width:"auto",flexShrink:0,objectFit:"contain"}} onError={e=>{e.target.outerHTML='<div style="font-size:28;line-height:1;flex-shrink:0">🐻⚔️🐂</div>';}}/>
         <div>
           <h1 className="hdr-title" style={{margin:0,fontSize:18,fontWeight:700,color:"#f1f5f9",letterSpacing:"-.02em"}}>Dashboard de Eze 🇦🇷</h1>
-          <div style={{fontSize:11,color:"#7a8497"}}>Actualizado: {lastUp.toLocaleTimeString("es-AR")}</div>
-          <div style={{display:"flex",gap:10,fontSize:10,marginTop:2}}>
-            <span>Data: <span style={{color:dataSource==="live"?"#10b981":dataSource==="fallback"?"#f59e0b":"#7a8497",fontWeight:600}}>{dataSource==="live"?"Online":dataSource==="fallback"?"Offline":"⏳"}</span></span>
-            {(()=>{const now=new Date();const utc=now.getTime()+now.getTimezoneOffset()*60000;const art=new Date(utc-3*3600000);const h=art.getHours();const m=art.getMinutes();const d=art.getDay();const t=h*60+m;const bymaOn=d>=1&&d<=5&&t>=MARKET_HOURS.bymaStart&&t<MARKET_HOURS.bymaEnd;return <span>BYMA: <span style={{color:bymaOn?"#10b981":"#f43f5e",fontWeight:600}}>{bymaOn?"Online":"Offline"}</span></span>;})()}
-            {(()=>{const now=new Date();const utc=now.getTime()+now.getTimezoneOffset()*60000;const et=new Date(utc+etOffsetHours()*3600000);const h=et.getHours();const m=et.getMinutes();const d=et.getDay();const t=h*60+m;const nyseOn=d>=1&&d<=5&&t>=MARKET_HOURS.nyseStart&&t<MARKET_HOURS.nyseEnd;return <span>NYSE: <span style={{color:nyseOn?"#10b981":"#f43f5e",fontWeight:600}}>{nyseOn?"Online":"Offline"}</span></span>;})()}
+          <div style={{fontSize:11,color:"#7a8497"}}>
+            Actualizado {lastUp.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"})}
+            <span style={{margin:"0 5px",opacity:.45}}>·</span>
+            <span style={{color:dataSource==="live"?"#10b981":dataSource==="fallback"?"#f59e0b":"#7a8497"}}>
+              {dataSource==="live"?"datos en vivo":dataSource==="fallback"?"datos sin conexión":"cargando datos"}
+            </span>
           </div>
-          {(()=>{const mh=marketHoursART();return <div style={{display:"flex",gap:10,fontSize:9,color:"#5f6b80",marginTop:2}}>
-            <span>BYMA {mh.byma}</span>
-            <span>NYSE {mh.nyse}</span>
-            <span style={{opacity:.75}}>L-V · hora ARG</span>
-          </div>;})()}
+          {/* Chips de mercado: estado + horario de rueda, todo en hora argentina y sin repetir el nombre */}
+          {(()=>{
+            const mh=marketHoursART();
+            const toMin=s=>{const[h,m]=s.split(":").map(Number);return h*60+m;};
+            const now=new Date();
+            const art=new Date(now.getTime()+now.getTimezoneOffset()*60000-3*3600000);
+            const min=art.getHours()*60+art.getMinutes();
+            const habil=art.getDay()>=1&&art.getDay()<=5;
+            const nyse=mh.nyse.split("-");
+            const mercados=[
+              {n:"BYMA",ini:MARKET_HOURS.bymaStart,fin:MARKET_HOURS.bymaEnd,rango:mh.byma},
+              {n:"NYSE",ini:toMin(nyse[0]),fin:toMin(nyse[1]),rango:mh.nyse},
+            ];
+            const chip={display:"inline-flex",alignItems:"center",gap:5,background:"rgba(255,255,255,.045)",border:"1px solid rgba(255,255,255,.07)",borderRadius:999,padding:"2px 9px",fontSize:10,color:"#8f9aae",lineHeight:1.6};
+            return <div style={{display:"flex",alignItems:"center",gap:7,marginTop:5,flexWrap:"wrap"}}>
+              {mercados.map(m=>{
+                const abierto=habil&&min>=m.ini&&min<m.fin;
+                return <span key={m.n} style={chip}>
+                  <span style={{width:6,height:6,borderRadius:"50%",flexShrink:0,background:abierto?"#10b981":"#f43f5e",boxShadow:abierto?"0 0 6px rgba(16,185,129,.55)":"none"}}/>
+                  <strong style={{color:"#c1c8d4",fontWeight:600,letterSpacing:".03em"}}>{m.n}</strong>
+                  <span style={{opacity:.85}}>{abierto?`abierto · cierra ${hhmm(m.fin)}`:`cerrado · ${m.rango}`}</span>
+                </span>;
+              })}
+              <span style={{fontSize:9,color:"#5f6b80",opacity:.85}}>hora ARG</span>
+            </div>;
+          })()}
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
